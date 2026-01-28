@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         FFN Document Exporter (Markdown)
+// @name         FFN Document Exporter (Markdown) v1.2
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  Export all Fanfiction.net docs to a ZIP of Markdown files
 // @author       You
-// @match        https://www.fanfiction.net/docs/docs.php
+// @match        https://www.fanfiction.net/docs/docs.php*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
 // @require      https://unpkg.com/turndown/dist/turndown.js
 // @grant        GM_download
@@ -22,19 +22,33 @@
 
     // 2. The Scraper Logic
     async function fetchDocContent(docId) {
-        const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
-        const text = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(text, 'text/html');
+        try {
+            const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
+            const text = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(text, 'text/html');
 
-        // FFN uses a hidden textarea with id 'content' to store the document body
-        const content = doc.querySelector('#content')?.value || "";
-        return content;
+            // FFN edit pages usually store text in a textarea named 'story_text' or id 'content'
+            const content = doc.querySelector('#story_text')?.value
+                || doc.querySelector('#content')?.value
+                || doc.querySelector('textarea')?.value
+                || "";
+            return content;
+        } catch (e) {
+            console.error("Fetch failed", e);
+            return "";
+        }
     }
 
     // 3. The Main Execution
     exportBtn.onclick = async () => {
-        const rows = document.querySelectorAll('#gui_table1 tr[id^="gui_table1_row_"]');
+        // SELECTOR FIX: Rows do not have IDs, so we just grab all rows in the table body
+        const table = document.querySelector('#gui_table1');
+        if (!table) return alert("Table #gui_table1 not found!");
+
+        // Get all rows, but filter out headers (rows with 'th')
+        const rows = Array.from(table.querySelectorAll('tr')).filter(row => row.querySelectorAll('td').length > 0);
+
         if (rows.length === 0) return alert("No documents found!");
 
         const zip = new JSZip();
@@ -43,24 +57,48 @@
         exportBtn.disabled = true;
         exportBtn.style.background = "#7f8c8d";
 
+        let successCount = 0;
+
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
-            const docId = row.id.replace('gui_table1_row_', '');
-            const title = row.cells[0].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
+
+            // LOGIC FIX: Extract DocID from the 'Edit' link instead of the row ID
+            // The link is usually in the 2nd cell (Title) or 4th cell (Edit/View)
+            const editLink = row.querySelector('a[href*="docid="]');
+            if (!editLink) continue; // Skip if no link found
+
+            const docIdMatch = editLink.href.match(/docid=(\d+)/);
+            if (!docIdMatch) continue;
+            const docId = docIdMatch[1];
+
+            // LOGIC FIX: Title is in the 2nd cell (index 1), first cell is just the number
+            const titleCell = row.cells[1];
+            const title = titleCell ? titleCell.innerText.trim().replace(/[/\\?%*:|"<>]/g, '-') : `Doc_${docId}`;
 
             // Update button status
             exportBtn.innerText = `⏳ Processing ${i + 1}/${rows.length}...`;
 
             try {
                 const html = await fetchDocContent(docId);
-                const markdown = turndownService.turndown(html);
-                zip.file(`${title}.md`, markdown);
+                if (html) {
+                    const markdown = turndownService.turndown(html);
+                    zip.file(`${title}.md`, markdown);
+                    successCount++;
+                } else {
+                    console.warn(`Empty content for ${title} (ID: ${docId})`);
+                }
             } catch (err) {
                 console.error(`Error fetching ${title}:`, err);
             }
 
             // Anti-spam delay
-            await new Promise(r => setTimeout(r, 400));
+            await new Promise(r => setTimeout(r, 500));
+        }
+
+        if (successCount === 0) {
+            exportBtn.innerText = "❌ Failed to fetch content";
+            alert("Could not extract content. Please check if you are logged in or if the layout changed.");
+            return;
         }
 
         // Generate and Download
