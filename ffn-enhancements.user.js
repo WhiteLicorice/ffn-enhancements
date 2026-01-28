@@ -236,10 +236,10 @@
             let successCount = 0;
 
             // DEBUG LIMITER
-            let breakpoint = 0; const DEBUG_LIMIT = 5;
+            //let breakpoint = 0; const DEBUG_LIMIT = 5;
 
             for (let i = 0; i < rows.length; i++) {
-                breakpoint++; if (breakpoint > DEBUG_LIMIT) break;
+                //breakpoint++; if (breakpoint > DEBUG_LIMIT) break;
 
                 const row = rows[i];
                 const editLink = row.querySelector('a[href*="docid="]');
@@ -307,6 +307,8 @@
     const path = window.location.pathname;
     Core.log("router", `Here at https://www.fanfiction.net${path}`, path)
 
+    // NOTE: The path includes the "/" and omits "https://www.fanfiction.net".
+    // If in doubt, check your browser.
     if (path === "/docs/docs.php") {
         page_name = "doc-manager"
         DocManager.init();
