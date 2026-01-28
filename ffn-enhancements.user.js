@@ -110,7 +110,7 @@
             }
 
             const btn = document.createElement('button');
-            btn.innerText = "📥 All";
+            btn.innerText = "↓ All";
             btn.title = "Download all stories as Markdown";
             btn.style.cssText = `
                 position: absolute; right: 0px; top: 50%; transform: translateY(-50%); z-index: 99;

@@ -23,7 +23,7 @@ Once you have the extension installed, click the link below. Your userscript man
 ### Step 3: Verify
 
 1. Go to [FanFiction.net Document Manager](https://www.fanfiction.net/docs/docs.php).
-2. You should see a new **"Export"** column in your document table and an **"📥 Export All"** button on the right side of the screen (among other things).
+2. You should see a new **"Export"** column in your document table and an **"↓ All"** button on the right side of the screen (among other things).
 3. Enjoy!
 
 ---
