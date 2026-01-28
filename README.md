@@ -28,6 +28,16 @@ Once you have the extension installed, click the link below. Your userscript man
 
 ---
 
+## Roadmap by Features
+
+* [x] Download documents as Markdown in both Doc Manager and Doc Editor.
+* [ ] Make text selectable while reading.
+* [ ] Bind arrow keys to chapter navigation.
+* [ ] Make story text more large-screen friendly.
+* [ ] Integrate dark theme!
+
+---
+
 ## Updating
 
 This script is designed to update automatically.
