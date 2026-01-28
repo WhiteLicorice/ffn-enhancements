@@ -120,9 +120,9 @@
         const headerRow = table.querySelector('thead tr') || table.querySelector('tbody tr');
         if (headerRow) {
             const th = document.createElement('th');
-            th.className = 'celltype2'; // Standard FFN table header class
+            th.className = 'thead'; // Standard FFN table header class
             th.innerText = 'Export';
-            th.align = 'center';
+            th.align = 'left'; // Ugh, FFN is using legacy attribs
             headerRow.appendChild(th);
         }
 
@@ -226,7 +226,7 @@
         let breakpoint = 0; const DEBUG_LIMIT = 3;
 
         for (let i = 0; i < rows.length; i++) {
-            breakpoint++; if(breakpoint > DEBUG_LIMIT) break;
+            breakpoint++; if (breakpoint > DEBUG_LIMIT) break;
 
             const row = rows[i];
             const editLink = row.querySelector('a[href*="docid="]');
