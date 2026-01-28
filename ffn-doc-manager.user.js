@@ -226,10 +226,10 @@
         let successCount = 0;
 
         // DEBUG LIMITER
-        //let breakpoint = 0; const DEBUG_LIMIT = 5;
+        let breakpoint = 0; const DEBUG_LIMIT = 5;
 
         for (let i = 0; i < rows.length; i++) {
-            //breakpoint++; if (breakpoint > DEBUG_LIMIT) break;
+            breakpoint++; if (breakpoint > DEBUG_LIMIT) break;
 
             const row = rows[i];
             const editLink = row.querySelector('a[href*="docid="]');
@@ -265,7 +265,10 @@
                 });
 
                 const blob = new Blob([content], { type: "application/zip" });
-                saveAs(blob, "FFN_Backup.zip");
+                // Generate timestamp for filename: ffn_YYYY-MM-DD-HH-mm-ss.zip
+                const now = new Date();
+                const timestamp = now.toISOString().replace(/[:T.]/g, '-').slice(0, 19);
+                saveAs(blob, `ffn_${timestamp}.zip`);
 
                 log(func, 'Download triggered.');
                 btn.innerText = "Done";
