@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FFN Exporter
 // @namespace    http://tampermonkey.net/
-// @version      2.8
+// @version      2.9
 // @description  Export FFN docs to Markdown
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/docs/docs.php*
@@ -14,7 +14,7 @@
 (function () {
     'use strict';
 
-    const encoder = new TextEncoder(); // Pre-encode text to binary
+    // Removed TextEncoder: JSZip handles strings natively and it reduces sandbox complexity.
 
     // --- LOGGING HELPER ---
     function log(funcName, msg, data) {
@@ -172,10 +172,11 @@
                     // log(func, `${content}`) // Uncomment for verbose content logging
                     const markdown = turndownService.turndown(content);
 
-                    // Convert string to Uint8Array before zipping
-                    // This offloads encoding from JSZip and prevents main-thread "stutter"
-                    const binaryData = encoder.encode(markdown);
-                    zip.file(`${title}.md`, binaryData);
+                    // Pass string directly to JSZip.
+                    // Passing Uint8Arrays (binary) generated in a sandbox to JSZip can cause type-check failures.
+                    // JSZip handles UTF-8 strings perfectly fine internally.
+                    // We also explicitly set the Date to avoid sandbox permissions issues with 'new Date()' inference.
+                    zip.file(`${title}.md`, markdown, { date: new Date() });
                     successCount++;
                 } else {
                     log(func, `WARNING: No content found for "${title}" (ID: ${docId}). Selectors failed.`);
@@ -188,24 +189,18 @@
         if (successCount > 0) {
             log(func, 'Starting ZIP...');
 
-            // Force the browser to render "Zipping 0%" before starting heavy CPU work
-            btn.innerText = "Zipping 0%";
-            await new Promise(r => setTimeout(r, 200)); // Slightly longer yield to ensure paint
+            // Force the browser to render "Zipping..." before starting heavy work
+            btn.innerText = "Zipping...";
+            await new Promise(r => setTimeout(r, 200));
 
             try {
-                // streamFiles must be FALSE in Userscripts.
-                // 'true' uses internal timers/promises that often hang in the sandbox environment,
-                // causing the ZIP generation to never complete.
+                // CRITICAL FIX: Removed the onUpdate callback.
+                // In userscript environments, the high-frequency UI updates in the callback
+                // often cause the Promise to hang or deadlock the event loop.
                 const blob = await zip.generateAsync({
                     type: "blob",
-                    compression: "STORE",
+                    compression: "STORE", // No compression = faster, less CPU
                     streamFiles: false
-                }, (metadata) => {
-                    // Only update DOM if the percentage actually moved to save CPU
-                    const pc = Math.floor(metadata.percent);
-                    if (btn.innerText !== `Zip ${pc}%`) {
-                        btn.innerText = `Zip ${pc}%`;
-                    }
                 });
 
                 log(func, `ZIP Generated. Size: ${blob.size} bytes.`);
