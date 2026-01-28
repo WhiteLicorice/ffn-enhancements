@@ -30,6 +30,7 @@
 
         const exportBtn = createButton();
         container.appendChild(exportBtn);
+        console.log("Button injected!");
     }
 
     function createButton() {
@@ -58,7 +59,7 @@
             font-weight: 600;
             color: inherit;       /* Magically works in Light & Dark mode */
             cursor: pointer;
-            
+
             /* 4. Polish */
             padding: 6px 10px;
             border-radius: 4px;
@@ -86,8 +87,16 @@
 
         // Safety check for empty table
         if (!table) return alert("Error: Table not found.");
+
+        // These are loaded via the @require tags in the metadata block above.
+        // Tampermonkey injects them before this script runs. Sanity check:
+        if (typeof JSZip === 'undefined' || typeof TurndownService === 'undefined') {
+            return alert("Error: Libraries failed to load. Check internet connection.");
+        }
+
         const rows = Array.from(table.querySelectorAll('tbody tr')).filter(row => row.querySelectorAll('td').length > 0);
         if (rows.length === 0) return alert("No documents to export.");
+        console.log(rows);
 
         // UI State: Working
         const originalText = btn.innerText;
@@ -99,7 +108,12 @@
         const turndownService = new TurndownService();
         let successCount = 0;
 
+        let breakpoint = 0;
         for (let i = 0; i < rows.length; i++) {
+            breakpoint++;
+            if (breakpoint > 10) {
+                break;
+            }
             const row = rows[i];
             const editLink = row.querySelector('a[href*="docid="]');
             if (!editLink) continue;
@@ -115,14 +129,19 @@
                 await new Promise(r => setTimeout(r, 350));
 
                 const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
+
+                //  The "Raw HTML" you see in DevTools (#document) is an IFRAME created by the TinyMCE editor.
+                // However, fetch() retrieves the *Source Code* of the page, not the rendered DOM.
+                // In the source code, the story text always resides in a <textarea> so the editor can read it on load.
+                // We don't need to parse the iframe... we just need to grab the value of that textarea.
                 const text = await response.text();
                 const doc = new DOMParser().parseFromString(text, 'text/html');
 
                 // Content extraction hierarchy
-                const content = doc.querySelector('#story_text')?.value
-                    || doc.querySelector('#content')?.value
-                    || doc.querySelector('textarea')?.value;
+                const contentElement = doc.querySelector("textarea[name='bio']") || doc.querySelector("#story_text") || doc.querySelector("#content");
 
+                const content = contentElement ? contentElement.value : null;
+                console.log(content);
                 if (content) {
                     zip.file(`${title}.md`, turndownService.turndown(content));
                     successCount++;
@@ -153,5 +172,6 @@
         }, 3000);
     }
 
+    // Initialize
     injectButton();
 })();
