@@ -556,16 +556,15 @@
         injectDropdown: function (parentGroup) {
             // Create main container
             const container = document.createElement('div');
-            // 'vertical-align: top' aligns it with FFN's button group buttons
-            // 'float: right' matches the behavior of the Follow/Fav button (btn pull-right)
-            // This snaps it to the left of the Follow/Fav button visually.
-            container.style.cssText = "display: inline-block; position: relative; margin-left: 5px; vertical-align: top; float: right;";
+            // 'float: right' matches the behavior of the Follow/Fav button (btn pull-right).
+            // We use 'margin-right: 5px' to give it spacing from the Follow button (since we will sit to its left).
+            container.style.cssText = "display: inline-block; position: relative; margin-right: 5px; vertical-align: top; float: right;";
 
             // The main "Download" button (AO3 Style)
             this.mainBtn = document.createElement('button');
             this.mainBtn.className = 'btn'; // Reuse FFN's native styling
             this.mainBtn.innerHTML = "Download &#9662;"; // Text + Down Arrow
-            this.mainBtn.style.cssText = "cursor: pointer; border-radius: 4px; height: 34px;"; // Match standard FFN button height
+            this.mainBtn.style.cssText = "cursor: pointer;";
 
             this.mainBtn.onclick = (e) => {
                 e.preventDefault();
@@ -616,30 +615,28 @@
             container.appendChild(this.mainBtn);
             container.appendChild(menu);
 
-            // We append to parentGroup (#profile_top). 
-            // Because we use 'float: right', it will stack to the left of the existing right-floated Follow/Fav button.
-            // However, depending on DOM order, we might need to insert it *before* the Follow/Fav button if it's already there.
-            // Let's try simple append first as float behavior usually pushes it correctly if added last.
-            // If FFN Follow/Fav is also appended dynamically or sits there static, appending usually works.
+            // Previous Issue: 'appendChild' put the button at the end of #profile_top (below the summary).
+            // Ugh, just insert it immediately AFTER the Follow/Fav button in the DOM.
+            // With float:right, DOM Order [Follow] [Download] results in Visual Order [Download] [Follow].
+            const followBtn = parentGroup.querySelector('button.pull-right');
 
-            // NOTE: The Follow/Fav button is often <button class='btn pull-right ...'>.
-            // If we appendChild, our button (float:right) will appear to the RIGHT of content that isn't floated, 
-            // and to the LEFT of the Follow/Fav button if that button is already in the DOM.
-            // Insert BEFORE the Follow button so it floats to the LEFT of it? 
-            // Actually, CSS float rules: first element in DOM floats to the far right. 
-            // Second element floats to the left of the first.
-            // So if Follow/Fav is already there, we should InsertBefore to push Follow/Fav to the left?
-            // No, we want Download to the Left of Follow/Fav.
-            // If Follow/Fav is element 1 (Far Right). We want element 2 (Left of it).
-            // So we should appendChild.
-            parentGroup.appendChild(container);
+            if (followBtn && followBtn.nextSibling) {
+                // Insert right after the Follow button (before whatever comes next, usually the Title)
+                parentGroup.insertBefore(container, followBtn.nextSibling);
+            } else if (followBtn) {
+                // Follow button is the last thing? Just append.
+                parentGroup.appendChild(container);
+            } else {
+                // Fallback: If no Follow button found, insert at the very top so it still floats top-right
+                parentGroup.insertBefore(container, parentGroup.firstChild);
+            }
 
             // Close dropdown when clicking outside
             document.addEventListener('click', (e) => {
                 if (!container.contains(e.target)) this.toggleDropdown(false);
             });
 
-            Core.log('StoryDownloader', 'AO3-style Dropdown injected successfully.');
+            Core.log('StoryDownloader', 'AO3-style Dropdown injected adjacent to Follow/Fav.');
         },
 
         toggleDropdown: function (forceState) {
