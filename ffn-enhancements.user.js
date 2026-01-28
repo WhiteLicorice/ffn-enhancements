@@ -14,7 +14,7 @@
 (function () {
     'use strict';
 
-    let page_name = ""; // used for logging purposes
+    let page_name = "init"; // used for logging purposes
 
     // ==========================================
     // 1. GLOBAL CORE (Shared Utilities & Logic)
