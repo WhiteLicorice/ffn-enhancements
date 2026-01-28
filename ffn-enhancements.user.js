@@ -509,7 +509,7 @@
                     }
                 }
 
-                if (e.key === 'ArrowLeft'  || e.key.toLowerCase() === 'a') {
+                if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') {
                     const btns = Array.from(document.querySelectorAll('button'));
                     const prevBtn = btns.find(b => b.textContent.includes("< Prev"));
                     if (prevBtn) {
@@ -532,6 +532,7 @@
 
     // ==========================================
     // MODULE: STORY DOWNLOADER
+    //      (via Fichub)
     // ==========================================
 
     const StoryDownloader = {
@@ -542,7 +543,7 @@
             this.injectDownloadButtons(header);
         },
 
-        injectDownloadButtons: function(header) {
+        injectDownloadButtons: function (header) {
             const container = document.createElement('div');
             container.style.cssText = "margin-top: 5px; margin-bottom: 5px; display: flex; align-items: center; font-size: 11px;";
 
@@ -564,10 +565,10 @@
                 btn.innerText = fmt.label;
                 btn.title = `Download as ${fmt.label}`;
                 btn.style.cssText = "margin-right: 5px; cursor: pointer; padding: 3px 8px; border: 1px solid #ccc; background: linear-gradient(to bottom, #fff, #e6e6e6); border-radius: 3px; font-size: 11px; color: #333;";
-                
+
                 btn.onclick = (e) => {
                     e.preventDefault();
-                    this.downloadStory(fmt.ext, btn);
+                    this.processDownload(fmt.ext, btn);
                 };
                 container.appendChild(btn);
             });
@@ -582,12 +583,51 @@
             Core.log('StoryDownloader', 'Buttons injected.');
         },
 
-        downloadStory: function(format, btn) {            
+        processDownload: function (format, btn) {
             // Clean URL (remove query params like ?mode=dark)
-            const storyUrl = window.location.href.split('?')[0]; 
-            const apiUrl = `https://fichub.net/api/v0/${format}?q=${encodeURIComponent(storyUrl)}`;
-            // Trigger download in new window/tab to avoid CORS
-            window.open(apiUrl, '_blank');
+            const storyUrl = window.location.href.split('?')[0];
+
+            // NOTE: We hit the EPUB endpoint because it serves as the general "generate/cache" trigger for Fichub.
+            // The JSON returned contains links for ALL formats.
+            const apiUrl = `https://fichub.net/api/v0/epub?q=${encodeURIComponent(storyUrl)}`;
+
+            Core.log('StoryDownloader', `Fetching metadata from Fichub for ${format}...`);
+
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: apiUrl,
+                onload: function (response) {
+                    try {
+                        const data = JSON.parse(response.responseText);
+
+                        // Fichub JSON structure:
+                        // { "urls": { "epub": "/cache/...", "mobi": "/cache/...", "pdf": "/cache/..." }, ... }
+
+                        let relativeUrl = null;
+
+                        if (data.urls && data.urls[format]) {
+                            relativeUrl = data.urls[format];
+                        } else {
+                            // Fallback if structure varies
+                            relativeUrl = data[format + '_url'];
+                        }
+
+                        if (relativeUrl) {
+                            const downloadUrl = "https://fichub.net" + relativeUrl;
+                            Core.log('StoryDownloader', `Opening: ${downloadUrl}`);
+                            window.location.href = downloadUrl; // Triggers the download
+                        } else {
+                            Core.log('StoryDownloader', 'Format URL missing in JSON', data);
+                            alert(`Fichub did not return a link for ${format}.`);
+                        }
+                    } catch (e) {
+                        Core.log('StoryDownloader', 'JSON Parse Error', e);
+                    }
+                },
+                onerror: function (err) {
+                    Core.log('StoryDownloader', 'Network Error', err);
+                }
+            });
         }
     };
 
