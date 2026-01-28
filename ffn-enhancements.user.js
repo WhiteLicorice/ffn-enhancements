@@ -650,7 +650,6 @@
 
         processDownload: function (format) {
             const originalText = "Download &#9662;";
-            this.mainBtn.innerHTML = "⏳";
             this.mainBtn.disabled = true;
             this.isDownloading = true;
 
