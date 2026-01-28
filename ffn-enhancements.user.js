@@ -586,7 +586,7 @@
                 { label: 'EPUB', ext: 'epub' },
                 { label: 'MOBI', ext: 'mobi' },
                 { label: 'PDF', ext: 'pdf' },
-                { label: 'HTML', ext: 'html'}
+                { label: 'HTML', ext: 'html' }
             ];
 
             formats.forEach(fmt => {
