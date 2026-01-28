@@ -536,7 +536,10 @@
     // ==========================================
 
     const StoryDownloader = {
-        init: function() {
+        isDownloading: false, // Prevents concurrent requests (API Rule)
+        buttons: [], // Track buttons to disable/enable
+
+        init: function () {
             // Target the header area where Title/Author is
             const header = document.querySelector('#profile_top');
             if (!header) return;
@@ -560,6 +563,8 @@
                 { label: 'PDF', ext: 'pdf' }
             ];
 
+            this.buttons = []; // Reset list
+
             formats.forEach(fmt => {
                 const btn = document.createElement('button');
                 btn.innerText = fmt.label;
@@ -568,9 +573,11 @@
 
                 btn.onclick = (e) => {
                     e.preventDefault();
-                    this.processDownload(fmt.ext);
+                    if (this.isDownloading) return; // Prevent concurrent clicks
+                    this.processDownload(fmt.ext, btn);
                 };
                 container.appendChild(btn);
+                this.buttons.push(btn); // Store ref
             });
 
             // Insert before the metadata (stats) section (.xgray)
@@ -583,7 +590,20 @@
             Core.log('StoryDownloader', 'Buttons injected.');
         },
 
-        processDownload: function (format) {
+        toggleButtons: function (disabled) {
+            this.isDownloading = disabled;
+            this.buttons.forEach(b => {
+                b.disabled = disabled;
+                b.style.opacity = disabled ? "0.5" : "1";
+                b.style.cursor = disabled ? "not-allowed" : "pointer";
+            });
+        },
+
+        processDownload: function (format, btn) {
+            const originalText = btn.innerText;
+            btn.innerText = "⏳";
+            this.toggleButtons(true); // Lock ALL buttons
+
             // Clean URL (remove query params like ?mode=dark)
             const storyUrl = window.location.href.split('?')[0];
 
@@ -596,7 +616,17 @@
             GM_xmlhttpRequest({
                 method: "GET",
                 url: apiUrl,
-                onload: function (response) {
+                headers: {
+                    "User-Agent": "FFN-Enhancements" // COMPLIANCE: Custom User-Agent
+                },
+                onload: (response) => {
+                    // COMPLIANCE: Handle 429
+                    if (response.status === 429) {
+                        alert("The Fichub Server is busy. Please wait a while and try again.");
+                        this.resetButton(btn, originalText);
+                        return;
+                    }
+
                     try {
                         const data = JSON.parse(response.responseText);
 
@@ -622,12 +652,23 @@
                         }
                     } catch (e) {
                         Core.log('StoryDownloader', 'JSON Parse Error', e);
+                        btn.innerText = "Err";
                     }
+                    this.resetButton(btn, originalText);
                 },
-                onerror: function (err) {
+                onerror: (err) => {
                     Core.log('StoryDownloader', 'Network Error', err);
+                    btn.innerText = "NetErr";
+                    this.resetButton(btn, originalText);
                 }
             });
+        },
+
+        resetButton: function (btn, originalText) {
+            setTimeout(() => {
+                btn.innerText = originalText;
+                this.toggleButtons(false); // Unlock buttons
+            }, 3000);
         }
     };
 
