@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FFN Enhancements
 // @namespace    http://tampermonkey.net/
-// @version      5.6
+// @version      5.7
 // @description  A suite of modern enhancements to FFN's old-school interface. Inspired by ao3-enhancements.
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/*
@@ -21,7 +21,10 @@
     // ==========================================
 
     const Core = {
-        turndownService: new TurndownService(),
+        turndownService: new TurndownService({
+            'hr': '---',
+            'bulletListMarker': '-',
+        }), // modern-ish presets used by Markor and the like
 
         log: function (funcName, msg, data) {
             const prefix = `(ffn-enhancements) ${page_name} ${funcName}:`;
