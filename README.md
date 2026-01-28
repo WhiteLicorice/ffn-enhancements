@@ -33,7 +33,7 @@ Once you have the extension installed, click the link below. Your userscript man
 * [x] Download documents as Markdown in both Doc Manager and Doc Editor.
 * [x] Make text selectable while reading.
 * [x] Bind arrow keys or WASD keys to chapter navigation.
-* [ ] Make story text more large-screen friendly.
+* [ ] Make story text more large-screen friendly?
 * [x] Integrate Ao3's export to EPUB/PDF/HTML/MOBI feature (AZW3 is prioprietary and out of scope).
 * [x] Integrate native dark theme (gave up: may I suggest using the mature [Dark Reader](https://darkreader.org/) instead?).
 
@@ -50,5 +50,4 @@ This script is designed to update automatically.
 
 ## Compatibility
 
-* **Supported Browsers:** Chrome, Firefox, Edge, Brave, Safari.
-* **Mobile:** Works on Android via **Kiwi Browser** or **Firefox** (with Tampermonkey installed). iOS support is experimental via the Userscripts app.
+* **Tested on Browsers:** Edge & Firefox.
