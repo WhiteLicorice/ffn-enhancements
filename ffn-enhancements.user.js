@@ -17,7 +17,7 @@
     let page_name = "init"; // used for logging purposes
 
     // ==========================================
-    // 1. GLOBAL CORE (Shared Utilities & Logic)
+    // GLOBAL CORE (Shared Utilities & Logic)
     // ==========================================
 
     const Core = {
@@ -74,7 +74,7 @@
     };
 
     // ==========================================
-    // 2. MODULE: DOCUMENT MANAGER
+    // MODULE: DOCUMENT MANAGER
     //    (Only runs on /docs/docs.php)
     // ==========================================
 
@@ -301,7 +301,86 @@
     };
 
     // ==========================================
-    // 3. MAIN ROUTER
+    // MODULE: DOCUMENT EDITOR
+    //    (Runs on /docs/edit.php)
+    // ==========================================
+
+    const DocEditor = {
+        init: function () {
+            Core.log('DocEditor', 'Initializing...');
+            // Wait for TinyMCE to render the toolbar
+            const checkInt = setInterval(() => {
+                const toolbar = document.querySelector('.mce-btn-group');
+                if (toolbar) {
+                    clearInterval(checkInt);
+                    this.injectToolbarButton(toolbar);
+                }
+            }, 500);
+
+            // Timeout after 10s to stop polling
+            setTimeout(() => clearInterval(checkInt), 10000);
+        },
+
+        injectToolbarButton: function (toolbar) {
+            // Mimic TinyMCE 4 Button Structure
+            // <div class="mce-widget mce-btn">
+            //    <button type="button"><i class="mce-ico mce-i-icon"></i></button>
+            // </div>
+
+            const container = document.createElement('div');
+            container.className = 'mce-widget mce-btn';
+            container.setAttribute('aria-label', 'Download Markdown');
+            container.setAttribute('role', 'button');
+            container.setAttribute('tabindex', '-1');
+
+            const button = document.createElement('button');
+            button.setAttribute('type', 'button');
+            button.style.cssText = 'padding: 4px 6px; font-size: 14px; display: flex; align-items: center; justify-content: center;';
+
+            // Use a simple text char or SVG for the icon. FFN doesn't have FontAwesome loaded usually.
+            button.innerHTML = '📥';
+
+            button.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation(); // Stop TinyMCE from stealing focus
+                this.exportCurrentDoc(button);
+            };
+
+            container.appendChild(button);
+
+            // Append to the end of the first toolbar group
+            toolbar.appendChild(container);
+            Core.log('DocEditor', 'Toolbar button injected.');
+        },
+
+        exportCurrentDoc: function (btn) {
+            const func = 'DocEditor.export';
+            const titleInput = document.querySelector("input[name='title']");
+            const title = titleInput ? titleInput.value.trim().replace(/[/\\?%*:|"<>]/g, '-') : 'Untitled_Draft';
+
+            const originalIcon = btn.innerHTML;
+            btn.innerHTML = '⏳';
+
+            // Use the Core parser on the CURRENT document object
+            // This works because in edit.php, the 'tinymce' global object exists
+            const markdown = Core.parseContentFromDOM(document, title);
+
+            if (markdown) {
+                const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+                saveAs(blob, `${title}.md`);
+                btn.innerHTML = '✅';
+            } else {
+                btn.innerHTML = '❌';
+            }
+
+            setTimeout(() => {
+                btn.innerHTML = originalIcon;
+            }, 2000);
+        }
+    };
+
+    // ==========================================
+    // MAIN ROUTER
     // ==========================================
 
     const path = window.location.pathname;
@@ -310,10 +389,11 @@
     // NOTE: The path includes the "/" and omits "https://www.fanfiction.net".
     // If in doubt, check your browser.
     if (path === "/docs/docs.php") {
-        page_name = "doc-manager"
+        page_name = "doc-manager";
         DocManager.init();
+    } else if (path.includes("/docs/edit.php")) {
+        page_name = "doc-editor";
+        DocEditor.init()
     }
-    // TODO:
-    // else if (path.includes('story/')) { StoryViewer.init(); }
 
 })();
