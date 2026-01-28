@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         FFN Exporter
 // @namespace    http://tampermonkey.net/
-// @version      3.1
+// @version      3.2
 // @description  Export FFN docs to Markdown
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/docs/docs.php*
-// @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
 // @require      https://unpkg.com/turndown/dist/turndown.js
 // @require      https://unpkg.com/file-saver@2.0.4/dist/FileSaver.min.js
 // @grant        GM_download
@@ -14,8 +14,6 @@
 
 (function () {
     'use strict';
-
-    // Removed TextEncoder: JSZip handles strings natively. Removing overhead prevents sandbox serialization issues.
 
     // --- LOGGING HELPER ---
     function log(funcName, msg, data) {
@@ -92,14 +90,13 @@
         if (!table) return alert("Error: Table not found.");
 
         // --- ASSERTION BLOCK ---
-        // These are loaded via the @require tags in the metadata block above.
-        // Tampermonkey injects them before this script runs.
-        if (typeof JSZip === 'undefined' || typeof TurndownService === 'undefined' || typeof saveAs === 'undefined') {
+        // Version 3.1.5 is more stable for legacy sites like FFN?
+        const JSZipLib = window.JSZip || JSZip;
+        if (typeof JSZipLib === 'undefined' || typeof TurndownService === 'undefined' || typeof saveAs === 'undefined') {
             log(func, 'ASSERT FAIL: Critical libraries (JSZip/Turndown/FileSaver) are missing.');
             return alert("Error: Libraries failed to load. Check internet connection.");
         }
 
-        // Explicitly log that the assertion passed
         log(func, 'Libraries (JSZip, Turndown, FileSaver) loaded successfully.');
         // -----------------------
 
@@ -117,7 +114,7 @@
         btn.style.cursor = "wait";
         btn.style.opacity = "1";
 
-        const zip = new JSZip();
+        const zip = new JSZipLib();
         const turndownService = new TurndownService();
         let successCount = 0;
 
@@ -173,7 +170,7 @@
                     // log(func, `${content}`) // Uncomment for verbose content logging
                     const markdown = turndownService.turndown(content);
 
-                    // We removed TextEncoder. We also set a specific date to avoid browser sandbox issues.
+                    // Added explicit date to ensure metadata doesn't cause issues in sandboxed zip creation
                     zip.file(`${title}.md`, markdown, { date: new Date() });
                     successCount++;
                 } else {
@@ -187,36 +184,38 @@
         if (successCount > 0) {
             // Force the browser to render "Zipping..." before starting heavy work
             btn.innerText = "Zipping...";
+            // Allow DOM to update
             await new Promise(r => setTimeout(r, 250));
-            log(func, 'Starting ZIP...');
+            log(func, 'Starting ZIP generation...');
 
             try {
-                // Removed the onUpdate callback.
-                // The progress update callback floods the event loop in sandboxed environments,
-                // causing the script to hang indefinitely.
-                const blob = await zip.generateAsync({
-                    type: "blob",
-                    compression: "STORE", // No compression = faster, less CPU
+                // We generate as uint8array and manually convert to Blob.
+                // This bypasses potential JSZip internal issues with Blob polyfills on legacy pages.
+                const content = await zip.generateAsync({
+                    type: "uint8array",
+                    compression: "STORE",
                     streamFiles: false
                 });
 
-                log(func, `ZIP Generated. Size: ${blob.size} bytes.`);
+                log(func, `Binary data generated. Size: ${content.length} bytes.`);
 
-                log(func, 'Handing off Blob to FileSaver.saveAs()...');
+                const blob = new Blob([content], { type: "application/zip" });
+                log(func, `Blob wrapped successfully. Size: ${blob.size}`);
+
+                log(func, 'Handing off to FileSaver...');
                 saveAs(blob, "FFN_Backup.zip");
 
-                log(func, 'FileSaver save triggered successfully.');
+                log(func, 'FileSaver save triggered.');
                 btn.innerText = "Done";
 
             } catch (zipErr) {
                 log(func, 'CRITICAL ZIP/DOWNLOAD ERROR:', zipErr);
                 btn.innerText = "Err";
-                alert("Error generating ZIP or Downloading. Check console.");
+                alert("Error generating ZIP. See console.");
             }
         } else {
-            log(func, 'Zero documents extracted. Aborting download.');
+            log(func, 'Zero documents extracted.');
             btn.innerText = "Error";
-            alert("No content extracted.");
         }
 
         // Reset UI
@@ -232,10 +231,9 @@
     if (document.querySelector('#gui_table1')) {
         injectButton();
     } else {
-        log('Global', 'Table #gui_table1 not found immediately. Waiting or manual check needed.');
-        // Fallback check
+        log('Global', 'Table not found. Waiting...');
         setTimeout(() => {
             if (document.querySelector('#gui_table1')) injectButton();
-        }, 1000);
+        }, 1500);
     }
 })();
