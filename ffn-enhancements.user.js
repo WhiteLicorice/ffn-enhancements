@@ -493,12 +493,14 @@
                 const tag = e.target.tagName;
                 const id = e.target.id;
 
-                // SAFETY CHECK: Do not trigger if user is typing in a review box
+                // Do not trigger if user is typing in a review box
                 if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable || id === 'review_review') {
                     return;
                 }
 
-                if (e.key === 'ArrowRight') {
+                Core.log('enableKeyboardNav', `User pressed ${e.key}`)
+
+                if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') {
                     const btns = Array.from(document.querySelectorAll('button'));
                     const nextBtn = btns.find(b => b.textContent.includes("Next >"));
                     if (nextBtn) {
@@ -507,13 +509,21 @@
                     }
                 }
 
-                if (e.key === 'ArrowLeft') {
+                if (e.key === 'ArrowLeft'  || e.key.toLowerCase() === 'a') {
                     const btns = Array.from(document.querySelectorAll('button'));
                     const prevBtn = btns.find(b => b.textContent.includes("< Prev"));
                     if (prevBtn) {
                         Core.log('StoryReader', 'Previous Chapter');
                         prevBtn.click();
                     }
+                }
+
+                if (e.key.toLowerCase() === 'w' || e.key === 'ArrowUp') {
+                    window.scrollBy({ top: -300, behavior: 'smooth' });
+                }
+
+                if (e.key.toLowerCase() === 's' || e.key === 'ArrowDown') {
+                    window.scrollBy({ top: 300, behavior: 'smooth' });
                 }
             });
             Core.log('StoryReader', 'Keyboard nav enabled.');
