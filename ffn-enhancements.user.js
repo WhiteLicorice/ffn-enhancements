@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         FFN Enhancements
 // @namespace    http://tampermonkey.net/
-// @version      5.8
+// @version      5.9
 // @description  A suite of modern enhancements to FFN's old-school interface. Inspired by ao3-enhancements.
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
 // @require      https://unpkg.com/turndown/dist/turndown.js
 // @require      https://unpkg.com/file-saver@2.0.4/dist/FileSaver.min.js
+// @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
@@ -31,6 +32,18 @@
             const prefix = `(ffn-enhancements) ${page_name} ${funcName}:`;
             if (data !== undefined) console.log(`${prefix} ${msg}`, data);
             else console.log(`${prefix} ${msg}`);
+        },
+
+        /**
+         * Runs a callback when the DOM is fully loaded.
+         * Essential because we are now running at document-start to ensure early execution.
+         */
+        onDomReady: function (callback) {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', callback);
+            } else {
+                callback();
+            }
         },
 
         /**
@@ -84,14 +97,17 @@
 
     const DocManager = {
         init: function () {
-            if (document.querySelector('#gui_table1')) {
-                this.injectUI();
-            } else {
-                Core.log('DocManager', 'Table not found. Waiting...');
-                setTimeout(() => {
-                    if (document.querySelector('#gui_table1')) this.injectUI();
-                }, 1500);
-            }
+            // Wrap initialization in onDomReady
+            Core.onDomReady(() => {
+                if (document.querySelector('#gui_table1')) {
+                    this.injectUI();
+                } else {
+                    Core.log('DocManager', 'Table not found. Waiting...');
+                    setTimeout(() => {
+                        if (document.querySelector('#gui_table1')) this.injectUI();
+                    }, 1500);
+                }
+            });
         },
 
         injectUI: function () {
@@ -311,21 +327,24 @@
 
     const DocEditor = {
         init: function () {
-            Core.log('DocEditor', 'Polling for TinyMCE...');
-            // Wait for TinyMCE to render the toolbar
-            const checkInt = setInterval(() => {
-                const toolbar = document.querySelector('#mceu_15-body'); // TODO: May be fragile. Point of update.
-                if (toolbar) {
-                    clearInterval(checkInt);
-                    Core.log('DocEditor', 'TinyMCE toolbar found.');
-                    this.injectToolbarButton(toolbar);
-                }
-            }, 500);
+            // Wrap initialization in onDomReady
+            Core.onDomReady(() => {
+                Core.log('DocEditor', 'Polling for TinyMCE...');
+                // Wait for TinyMCE to render the toolbar
+                const checkInt = setInterval(() => {
+                    const toolbar = document.querySelector('#mceu_15-body'); // TODO: May be fragile. Point of update.
+                    if (toolbar) {
+                        clearInterval(checkInt);
+                        Core.log('DocEditor', 'TinyMCE toolbar found.');
+                        this.injectToolbarButton(toolbar);
+                    }
+                }, 500);
 
-            // Timeout after 10s to stop polling
-            setTimeout(() => {
-                if (checkInt) clearInterval(checkInt);
-            }, 5000);
+                // Timeout after 10s to stop polling
+                setTimeout(() => {
+                    if (checkInt) clearInterval(checkInt);
+                }, 5000);
+            });
         },
 
         injectToolbarButton: function (toolbar) {
@@ -464,9 +483,12 @@
 
     const StoryReader = {
         init: function () {
-            Core.log('StoryReader', 'Initializing UX Enhancements...');
-            this.enableSelectableText();
-            this.enableKeyboardNav();
+            // Wrap initialization in onDomReady
+            Core.onDomReady(() => {
+                Core.log('StoryReader', 'Initializing UX Enhancements...');
+                this.enableSelectableText();
+                this.enableKeyboardNav();
+            });
         },
 
         enableSelectableText: function () {
@@ -543,14 +565,17 @@
         buttons: [], // Track buttons if needed
 
         init: function () {
-            // Find the header container
-            const header = document.querySelector('#profile_top');
-            if (header) {
-                Core.log('StoryDownloader', 'Header found (#profile_top). Injecting dropdown...');
-                this.injectDropdown(header);
-            } else {
-                Core.log('StoryDownloader', 'Header (#profile_top) NOT found. Skipping injection.');
-            }
+            // Wrap initialization in onDomReady to find elements safely
+            Core.onDomReady(() => {
+                // Find the header container
+                const header = document.querySelector('#profile_top');
+                if (header) {
+                    Core.log('StoryDownloader', 'Header found (#profile_top). Injecting dropdown...');
+                    this.injectDropdown(header);
+                } else {
+                    Core.log('StoryDownloader', 'Header (#profile_top) NOT found. Skipping injection.');
+                }
+            });
         },
 
         injectDropdown: function (parentGroup) {
