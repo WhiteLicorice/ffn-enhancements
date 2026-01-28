@@ -15,6 +15,7 @@
     'use strict';
 
     let page_name = "init"; // used for logging purposes
+    const SCRIPT_UA = "FFN-Enhancements";
 
     // ==========================================
     // GLOBAL CORE (Shared Utilities & Logic)
@@ -532,30 +533,55 @@
 
     // ==========================================
     // MODULE: STORY DOWNLOADER
-    //      (via Fichub)
+    //      (via Fichub - AO3 Style)
     // ==========================================
 
     const StoryDownloader = {
         isDownloading: false, // Prevents concurrent requests (API Rule)
-        buttons: [], // Track buttons to disable/enable
+        dropdown: null,
+        mainBtn: null, // Ref to the button we update text on
+        buttons: [], // Track buttons if needed
 
         init: function () {
-            // Target the header area where Title/Author is
+            // Find the header container
             const header = document.querySelector('#profile_top');
-            if (!header) return;
-            this.injectDownloadButtons(header);
+            if (header) {
+                Core.log('StoryDownloader', 'Header found (#profile_top). Injecting dropdown...');
+                this.injectDropdown(header);
+            } else {
+                Core.log('StoryDownloader', 'Header (#profile_top) NOT found. Skipping injection.');
+            }
         },
 
-        injectDownloadButtons: function (header) {
+        injectDropdown: function (parentGroup) {
+            // Create main container
             const container = document.createElement('div');
-            container.style.cssText = "margin-top: 5px; margin-bottom: 5px; display: flex; align-items: center; font-size: 11px;";
+            // 'vertical-align: top' aligns it with FFN's button group buttons
+            // 'float: right' matches the behavior of the Follow/Fav button (btn pull-right)
+            // This snaps it to the left of the Follow/Fav button visually.
+            container.style.cssText = "display: inline-block; position: relative; margin-left: 5px; vertical-align: top; float: right;";
 
-            const label = document.createElement('span');
-            label.innerText = "Download (via Fichub): ";
-            label.style.fontWeight = "bold";
-            label.style.marginRight = "8px";
-            label.style.color = "#555";
-            container.appendChild(label);
+            // The main "Download" button (AO3 Style)
+            this.mainBtn = document.createElement('button');
+            this.mainBtn.className = 'btn'; // Reuse FFN's native styling
+            this.mainBtn.innerHTML = "Download &#9662;"; // Text + Down Arrow
+            this.mainBtn.style.cssText = "cursor: pointer; border-radius: 4px; height: 34px;"; // Match standard FFN button height
+
+            this.mainBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.toggleDropdown();
+            };
+
+            // The dropdown menu
+            const menu = document.createElement('ul');
+            menu.style.cssText = `
+                display: none; position: absolute; top: 100%; right: 0; z-index: 1000;
+                min-width: 100px; padding: 5px 0; margin: 2px 0 0;
+                background-color: #fff; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px;
+                box-shadow: 0 6px 12px rgba(0,0,0,0.175); list-style: none; text-align: left;
+            `;
+            this.dropdown = menu;
 
             const formats = [
                 { label: 'EPUB', ext: 'epub' },
@@ -563,48 +589,73 @@
                 { label: 'PDF', ext: 'pdf' }
             ];
 
-            this.buttons = []; // Reset list
-
             formats.forEach(fmt => {
-                const btn = document.createElement('button');
-                btn.innerText = fmt.label;
-                btn.title = `Download as ${fmt.label}`;
-                btn.style.cssText = "margin-right: 5px; cursor: pointer; padding: 3px 8px; border: 1px solid #ccc; background: linear-gradient(to bottom, #fff, #e6e6e6); border-radius: 3px; font-size: 11px; color: #333;";
+                const li = document.createElement('li');
+                const a = document.createElement('a');
+                a.innerText = fmt.label;
+                a.href = "#";
+                a.style.cssText = "display: block; padding: 3px 20px; clear: both; font-weight: 400; line-height: 1.428; color: #333; white-space: nowrap; text-decoration: none;";
 
-                btn.onclick = (e) => {
+                a.onmouseover = () => { a.style.backgroundColor = "#f5f5f5"; };
+                a.onmouseout = () => { a.style.backgroundColor = "transparent"; };
+
+                a.onclick = (e) => {
                     e.preventDefault();
-                    if (this.isDownloading) return; // Prevent concurrent clicks
-                    this.processDownload(fmt.ext, btn);
+                    if (this.isDownloading) {
+                        Core.log('StoryDownloader', 'Download already in progress. Ignoring click.');
+                        return;
+                    }
+
+                    this.toggleDropdown(false); // Close menu
+                    this.processDownload(fmt.ext); // Start download
                 };
-                container.appendChild(btn);
-                this.buttons.push(btn); // Store ref
+                li.appendChild(a);
+                menu.appendChild(li);
             });
 
-            // Insert before the metadata (stats) section (.xgray)
-            const metaStats = header.querySelector('.xgray');
-            if (metaStats) {
-                header.insertBefore(container, metaStats);
-            } else {
-                header.appendChild(container);
-            }
-            Core.log('StoryDownloader', 'Buttons injected.');
-        },
+            container.appendChild(this.mainBtn);
+            container.appendChild(menu);
 
-        toggleButtons: function (disabled) {
-            this.isDownloading = disabled;
-            this.buttons.forEach(b => {
-                b.disabled = disabled;
-                b.style.opacity = disabled ? "0.5" : "1";
-                b.style.cursor = disabled ? "not-allowed" : "pointer";
+            // We append to parentGroup (#profile_top). 
+            // Because we use 'float: right', it will stack to the left of the existing right-floated Follow/Fav button.
+            // However, depending on DOM order, we might need to insert it *before* the Follow/Fav button if it's already there.
+            // Let's try simple append first as float behavior usually pushes it correctly if added last.
+            // If FFN Follow/Fav is also appended dynamically or sits there static, appending usually works.
+
+            // NOTE: The Follow/Fav button is often <button class='btn pull-right ...'>.
+            // If we appendChild, our button (float:right) will appear to the RIGHT of content that isn't floated, 
+            // and to the LEFT of the Follow/Fav button if that button is already in the DOM.
+            // Insert BEFORE the Follow button so it floats to the LEFT of it? 
+            // Actually, CSS float rules: first element in DOM floats to the far right. 
+            // Second element floats to the left of the first.
+            // So if Follow/Fav is already there, we should InsertBefore to push Follow/Fav to the left?
+            // No, we want Download to the Left of Follow/Fav.
+            // If Follow/Fav is element 1 (Far Right). We want element 2 (Left of it).
+            // So we should appendChild.
+            parentGroup.appendChild(container);
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!container.contains(e.target)) this.toggleDropdown(false);
             });
+
+            Core.log('StoryDownloader', 'AO3-style Dropdown injected successfully.');
         },
 
-        processDownload: function (format, btn) {
-            const originalText = btn.innerText;
-            btn.innerText = "⏳";
-            this.toggleButtons(true); // Lock ALL buttons
+        toggleDropdown: function (forceState) {
+            if (!this.dropdown) return;
+            const isVisible = this.dropdown.style.display === 'block';
+            const newState = forceState !== undefined ? forceState : !isVisible;
+            this.dropdown.style.display = newState ? 'block' : 'none';
+            Core.log('StoryDownloader', `Dropdown toggled: ${newState}`);
+        },
 
-            // Clean URL (remove query params like ?mode=dark)
+        processDownload: function (format) {
+            const originalText = "Download &#9662;";
+            this.mainBtn.innerHTML = "⏳";
+            this.mainBtn.disabled = true;
+            this.isDownloading = true;
+
             const storyUrl = window.location.href.split('?')[0];
 
             // NOTE: We hit the EPUB endpoint because it serves as the general "generate/cache" trigger for Fichub.
@@ -617,13 +668,14 @@
                 method: "GET",
                 url: apiUrl,
                 headers: {
-                    "User-Agent": "FFN-Enhancements" // COMPLIANCE: Custom User-Agent
+                    "User-Agent": SCRIPT_UA // COMPLIANCE: Custom User-Agent
                 },
                 onload: (response) => {
                     // COMPLIANCE: Handle 429
                     if (response.status === 429) {
+                        Core.log('StoryDownloader', 'Rate Limit Hit (429).');
                         alert("The Fichub Server is busy. Please wait a while and try again.");
-                        this.resetButton(btn, originalText);
+                        this.resetButton(originalText);
                         return;
                     }
 
@@ -652,22 +704,24 @@
                         }
                     } catch (e) {
                         Core.log('StoryDownloader', 'JSON Parse Error', e);
-                        btn.innerText = "Err";
                     }
-                    this.resetButton(btn, originalText);
+                    this.resetButton(originalText);
                 },
                 onerror: (err) => {
                     Core.log('StoryDownloader', 'Network Error', err);
-                    btn.innerText = "NetErr";
-                    this.resetButton(btn, originalText);
+                    this.resetButton(originalText);
                 }
             });
         },
 
-        resetButton: function (btn, originalText) {
+        resetButton: function (originalText) {
             setTimeout(() => {
-                btn.innerText = originalText;
-                this.toggleButtons(false); // Unlock buttons
+                if (this.mainBtn) {
+                    this.mainBtn.innerHTML = originalText;
+                    this.mainBtn.disabled = false;
+                }
+                this.isDownloading = false;
+                Core.log('StoryDownloader', 'Button reset to idle state.');
             }, 3000);
         }
     };
