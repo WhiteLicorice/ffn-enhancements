@@ -111,7 +111,7 @@
 
             const btn = document.createElement('button');
             btn.innerText = "↓ All";
-            btn.title = "Download all stories as Markdown";
+            btn.title = "Download all documents as Markdown";
             btn.style.cssText = `
                 position: absolute; right: 0px; top: 50%; transform: translateY(-50%); z-index: 99;
                 appearance: none; background: transparent; border: 0; outline: none; box-shadow: none;
@@ -307,38 +307,45 @@
 
     const DocEditor = {
         init: function () {
-            Core.log('DocEditor', 'Initializing...');
+            Core.log('DocEditor', 'Polling for TinyMCE...');
             // Wait for TinyMCE to render the toolbar
             const checkInt = setInterval(() => {
-                const toolbar = document.querySelector('.mce-btn-group');
+                const toolbar = document.querySelector('#mceu_15-body'); // TODO: May be fragile. Point of update.
                 if (toolbar) {
                     clearInterval(checkInt);
+                    Core.log('DocEditor', 'TinyMCE toolbar found.');
                     this.injectToolbarButton(toolbar);
                 }
             }, 500);
 
             // Timeout after 10s to stop polling
-            setTimeout(() => clearInterval(checkInt), 10000);
+            setTimeout(() => {
+                if (checkInt) clearInterval(checkInt);
+            }, 5000);
         },
 
         injectToolbarButton: function (toolbar) {
             // Mimic TinyMCE 4 Button Structure
-            // <div class="mce-widget mce-btn">
-            //    <button type="button"><i class="mce-ico mce-i-icon"></i></button>
-            // </div>
-
+            // <div class="mce-widget mce-btn"> ... </div>
             const container = document.createElement('div');
             container.className = 'mce-widget mce-btn';
+
+            container.style.float = 'right';
+
             container.setAttribute('aria-label', 'Download Markdown');
             container.setAttribute('role', 'button');
             container.setAttribute('tabindex', '-1');
 
             const button = document.createElement('button');
             button.setAttribute('type', 'button');
-            button.style.cssText = 'padding: 4px 6px; font-size: 14px; display: flex; align-items: center; justify-content: center;';
 
-            // Use a simple text char or SVG for the icon. FFN doesn't have FontAwesome loaded usually.
-            button.innerHTML = '📥';
+            // Added transparent background/border to blend in with TinyMCE
+            button.style.cssText = 'padding: 4px 6px; font-size: 14px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; outline: none; box-shadow: none;';
+
+            // Use a simple text char for the icon.
+            button.innerHTML = '↓';
+
+            button.title = "Download as Markdown";
 
             button.onclick = (e) => {
                 e.preventDefault();
@@ -353,29 +360,96 @@
             Core.log('DocEditor', 'Toolbar button injected.');
         },
 
-        exportCurrentDoc: function (btn) {
-            const func = 'DocEditor.export';
-            const titleInput = document.querySelector("input[name='title']");
-            const title = titleInput ? titleInput.value.trim().replace(/[/\\?%*:|"<>]/g, '-') : 'Untitled_Draft';
+        // --- HEADER PARSING HELPERS ---
 
-            const originalIcon = btn.innerHTML;
-            btn.innerHTML = '⏳';
+        /**
+         * Robustly extracts Title and Wordcount from the "Edit Document:..." text header.
+         * Looks for: <div class='tcat'><b>...Edit Document: [Title] - [Wordcount] word(s)</b></div>
+         */
+        parseDocumentHeader: function () {
+            const func = 'DocEditor.parseHeader';
+            const headerEl = document.querySelector("div.tcat b");
 
-            // Use the Core parser on the CURRENT document object
-            // This works because in edit.php, the 'tinymce' global object exists
-            const markdown = Core.parseContentFromDOM(document, title);
-
-            if (markdown) {
-                const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-                saveAs(blob, `${title}.md`);
-                btn.innerHTML = '✅';
-            } else {
-                btn.innerHTML = '❌';
+            if (!headerEl) {
+                Core.log(func, "Header element not found.");
+                return null;
             }
 
-            setTimeout(() => {
-                btn.innerHTML = originalIcon;
-            }, 2000);
+            // The header contains a <select> and a text node. We iterate to find the text node.
+            let textContent = null;
+            for (const node of headerEl.childNodes) {
+                // Check if it's a text node and contains the key phrase
+                if (node.nodeType === Node.TEXT_NODE && node.textContent.trim().startsWith("Edit Document:")) {
+                    textContent = node.textContent.trim();
+                    break;
+                }
+            }
+
+            if (!textContent) {
+                Core.log(func, "Header text node not found.");
+                return null;
+            }
+
+            // Regex: Edit Document: <Title> - <Wordcount> word(s)
+            const match = textContent.match(/Edit Document:\s*(.+?)\s*-\s*([\d,]+)\s*word\(s\)/);
+
+            if (match) {
+                return {
+                    title: match[1].trim(),
+                    wordCount: match[2].trim()
+                };
+            }
+
+            Core.log(func, "Regex failed to match header text:", textContent);
+            return null;
+        },
+
+        getTitle: function () {
+            const headerData = this.parseDocumentHeader();
+            let title = headerData ? headerData.title : null;
+
+            if (!title) {
+                Core.log('DocEditor.getTitle', 'Falling back to input field for title.');
+                const titleInput = document.querySelector("input[name='title']");
+                if (titleInput) title = titleInput.value.trim();
+            }
+
+            return title ? title.replace(/[/\\?%*:|"<>]/g, '-') : 'Untitled_Draft';
+        },
+
+        getWordCount: function () {
+            const headerData = this.parseDocumentHeader();
+            return headerData ? headerData.wordCount : null;
+        },
+
+        // -----------------------------
+
+        exportCurrentDoc: function (btn) {
+            const func = 'DocEditor.export';
+            Core.log(func, 'Export initiated from Toolbar.');
+
+            const title = this.getTitle();
+            const wordCount = this.getWordCount();
+            Core.log(func, `Detected Title: "${title}"`);
+            if (wordCount) Core.log(func, `Detected Wordcount: ${wordCount}`);
+
+            try {
+                // Use the Core parser on the CURRENT document object
+                // This works because in edit.php, the 'tinymce' global object exists
+                Core.log(func, 'Attempting to parse TinyMCE content...');
+                const markdown = Core.parseContentFromDOM(document, title);
+
+                if (markdown) {
+                    Core.log(func, `Parse success. Length: ${markdown.length} chars. Saving...`);
+                    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+                    saveAs(blob, `${title}.md`);
+                    Core.log(func, 'Save complete.');
+                } else {
+                    Core.log(func, 'Parse failed. Content was null or empty.');
+                }
+            } catch (e) {
+                Core.log(func, 'CRITICAL ERROR during export', e);
+            }
         }
     };
 
