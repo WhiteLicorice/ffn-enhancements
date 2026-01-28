@@ -151,7 +151,7 @@
 
             try {
                 // Rate Limit Protection
-                await new Promise(r => setTimeout(r, 250)); // Slightly faster delay
+                await new Promise(r => setTimeout(r, 200)); // Slightly faster delay
 
                 const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
                 if (!response.ok) {
@@ -196,7 +196,8 @@
                 // This disables CPU-heavy compression. Markdown text is already small enough.
                 const blob = await zip.generateAsync({
                     type: "blob",
-                    compression: "STORE"
+                    compression: "STORE",
+                    streamFiles: true,
                 }, (metadata) => {
                     // Update button with real-time progress
                     btn.innerText = `Zip ${metadata.percent.toFixed(0)}%`;
