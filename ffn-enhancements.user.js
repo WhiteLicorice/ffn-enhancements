@@ -531,6 +531,67 @@
     };
 
     // ==========================================
+    // MODULE: STORY DOWNLOADER
+    // ==========================================
+
+    const StoryDownloader = {
+        init: function() {
+            // Target the header area where Title/Author is
+            const header = document.querySelector('#profile_top');
+            if (!header) return;
+            this.injectDownloadButtons(header);
+        },
+
+        injectDownloadButtons: function(header) {
+            const container = document.createElement('div');
+            container.style.cssText = "margin-top: 5px; margin-bottom: 5px; display: flex; align-items: center; font-size: 11px;";
+
+            const label = document.createElement('span');
+            label.innerText = "Download (via Fichub): ";
+            label.style.fontWeight = "bold";
+            label.style.marginRight = "8px";
+            label.style.color = "#555";
+            container.appendChild(label);
+
+            const formats = [
+                { label: 'EPUB', ext: 'epub' },
+                { label: 'MOBI', ext: 'mobi' },
+                { label: 'PDF', ext: 'pdf' }
+            ];
+
+            formats.forEach(fmt => {
+                const btn = document.createElement('button');
+                btn.innerText = fmt.label;
+                btn.title = `Download as ${fmt.label}`;
+                btn.style.cssText = "margin-right: 5px; cursor: pointer; padding: 3px 8px; border: 1px solid #ccc; background: linear-gradient(to bottom, #fff, #e6e6e6); border-radius: 3px; font-size: 11px; color: #333;";
+                
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    this.downloadStory(fmt.ext, btn);
+                };
+                container.appendChild(btn);
+            });
+
+            // Insert before the metadata (stats) section (.xgray)
+            const metaStats = header.querySelector('.xgray');
+            if (metaStats) {
+                header.insertBefore(container, metaStats);
+            } else {
+                header.appendChild(container);
+            }
+            Core.log('StoryDownloader', 'Buttons injected.');
+        },
+
+        downloadStory: function(format, btn) {            
+            // Clean URL (remove query params like ?mode=dark)
+            const storyUrl = window.location.href.split('?')[0]; 
+            const apiUrl = `https://fichub.net/api/v0/${format}?q=${encodeURIComponent(storyUrl)}`;
+            // Trigger download in new window/tab to avoid CORS
+            window.open(apiUrl, '_blank');
+        }
+    };
+
+    // ==========================================
     // MAIN ROUTER
     // ==========================================
 
@@ -549,6 +610,7 @@
         // Matches /s/1234569420/1/Story-Title
         page_name = "story-reader";
         StoryReader.init();
+        StoryDownloader.init();
     }
 
 })();
