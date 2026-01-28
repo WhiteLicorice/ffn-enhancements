@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         FFN Exporter
 // @namespace    http://tampermonkey.net/
-// @version      2.9
+// @version      3.1
 // @description  Export FFN docs to Markdown
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/docs/docs.php*
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
 // @require      https://unpkg.com/turndown/dist/turndown.js
+// @require      https://unpkg.com/file-saver@2.0.4/dist/FileSaver.min.js
 // @grant        GM_download
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
@@ -14,7 +15,7 @@
 (function () {
     'use strict';
 
-    // Removed TextEncoder: JSZip handles strings natively and it reduces sandbox complexity.
+    // Removed TextEncoder: JSZip handles strings natively. Removing overhead prevents sandbox serialization issues.
 
     // --- LOGGING HELPER ---
     function log(funcName, msg, data) {
@@ -93,13 +94,13 @@
         // --- ASSERTION BLOCK ---
         // These are loaded via the @require tags in the metadata block above.
         // Tampermonkey injects them before this script runs.
-        if (typeof JSZip === 'undefined' || typeof TurndownService === 'undefined') {
-            log(func, 'ASSERT FAIL: Critical libraries (JSZip/Turndown) are missing.');
+        if (typeof JSZip === 'undefined' || typeof TurndownService === 'undefined' || typeof saveAs === 'undefined') {
+            log(func, 'ASSERT FAIL: Critical libraries (JSZip/Turndown/FileSaver) are missing.');
             return alert("Error: Libraries failed to load. Check internet connection.");
         }
 
         // Explicitly log that the assertion passed
-        log(func, 'ASSERT PASS: Libraries (JSZip, Turndown) loaded successfully.');
+        log(func, 'Libraries (JSZip, Turndown, FileSaver) loaded successfully.');
         // -----------------------
 
         const rows = Array.from(table.querySelectorAll('tbody tr')).filter(row => row.querySelectorAll('td').length > 0);
@@ -172,10 +173,7 @@
                     // log(func, `${content}`) // Uncomment for verbose content logging
                     const markdown = turndownService.turndown(content);
 
-                    // Pass string directly to JSZip.
-                    // Passing Uint8Arrays (binary) generated in a sandbox to JSZip can cause type-check failures.
-                    // JSZip handles UTF-8 strings perfectly fine internally.
-                    // We also explicitly set the Date to avoid sandbox permissions issues with 'new Date()' inference.
+                    // We removed TextEncoder. We also set a specific date to avoid browser sandbox issues.
                     zip.file(`${title}.md`, markdown, { date: new Date() });
                     successCount++;
                 } else {
@@ -187,16 +185,15 @@
         log(func, `Loop finished. Success Count: ${successCount}`);
 
         if (successCount > 0) {
-            log(func, 'Starting ZIP...');
-
             // Force the browser to render "Zipping..." before starting heavy work
             btn.innerText = "Zipping...";
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise(r => setTimeout(r, 250));
+            log(func, 'Starting ZIP...');
 
             try {
-                // CRITICAL FIX: Removed the onUpdate callback.
-                // In userscript environments, the high-frequency UI updates in the callback
-                // often cause the Promise to hang or deadlock the event loop.
+                // Removed the onUpdate callback.
+                // The progress update callback floods the event loop in sandboxed environments,
+                // causing the script to hang indefinitely.
                 const blob = await zip.generateAsync({
                     type: "blob",
                     compression: "STORE", // No compression = faster, less CPU
@@ -205,44 +202,16 @@
 
                 log(func, `ZIP Generated. Size: ${blob.size} bytes.`);
 
-                const url = window.URL.createObjectURL(blob);
-                const filename = "FFN_Backup.zip";
+                log(func, 'Handing off Blob to FileSaver.saveAs()...');
+                saveAs(blob, "FFN_Backup.zip");
 
-                log(func, 'Attempting GM_download...');
-
-                if (typeof GM_download === 'function') {
-                    GM_download({
-                        url: url,
-                        name: filename,
-                        saveAs: true, // Prompt user for location (if supported by GM manager)
-                        onload: () => {
-                            log(func, 'GM_download success.');
-                            btn.innerText = "Done";
-                            // Clean up object URL after a delay to ensure download started
-                            setTimeout(() => window.URL.revokeObjectURL(url), 10000);
-                        },
-                        onerror: (err) => {
-                            log(func, 'GM_download FAILED', err);
-                            btn.innerText = "Err";
-                            alert("GM_download failed. Check script manager permissions.");
-                        }
-                    });
-                } else {
-                    // Fallback for script managers that don't support GM_download
-                    log(func, 'GM_download not found. Falling back to <a> click.');
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    btn.innerText = "Done";
-                }
+                log(func, 'FileSaver save triggered successfully.');
+                btn.innerText = "Done";
 
             } catch (zipErr) {
-                log(func, 'CRITICAL ZIP ERROR:', zipErr);
+                log(func, 'CRITICAL ZIP/DOWNLOAD ERROR:', zipErr);
                 btn.innerText = "Err";
-                alert("Error generating ZIP. Check console.");
+                alert("Error generating ZIP or Downloading. Check console.");
             }
         } else {
             log(func, 'Zero documents extracted. Aborting download.');
