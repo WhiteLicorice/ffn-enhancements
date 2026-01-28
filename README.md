@@ -29,15 +29,16 @@ Once you have the extension installed, click the link below. Your userscript man
 ---
 
 ## Roadmap by Features
+ * [x] Markdown Export: Download documents as Markdown from both the Document Manager (Bulk/Single) and the Doc Editor.
+ * [ ] Smart Paste: Copy text from your favorite Markdown editor and paste it directly into FFN's Doc Editor. It automatically renders to HTML. (Preserves standard Docx/HTML formatting if detected).
+ * [x] Selectable Text: Forces text to be selectable on story pages, bypassing FFN's copy-paste block.
+ * [x] Keyboard Navigation: Bind Arrow keys (or WASD) to navigate chapters and scroll.
+ * [ ] Reading Stats: Displays estimated chapter word count and reading time (e.g., "15 min read") at the top of the text.
+ * [x] AO3-Style Downloads: Integrated Fichub to allow downloading stories as EPUB, MOBI, PDF, or HTML directly from a story's page.
+ * [ ] Layout Modernization: Make story text more large-screen friendly? (Width constraints, typography).
+ * [x] Dark Mode: Integrate native dark theme (gave up: highly suggest using the mature [Dark Reader extension](https://darkreader.org/) instead as it handles FFN's legacy DOM much better).
 
-* [x] Download documents as Markdown in both Doc Manager and Doc Editor.
-* [x] Make text selectable while reading.
-* [x] Bind arrow keys or WASD keys to chapter navigation.
-* [ ] Make story text more large-screen friendly?
-* [x] Integrate Ao3's export to EPUB/PDF/HTML/MOBI feature (AZW3 is prioprietary and out of scope).
-* [x] Integrate native dark theme (gave up: may I suggest using the mature [Dark Reader](https://darkreader.org/) instead?).
-
-*Feel free to open issues and make suggestions!*
+_Feel free to open issues and make suggestions!_
 
 ---
 
