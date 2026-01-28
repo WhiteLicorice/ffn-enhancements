@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FFN Exporter
 // @namespace    http://tampermonkey.net/
-// @version      4.0
+// @version      4.1
 // @description  Export FFN docs to Markdown
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/docs/docs.php*
@@ -120,39 +120,42 @@
         const headerRow = table.querySelector('thead tr') || table.querySelector('tbody tr');
         if (headerRow) {
             const th = document.createElement('th');
-            th.className = 'thead'; // Standard FFN table header class
+            th.className = 'thead'; // FFN standard header class
             th.innerText = 'Export';
-            th.align = 'left'; // Ugh, FFN is using legacy attribs
+            th.align = 'left';
+            th.style.whiteSpace = "nowrap";
+            th.width = '5%';
             headerRow.appendChild(th);
         }
 
         // 2. Add Row Cells
         const rows = table.querySelectorAll('tbody tr');
         rows.forEach((row, index) => {
-            // Skip header row if it's inside tbody (common in old HTML)
-            if (row.querySelector('th') || row.cells.length < 2) return;
+            // Skip rows that look like headers or dividers
+            if (row.querySelector('th') || row.className.includes('thead')) return;
+
+            // Only add cells to rows that actually contain a document link
+            const editLink = row.querySelector('a[href*="docid="]');
+            if (!editLink) return;
 
             const td = document.createElement('td');
-            td.className = 'celltype2'; // Standard FFN cell class
             td.align = 'center';
             td.vAlign = 'top';
+            td.width = '5%';
 
-            // Find DocID to verify this is a valid row
-            const editLink = row.querySelector('a[href*="docid="]');
-            if (editLink) {
-                const docId = editLink.href.match(/docid=(\d+)/)[1];
-                const title = row.cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
+            const docId = editLink.href.match(/docid=(\d+)/)[1];
+            const title = row.cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
 
-                const link = document.createElement('a');
-                link.innerText = "Export";
-                link.href = "#";
-                link.style.textDecoration = "none";
-                link.onclick = (e) => {
-                    e.preventDefault();
-                    runSingleExport(e.target, docId, title);
-                };
-                td.appendChild(link);
-            }
+            const link = document.createElement('a');
+            link.innerText = "Export";
+            link.href = "#";
+            link.style.textDecoration = "none";
+            link.style.whiteSpace = "nowrap";
+            link.onclick = (e) => {
+                e.preventDefault();
+                runSingleExport(e.target, docId, title);
+            };
+            td.appendChild(link);
 
             row.appendChild(td);
         });
@@ -211,7 +214,7 @@
         }
         log(func, 'Libraries loaded.');
 
-        const rows = Array.from(table.querySelectorAll('tbody tr')).filter(row => row.querySelectorAll('td').length > 0 && !row.querySelector('th'));
+        const rows = Array.from(table.querySelectorAll('tbody tr')).filter(row => row.querySelector('a[href*="docid="]'));
         if (rows.length === 0) return alert("No documents to export.");
 
         const originalText = btn.innerText;
@@ -223,10 +226,10 @@
         let successCount = 0;
 
         // DEBUG LIMITER
-        let breakpoint = 0; const DEBUG_LIMIT = 3;
+        //let breakpoint = 0; const DEBUG_LIMIT = 5;
 
         for (let i = 0; i < rows.length; i++) {
-            breakpoint++; if (breakpoint > DEBUG_LIMIT) break;
+            //breakpoint++; if (breakpoint > DEBUG_LIMIT) break;
 
             const row = rows[i];
             const editLink = row.querySelector('a[href*="docid="]');
