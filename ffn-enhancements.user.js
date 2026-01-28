@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FFN Enhancements
 // @namespace    http://tampermonkey.net/
-// @version      5.0
+// @version      5.6
 // @description  A suite of modern enhancements to FFN's old-school interface. Inspired by ao3-enhancements.
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/*
