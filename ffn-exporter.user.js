@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FFN Exporter
 // @namespace    http://tampermonkey.net/
-// @version      2.5
+// @version      2.7
 // @description  Export FFN docs to Markdown
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/docs/docs.php*
@@ -14,22 +14,19 @@
 (function () {
     'use strict';
 
+    const encoder = new TextEncoder(); // Pre-encode text to binary
+
     // --- LOGGING HELPER ---
     function log(funcName, msg, data) {
         const prefix = `(ffn-exporter) ${funcName}:`;
-        if (data !== undefined) {
-            console.log(`${prefix} ${msg}`, data);
-        } else {
-            console.log(`${prefix} ${msg}`);
-        }
+        if (data !== undefined) console.log(`${prefix} ${msg}`, data);
+        else console.log(`${prefix} ${msg}`);
     }
 
     function injectButton() {
         log('injectButton', 'Attempting to inject UI...');
-
         const xpath = "//*[text()='Document Manager']";
         const textNode = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-
         const container = textNode ? textNode.parentNode : document.querySelector('#content_wrapper_inner');
 
         if (!container) {
@@ -41,8 +38,7 @@
             container.style.position = 'relative';
         }
 
-        const exportBtn = createButton();
-        container.appendChild(exportBtn);
+        container.appendChild(createButton());
         log('injectButton', 'Button successfully injected.');
     }
 
@@ -89,7 +85,6 @@
     async function runExport(e) {
         const func = 'runExport';
         log(func, 'Export initiated.');
-
         const btn = e.target;
         const table = document.querySelector('#gui_table1');
 
@@ -150,8 +145,8 @@
             log(func, `Fetching DocID: ${docId} ("${title}")...`);
 
             try {
-                // Rate Limit Protection
-                await new Promise(r => setTimeout(r, 200)); // Slightly faster delay
+                // Rate limit protection
+                await new Promise(r => setTimeout(r, 200));
 
                 const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
                 if (!response.ok) {
@@ -175,32 +170,40 @@
                 if (content) {
                     log(func, `Content found for "${title}". Length: ${content.length}`);
                     log(func, `${content}`) // Uncomment for verbose content logging
-                    zip.file(`${title}.md`, turndownService.turndown(content));
+                    const markdown = turndownService.turndown(content);
+
+                    // Convert string to Uint8Array before zipping
+                    // This offloads encoding from JSZip and prevents main-thread "stutter"
+                    const binaryData = encoder.encode(markdown);
+                    zip.file(`${title}.md`, binaryData);
                     successCount++;
                 } else {
                     log(func, `WARNING: No content found for "${title}" (ID: ${docId}). Selectors failed.`);
                 }
-
-            } catch (err) {
-                log(func, `EXCEPTION processing ${title}`, err);
-            }
+            } catch (err) { log(func, `Error processing ${title}`, err); }
         }
 
         log(func, `Loop finished. Success Count: ${successCount}`);
 
         if (successCount > 0) {
-            btn.innerText = "Zipping 0%";
             log(func, 'Starting ZIP...');
+
+            // Force the browser to render "Zipping 0%" before starting heavy CPU work
+            btn.innerText = "Zipping 0%";
+            await new Promise(r => setTimeout(r, 150)); // Slightly longer yield to ensure paint
 
             try {
                 // This disables CPU-heavy compression. Markdown text is already small enough.
                 const blob = await zip.generateAsync({
                     type: "blob",
                     compression: "STORE",
-                    streamFiles: true,
+                    streamFiles: true // ALWAYS TRUE: Prevents memory-related hangs for 10+ files
                 }, (metadata) => {
-                    // Update button with real-time progress
-                    btn.innerText = `Zip ${metadata.percent.toFixed(0)}%`;
+                    // Only update DOM if the percentage actually moved to save CPU
+                    const pc = Math.floor(metadata.percent);
+                    if (btn.innerText !== `Zip ${pc}%`) {
+                        btn.innerText = `Zip ${pc}%`;
+                    }
                 });
 
                 log(func, `ZIP Generated. Size: ${blob.size} bytes.`);
@@ -213,15 +216,15 @@
                 log(func, 'Triggering download click...');
                 document.body.appendChild(a); // Append to body to ensure click works in all browsers
                 a.click();
-                document.body.removeChild(a); // Clean up
+                document.body.removeChild(a);
 
                 btn.innerText = "Done";
-                log(func, 'Download triggered successfully.');
+                log(func, 'Download triggered.');
 
             } catch (zipErr) {
                 log(func, 'CRITICAL ZIP ERROR:', zipErr);
-                alert("Error generating ZIP file. Check console.");
-                btn.innerText = "Zip Error";
+                btn.innerText = "Err";
+                alert("Error generating ZIP. Check console.");
             }
         } else {
             log(func, 'Zero documents extracted. Aborting download.');
