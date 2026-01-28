@@ -1,6 +1,6 @@
 # ffn-enhancements
 
-A suite of modern enhancements to FFN's old-school interface. Inspired by ao3-enhancements.
+A suite of modern enhancements to FFN's old-school interface, for both readers and writers. Inspired by ao3-enhancements.
 
 ## Installation
 
@@ -31,9 +31,10 @@ Once you have the extension installed, click the link below. Your userscript man
 ## Roadmap by Features
 
 * [x] Download documents as Markdown in both Doc Manager and Doc Editor.
-* [ ] Make text selectable while reading.
-* [ ] Bind arrow keys to chapter navigation.
+* [x] Make text selectable while reading.
+* [x] Bind arrow keys or WASD keys to chapter navigation.
 * [ ] Make story text more large-screen friendly.
+* [ ] Integrate Ao3's export to EPUB/PDF/HTML/MOBI/AZW3 feature.
 * [ ] Integrate dark theme!
 
 ---

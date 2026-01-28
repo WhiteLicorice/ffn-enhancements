@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FFN Enhancements
 // @namespace    http://tampermonkey.net/
-// @version      5.7
+// @version      5.8
 // @description  A suite of modern enhancements to FFN's old-school interface. Inspired by ao3-enhancements.
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/*
@@ -457,6 +457,70 @@
     };
 
     // ==========================================
+    // MODULE: STORY READER
+    //    (Runs on /s/*)
+    // ==========================================
+
+    const StoryReader = {
+        init: function () {
+            Core.log('StoryReader', 'Initializing UX Enhancements...');
+            this.enableSelectableText();
+            this.enableKeyboardNav();
+        },
+
+        enableSelectableText: function () {
+            const style = document.createElement('style');
+            style.innerHTML = `
+                #storytext, .storytext, p {
+                    -webkit-user-select: text !important;
+                    -moz-user-select: text !important;
+                    -ms-user-select: text !important;
+                    user-select: text !important;
+                }
+            `;
+            document.head.appendChild(style);
+
+            const storyText = document.querySelector('#storytext');
+            if (storyText) {
+                const clone = storyText.cloneNode(true);
+                storyText.parentNode.replaceChild(clone, storyText);
+                Core.log('StoryReader', 'Text selection blocking removed.');
+            }
+        },
+
+        enableKeyboardNav: function () {
+            document.addEventListener('keydown', (e) => {
+                const tag = e.target.tagName;
+                const id = e.target.id;
+
+                // SAFETY CHECK: Do not trigger if user is typing in a review box
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable || id === 'review_review') {
+                    return;
+                }
+
+                if (e.key === 'ArrowRight') {
+                    const btns = Array.from(document.querySelectorAll('button'));
+                    const nextBtn = btns.find(b => b.textContent.includes("Next >"));
+                    if (nextBtn) {
+                        Core.log('StoryReader', 'Next Chapter');
+                        nextBtn.click();
+                    }
+                }
+
+                if (e.key === 'ArrowLeft') {
+                    const btns = Array.from(document.querySelectorAll('button'));
+                    const prevBtn = btns.find(b => b.textContent.includes("< Prev"));
+                    if (prevBtn) {
+                        Core.log('StoryReader', 'Previous Chapter');
+                        prevBtn.click();
+                    }
+                }
+            });
+            Core.log('StoryReader', 'Keyboard nav enabled.');
+        }
+    };
+
+    // ==========================================
     // MAIN ROUTER
     // ==========================================
 
@@ -471,6 +535,10 @@
     } else if (path.includes("/docs/edit.php")) {
         page_name = "doc-editor";
         DocEditor.init()
+    } else if (path.startsWith("/s/")) {
+        // Matches /s/1234569420/1/Story-Title
+        page_name = "story-reader";
+        StoryReader.init();
     }
 
 })();
