@@ -8,7 +8,6 @@
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js
 // @require      https://unpkg.com/turndown/dist/turndown.js
 // @require      https://unpkg.com/file-saver@2.0.4/dist/FileSaver.min.js
-// @require      https://cdn.jsdelivr.net/npm/darkreader@4.9.92/darkreader.min.js
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
@@ -726,8 +725,7 @@
     };
 
     // ==========================================
-    // MODULE: DARK MODE
-    //      (Powered by DarkReader)
+    // MODULE: DARK MODE (Smart Filter)
     // ==========================================
 
     const DarkMode = {
@@ -736,21 +734,9 @@
         LIGHT_ICON: '☀️',
         DARK_ICON: '🌙',
 
-        /**
-         * Initializes the Dark Mode module using Dark Reader.
-         */
         init: function () {
-            Core.log('DarkMode', 'Initializing Dark Reader...');
-
-            // Configure DarkReader to use the browser's fetch API (prevents CORS issues in Tampermonkey)
-            if (typeof DarkReader !== 'undefined') {
-                DarkReader.setFetchMethod(window.fetch);
-                // Reduce aggressive processing to prevent lag on long fics
-                // DarkReader.setGenerationIgnore(['.cimage', 'img']);
-            } else {
-                Core.log('DarkMode', 'CRITICAL: DarkReader library not loaded.');
-            }
-
+            Core.log('DarkMode', 'Initializing Smart Dark Mode...');
+            this.injectCSS();
             this.loadState();
             this.replaceMobileIcon();
         },
@@ -771,16 +757,65 @@
             this.applyState();
         },
 
-        /**
-         * Replaces the unused 'Mobile Edition' icon in the header with the Dark Mode toggle.
-         */
+        injectCSS: function () {
+            const style = document.createElement('style');
+            style.innerHTML = `
+                /* THE NUCLEAR OPTION:
+                   Invert 90% creates a dark gray background (softer than pitch black).
+                   Hue Rotate 180 keeps colors roughly correct (Blue stays Blue-ish).
+                */
+                html.ffn-dark-mode {
+                    filter: invert(0.9) hue-rotate(180deg) !important;
+                    background-color: #111 !important; /* Covers scrollbar tracks */
+                }
+
+                /* UN-INVERT MEDIA:
+                   Images, Videos, and Iframes need to be inverted AGAIN 
+                   to look normal in an inverted world.
+                */
+                html.ffn-dark-mode img, 
+                html.ffn-dark-mode video, 
+                html.ffn-dark-mode iframe,
+                html.ffn-dark-mode .cimage {
+                    filter: invert(1) hue-rotate(180deg) !important;
+                }
+
+                /* TOGGLE BUTTON STYLE:
+                   We un-invert the toggle button so the Sun/Moon icon looks correct.
+                */
+                #ffn-dark-toggle-btn {
+                    cursor: pointer;
+                    background: transparent;
+                    border: none;
+                    font-size: 16px;
+                    line-height: 20px;
+                    padding: 10px 15px; /* Wider hit area */
+                    color: inherit;
+                    transition: transform 0.2s;
+                    display: inline-block;
+                    vertical-align: middle;
+                }
+                
+                /* In dark mode, the button is inside the inverted HTML, 
+                   so we invert it back to make the Sun icon yellow, not blue. */
+                html.ffn-dark-mode #ffn-dark-toggle-btn {
+                    filter: invert(1) hue-rotate(180deg) !important;
+                }
+
+                #ffn-dark-toggle-btn:hover {
+                    transform: scale(1.2);
+                }
+            `;
+            document.head.appendChild(style);
+        },
+
         replaceMobileIcon: function () {
             // Strategy: Look for the specific Mobile Icon structure.
-            // HTML: <span class='icon-kub-mobile' ... onclick="location = ..."></span>
+            // Based on HTML: <span class='icon-kub-mobile' ... onclick="location = ..."></span>
 
             let target = null;
 
-            // 1. Try to find by the specific class used in the header (Most accurate)
+            // 1. Try to find by the specific class used in the header (Most accurate based on your snippet)
             target = document.querySelector("span.icon-kub-mobile");
 
             // 2. Fallback: Look for the title attribute (Standard FFN)
@@ -788,7 +823,7 @@
                 target = document.querySelector("[title='Mobile Edition']");
             }
 
-            // 3. Fallback: Look for an anchor link if the layout differs
+            // 3. Fallback: Look for an anchor link if the layout differs (Legacy/Other pages)
             if (!target) {
                 target = document.querySelector("a[href*='//m.fanfiction.net/']");
             }
@@ -805,32 +840,17 @@
             btn.title = "Toggle Light/Dark Mode";
             btn.innerHTML = this.isActive ? this.LIGHT_ICON : this.DARK_ICON;
 
-            // Apply styles to match the original icon's layout and fix alignment
+            // Apply styles to match the original icon's layout 
             // Original: font-size:14px; margin-left:10px;
-            btn.style.cssText = `
-                cursor: pointer; 
-                background: transparent; 
-                border: none; 
-                font-size: 14px; 
-                margin-left: 10px; 
-                padding: 0; 
-                line-height: 1; 
-                vertical-align: middle; 
-                position: relative; 
-                top: -1px;
-            `;
+            btn.style.cssText = "cursor: pointer; background: transparent; border: none; font-size: 14px; margin-left: 10px; padding: 0; line-height: 1; vertical-align: middle;";
 
             btn.onclick = (e) => {
                 e.preventDefault();
-                // If it was inside a link, stop the link from navigating
-                e.stopPropagation();
                 this.toggle();
                 btn.innerHTML = this.isActive ? this.LIGHT_ICON : this.DARK_ICON;
             };
 
-            // Replace the target element directly
-            // Note: If the target is an 'a' tag, this replaces the link entirely.
-            // If the target is a 'span' inside a div (like snippet 2), it replaces just the span.
+            // Replace the target element directly (NOT its parent)
             if (target.parentNode) {
                 target.parentNode.replaceChild(btn, target);
                 Core.log('DarkMode', 'Replaced Mobile icon with Toggle.');
@@ -847,9 +867,7 @@
             const btn = document.createElement('button');
             btn.id = 'ffn-dark-toggle-btn';
             btn.innerHTML = this.isActive ? this.LIGHT_ICON : this.DARK_ICON;
-            btn.style.cssText = "cursor: pointer; background: transparent; border: none; font-size: 14px; margin-left: 5px; vertical-align: middle;";
-
-            btn.onclick = (e) => { e.preventDefault(); this.toggle(); btn.innerHTML = this.isActive ? this.LIGHT_ICON : this.DARK_ICON; };
+            btn.onclick = (e) => { e.preventDefault(); this.toggle(); };
 
             // Insert before the search box
             if (anchor) container.insertBefore(btn, anchor);
@@ -866,17 +884,11 @@
         },
 
         applyState: function () {
-            if (typeof DarkReader === 'undefined') return;
-
+            // We apply the class to HTML (root) for the filter to catch everything
             if (this.isActive) {
-                // Enable Dark Reader with balanced, high-contrast settings for reading
-                DarkReader.enable({
-                    brightness: 100,
-                    contrast: 100,
-                    sepia: 0
-                });
+                document.documentElement.classList.add('ffn-dark-mode');
             } else {
-                DarkReader.disable();
+                document.documentElement.classList.remove('ffn-dark-mode');
             }
         }
     };
