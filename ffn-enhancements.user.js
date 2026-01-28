@@ -585,7 +585,8 @@
             const formats = [
                 { label: 'EPUB', ext: 'epub' },
                 { label: 'MOBI', ext: 'mobi' },
-                { label: 'PDF', ext: 'pdf' }
+                { label: 'PDF', ext: 'pdf' },
+                { label: 'HTML', ext: 'html'}
             ];
 
             formats.forEach(fmt => {
