@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FFN Exporter
 // @namespace    http://tampermonkey.net/
-// @version      2.4
+// @version      2.5
 // @description  Export FFN docs to Markdown
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/docs/docs.php*
@@ -151,7 +151,7 @@
 
             try {
                 // Rate Limit Protection
-                await new Promise(r => setTimeout(r, 350));
+                await new Promise(r => setTimeout(r, 250)); // Slightly faster delay
 
                 const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
                 if (!response.ok) {
@@ -174,7 +174,7 @@
 
                 if (content) {
                     log(func, `Content found for "${title}". Length: ${content.length}`);
-                    log(func, `${content}`)
+                    log(func, `${content}`) // Uncomment for verbose content logging
                     zip.file(`${title}.md`, turndownService.turndown(content));
                     successCount++;
                 } else {
@@ -189,8 +189,8 @@
         log(func, `Loop finished. Success Count: ${successCount}`);
 
         if (successCount > 0) {
-            btn.innerText = "Zipping...";
-            log(func, 'Starting ZIP generation...');
+            btn.innerText = "Zipping 0%";
+            log(func, 'Starting ZIP...');
 
             try {
                 // This disables CPU-heavy compression. Markdown text is already small enough.
@@ -201,7 +201,8 @@
                     // Update button with real-time progress
                     btn.innerText = `Zip ${metadata.percent.toFixed(0)}%`;
                 });
-                log(func, `ZIP Blob generated. Size: ${blob.size} bytes.`);
+
+                log(func, `ZIP Generated. Size: ${blob.size} bytes.`);
 
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
