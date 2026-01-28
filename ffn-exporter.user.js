@@ -119,15 +119,15 @@
         let successCount = 0;
 
         // DEBUG LIMITER
-        let breakpoint = 0;
-        const DEBUG_LIMIT = 10;
+        //let breakpoint = 0;
+        //const DEBUG_LIMIT = 10;
 
         for (let i = 0; i < rows.length; i++) {
-            breakpoint++;
-            if (breakpoint > DEBUG_LIMIT) {
-                log(func, `Debug limit reached (${DEBUG_LIMIT}). Breaking loop.`);
-                break;
-            }
+            // breakpoint++;
+            // if (breakpoint > DEBUG_LIMIT) {
+            //     log(func, `Debug limit reached (${DEBUG_LIMIT}). Breaking loop.`);
+            //     break;
+            // }
 
             const row = rows[i];
             const editLink = row.querySelector('a[href*="docid="]');
