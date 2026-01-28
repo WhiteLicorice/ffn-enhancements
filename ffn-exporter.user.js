@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FFN Exporter
 // @namespace    http://tampermonkey.net/
-// @version      2.7
+// @version      2.8
 // @description  Export FFN docs to Markdown
 // @author       WhiteLicorice
 // @match        https://www.fanfiction.net/docs/docs.php*
@@ -154,7 +154,7 @@
                     continue;
                 }
 
-                //  The "Raw HTML" you see in DevTools (#document) is an IFRAME created by the TinyMCE editor.
+                // The "Raw HTML" you see in DevTools (#document) is an IFRAME created by the TinyMCE editor.
                 // However, fetch() retrieves the *Source Code* of the page, not the rendered DOM.
                 // In the source code, the story text always resides in a <textarea> so the editor can read it on load.
                 // We don't need to parse the iframe... we just need to grab the value of that textarea.
@@ -169,7 +169,7 @@
 
                 if (content) {
                     log(func, `Content found for "${title}". Length: ${content.length}`);
-                    log(func, `${content}`) // Uncomment for verbose content logging
+                    // log(func, `${content}`) // Uncomment for verbose content logging
                     const markdown = turndownService.turndown(content);
 
                     // Convert string to Uint8Array before zipping
@@ -190,14 +190,16 @@
 
             // Force the browser to render "Zipping 0%" before starting heavy CPU work
             btn.innerText = "Zipping 0%";
-            await new Promise(r => setTimeout(r, 150)); // Slightly longer yield to ensure paint
+            await new Promise(r => setTimeout(r, 200)); // Slightly longer yield to ensure paint
 
             try {
-                // This disables CPU-heavy compression. Markdown text is already small enough.
+                // streamFiles must be FALSE in Userscripts.
+                // 'true' uses internal timers/promises that often hang in the sandbox environment,
+                // causing the ZIP generation to never complete.
                 const blob = await zip.generateAsync({
                     type: "blob",
                     compression: "STORE",
-                    streamFiles: true // ALWAYS TRUE: Prevents memory-related hangs for 10+ files
+                    streamFiles: false
                 }, (metadata) => {
                     // Only update DOM if the percentage actually moved to save CPU
                     const pc = Math.floor(metadata.percent);
@@ -209,17 +211,38 @@
                 log(func, `ZIP Generated. Size: ${blob.size} bytes.`);
 
                 const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = "FFN_Backup.zip";
+                const filename = "FFN_Backup.zip";
 
-                log(func, 'Triggering download click...');
-                document.body.appendChild(a); // Append to body to ensure click works in all browsers
-                a.click();
-                document.body.removeChild(a);
+                log(func, 'Attempting GM_download...');
 
-                btn.innerText = "Done";
-                log(func, 'Download triggered.');
+                if (typeof GM_download === 'function') {
+                    GM_download({
+                        url: url,
+                        name: filename,
+                        saveAs: true, // Prompt user for location (if supported by GM manager)
+                        onload: () => {
+                            log(func, 'GM_download success.');
+                            btn.innerText = "Done";
+                            // Clean up object URL after a delay to ensure download started
+                            setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+                        },
+                        onerror: (err) => {
+                            log(func, 'GM_download FAILED', err);
+                            btn.innerText = "Err";
+                            alert("GM_download failed. Check script manager permissions.");
+                        }
+                    });
+                } else {
+                    // Fallback for script managers that don't support GM_download
+                    log(func, 'GM_download not found. Falling back to <a> click.');
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    btn.innerText = "Done";
+                }
 
             } catch (zipErr) {
                 log(func, 'CRITICAL ZIP ERROR:', zipErr);
