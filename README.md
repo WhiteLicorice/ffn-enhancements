@@ -35,7 +35,7 @@ Once you have the extension installed, click the link below. Your userscript man
 * [x] Bind arrow keys or WASD keys to chapter navigation.
 * [ ] Make story text more large-screen friendly.
 * [x] Integrate Ao3's export to EPUB/PDF/HTML/MOBI feature (AZW3 is prioprietary and out of scope).
-* [ ] Integrate native dark theme!
+* [x] Integrate native dark theme (use the mature [Dark Reader](https://darkreader.org/) instead).
 
 *Feel free to open issues and make suggestions!*
 
