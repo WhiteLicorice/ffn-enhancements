@@ -568,7 +568,7 @@
 
                 btn.onclick = (e) => {
                     e.preventDefault();
-                    this.processDownload(fmt.ext, btn);
+                    this.processDownload(fmt.ext);
                 };
                 container.appendChild(btn);
             });
@@ -583,7 +583,7 @@
             Core.log('StoryDownloader', 'Buttons injected.');
         },
 
-        processDownload: function (format, btn) {
+        processDownload: function (format) {
             // Clean URL (remove query params like ?mode=dark)
             const storyUrl = window.location.href.split('?')[0];
 
