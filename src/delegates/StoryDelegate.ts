@@ -50,7 +50,7 @@ export const StoryDelegate: IDelegate = {
      * @param key - The Element Enum key (unused in this delegate).
      * @returns An empty array to satisfy the IDelegate contract.
      */
-    getElements(key: Elements): HTMLElement[] {
+    getElements(_key: Elements): HTMLElement[] {
         // No collections currently mapped for Story view
         return [];
     }
