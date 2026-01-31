@@ -1,3 +1,5 @@
+// enums/Elements.ts
+
 /**
  * specific UI components on FanFiction.net.
  * * These keys are used by the Delegate system to fetch the actual DOM elements.

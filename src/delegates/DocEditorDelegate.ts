@@ -1,3 +1,5 @@
+// delegates/DocEditorDelegate.ts
+
 import { Elements } from '../enums/Elements';
 
 /**

@@ -1,3 +1,5 @@
+// delegates/GlobalDelegate.ts
+
 import { Elements } from '../enums/Elements';
 
 /**

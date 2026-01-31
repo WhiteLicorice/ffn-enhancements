@@ -1,3 +1,5 @@
+// delegates/IDelegate.ts
+
 import { Elements } from "../enums/Elements";
 
 /**
