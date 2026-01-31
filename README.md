@@ -14,11 +14,10 @@ To run this script, you need a browser extension that manages userscripts. We re
 
 ### Step 2: Install FFN Enhancements
 
-Once you have the extension installed, click the link below. Your userscript manager should automatically prompt you to confirm the installation.
+Once you have the extension installed, go to the [Releases](https://github.com/WhiteLicorice/ffn-enhancements/releases) page. Click the `ffn-enhancements.user.js
+` file found under the latest release. Your userscript manager should automatically prompt you to confirm the installation.
 
-**[Click here to Install](https://github.com/WhiteLicorice/ffn-enhancements/blob/main/ffn-enhancements.user.js)**
-
-*(Note: If the link opens as code, click the `Raw` button or copy the text, open your Userscript Manager dashboard, create a new script, and paste it in.)*
+*(Note: If the link opens as code or downloads as one, copy the text, open your Userscript Manager dashboard, create a new script, and paste it in.)*
 
 ### Step 3: Verify
 
