@@ -56,7 +56,7 @@ export const DocEditor = {
      * Looks for "Edit Document: [Title] - [Count] word(s)".
      */
     parseDocumentHeader: function () {
-        const headerEl = Core.getElement(Elements.EDITOR_HEADER_LABEL);
+        const headerEl = Core.getElement(Elements.EDITOR_HEADER_LABEL) as HTMLElement;
         if (!headerEl) return null;
 
         let textContent = null;

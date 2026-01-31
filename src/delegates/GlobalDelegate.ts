@@ -1,18 +1,18 @@
 // delegates/GlobalDelegate.ts
 
 import { Elements } from '../enums/Elements';
+import { IDelegate } from './IDelegate';
 
 /**
  * Delegate responsible for DOM retrieval of site-wide elements.
  * Acts as a fallback for specific delegates.
  */
-export const GlobalDelegate = {
+export const GlobalDelegate: IDelegate = {
 
     /**
-     * Primary retrieval method.
-     * @param key - The Element Enum representing the UI component to fetch.
+     * Retrieves a single site-wide element.
      */
-    get(key: Elements): HTMLElement | HTMLElement[] | null {
+    getElement(key: Elements): HTMLElement | null {
         switch (key) {
             case Elements.MAIN_CONTENT_WRAPPER:
                 // FFN usually uses #content_wrapper_inner, but sometimes just #content_wrapper
@@ -25,5 +25,13 @@ export const GlobalDelegate = {
             default:
                 return null;
         }
+    },
+
+    /**
+     * Retrieves site-wide collections.
+     */
+    getElements(_key: Elements): HTMLElement[] {
+        // Currently, there are no global collections needed.
+        return [];
     }
 };

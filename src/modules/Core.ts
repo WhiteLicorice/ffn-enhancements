@@ -82,22 +82,20 @@ export const Core = {
     },
 
     /**
-     * The Public API for fetching UI elements.
-     * Modules call this instead of document.querySelector.
-     * Implements Chain of Responsibility: Specific Delegate -> Global Delegate.
-     * @param key - The Element Enum key.
+     * Public API: Fetches a SINGLE element.
+     * Guaranteed to return an HTMLElement or null. No Arrays.
      */
-    getElement: function (key: Elements): any {
-        let el = null;
+    getElement: function (key: Elements): HTMLElement | null {
+        let el: HTMLElement | null = null;
 
-        // 1. Try the Page-Specific Strategy first (if active)
+        // 1. Try Page-Specific
         if (this.activeDelegate) {
-            el = this.activeDelegate.get(key);
+            el = this.activeDelegate.getElement(key);
         }
 
         // 2. If not found (or no active delegate), try the Global Strategy
         if (!el) {
-            el = GlobalDelegate.get(key);
+            el = GlobalDelegate.getElement(key);
         }
 
         // 3. Logging / Error Handling
@@ -107,6 +105,26 @@ export const Core = {
         }
 
         return el;
+    },
+
+    /**
+     * Public API: Fetches a LIST of elements.
+     * Guaranteed to return an Array. No nulls.
+     */
+    getElements: function (key: Elements): HTMLElement[] {
+        let els: HTMLElement[] = [];
+
+        // 1. Try Page-Specific
+        if (this.activeDelegate) {
+            els = this.activeDelegate.getElements(key);
+        }
+
+        // 2. Try Global (only if page specific returned nothing)
+        if (els.length === 0) {
+            els = GlobalDelegate.getElements(key);
+        }
+
+        return els;
     },
 
     // ==========================================

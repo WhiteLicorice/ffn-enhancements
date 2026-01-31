@@ -1,19 +1,18 @@
 // delegates/DocManagerDelegate.ts
 
-
 import { Elements } from '../enums/Elements';
+import { IDelegate } from './IDelegate';
 
 /**
  * Delegate responsible for DOM retrieval on the Document Manager page (`/docs/docs.php`).
  * Handles the table structure and injection points for bulk operations.
  */
-export const DocManagerDelegate = {
+export const DocManagerDelegate: IDelegate = {
 
     /**
-     * Primary retrieval method.
-     * @param key - The Element Enum representing the UI component to fetch.
+     * Retrieves single UI components.
      */
-    get(key: Elements): HTMLElement | HTMLElement[] | null {
+    getElement(key: Elements): HTMLElement | null {
         switch (key) {
             case Elements.DOC_TABLE:
                 return document.querySelector('#gui_table1') as HTMLElement;
@@ -23,17 +22,8 @@ export const DocManagerDelegate = {
                 if (!table) return null;
                 return (table.querySelector('thead tr') || table.querySelector('tbody tr')) as HTMLElement;
 
-            case Elements.DOC_TABLE_BODY_ROWS:
-                const bodyTable = document.querySelector('#gui_table1');
-                if (!bodyTable) return null;
-                const rows = bodyTable.querySelectorAll('tbody tr');
-                return Array.from(rows) as HTMLElement[];
-
             case Elements.DOC_MANAGER_LABEL:
-                return this.findDocManagerLabel();
-
-            case Elements.MAIN_CONTENT_WRAPPER:
-                return document.querySelector('#content_wrapper_inner') as HTMLElement;
+                return findDocManagerLabel();
 
             default:
                 return null;
@@ -41,13 +31,29 @@ export const DocManagerDelegate = {
     },
 
     /**
-     * Helper: Finds the "Document Manager" text node or label.
-     * Used as an anchor point for injecting the "Download All" button.
+     * Retrieves lists of components (e.g., Table Rows).
      */
-    findDocManagerLabel(): HTMLElement | null {
-        const xpath = "//*[text()='Document Manager']";
-        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        const textNode = result.singleNodeValue as HTMLElement; // logic already assumes this
-        return textNode ? textNode.parentElement : null;
+    getElements(key: Elements): HTMLElement[] {
+        switch (key) {
+            case Elements.DOC_TABLE_BODY_ROWS:
+                const bodyTable = document.querySelector('#gui_table1');
+                if (!bodyTable) return [];
+                const rows = bodyTable.querySelectorAll('tbody tr');
+                return Array.from(rows) as HTMLElement[];
+
+            default:
+                return [];
+        }
     }
 };
+
+/**
+ * Helper: Finds the "Document Manager" text node or label.
+ * Used as an anchor point for injecting the "Download All" button.
+ */
+function findDocManagerLabel(): HTMLElement | null {
+    const xpath = "//*[text()='Document Manager']";
+    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    const textNode = result.singleNodeValue as HTMLElement;
+    return textNode ? textNode.parentElement : null;
+}

@@ -1,16 +1,17 @@
+// delegates/StoryDelegate.ts
+
 import { Elements } from '../enums/Elements';
+import { IDelegate } from './IDelegate';
 
 /**
  * Delegate responsible for DOM retrieval on Story Reading pages (`/s/*`).
- * Handles the specific idiosyncrasies of FFN's legacy HTML structure for readers.
  */
-export const StoryDelegate = {
+export const StoryDelegate: IDelegate = {
 
     /**
-     * Primary retrieval method.
-     * @param key - The Element Enum representing the UI component to fetch.
+     * Primary retrieval method for single elements.
      */
-    get(key: Elements): HTMLElement | null {
+    getElement(key: Elements): HTMLElement | null {
         switch (key) {
             // --- Core Content ---
             case Elements.STORY_TEXT:
@@ -18,10 +19,10 @@ export const StoryDelegate = {
 
             // --- Navigation ---
             case Elements.NEXT_CHAPTER_BTN:
-                return this.getButtonByText("Next >");
+                return getButtonByText("Next >");
 
             case Elements.PREV_CHAPTER_BTN:
-                return this.getButtonByText("< Prev");
+                return getButtonByText("< Prev");
 
             // --- Header / Metadata ---
             case Elements.PROFILE_HEADER:
@@ -42,18 +43,24 @@ export const StoryDelegate = {
     },
 
     /**
-     * Helper: FFN does not use IDs for navigation buttons.
-     * We must search for buttons containing specific text.
+     * Retrieval method for collections.
      */
-    getButtonByText(text: string): HTMLElement | null {
-        // We use getElementsByTagName for slightly better performance than querySelectorAll
-        const buttons = document.getElementsByTagName('button');
-
-        for (let i = 0; i < buttons.length; i++) {
-            if (buttons[i].textContent?.includes(text)) {
-                return buttons[i];
-            }
-        }
-        return null;
+    getElements(key: Elements): HTMLElement[] {
+        // No collections currently mapped for Story view
+        return [];
     }
 };
+
+/**
+ * Helper: FFN does not use IDs for navigation buttons.
+ * We must search for buttons containing specific text.
+ */
+function getButtonByText(text: string): HTMLElement | null {
+    const buttons = document.getElementsByTagName('button');
+    for (let i = 0; i < buttons.length; i++) {
+        if (buttons[i].textContent?.includes(text)) {
+            return buttons[i];
+        }
+    }
+    return null;
+}

@@ -1,18 +1,19 @@
 // delegates/DocEditorDelegate.ts
 
 import { Elements } from '../enums/Elements';
+import { IDelegate } from './IDelegate';
 
 /**
  * Delegate responsible for DOM retrieval on the Document Editor page (`/docs/edit.php`).
  * Handles TinyMCE toolbars, title inputs, and header text.
  */
-export const DocEditorDelegate = {
+export const DocEditorDelegate: IDelegate = {
 
     /**
      * Primary retrieval method.
      * @param key - The Element Enum representing the UI component to fetch.
      */
-    get(key: Elements): HTMLElement | null {
+    getElement(key: Elements): HTMLElement | null {
         switch (key) {
             case Elements.EDITOR_TOOLBAR:
                 // The TinyMCE toolbar often has a generated ID like 'mceu_15-body'.
@@ -34,5 +35,12 @@ export const DocEditorDelegate = {
             default:
                 return null;
         }
+    },
+
+    /**
+     * Retrieval method for collections.
+     */
+    getElements(_key: Elements): HTMLElement[] {
+        return [];
     }
 };
