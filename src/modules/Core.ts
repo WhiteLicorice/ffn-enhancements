@@ -159,14 +159,31 @@ export const Core = {
 
     /**
      * Fetches a specific DocID and returns the Markdown content.
+     * Includes Exponential Backoff to handle FFN's rate limiting (429).
      * @param docId - The internal FFN Document ID.
      * @param title - The title of the document.
+     * @param attempt - (Internal) Current retry attempt number.
      * @returns A promise resolving to the Markdown string or null.
      */
-    fetchAndConvertDoc: async function (docId: string, title: string) {
+    fetchAndConvertDoc: async function (docId: string, title: string, attempt = 1): Promise<string | null> {
         const func = 'Core.fetchAndConvert';
+        const MAX_RETRIES = 3;
+
         try {
             const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
+
+            // --- Rate Limit Handling ---
+            if (response.status === 429) {
+                if (attempt <= MAX_RETRIES) {
+                    const waitTime = attempt * 2000; // 2s, 4s, 6s...
+                    this.log('init', func, `Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
+                    await new Promise(r => setTimeout(r, waitTime));
+                    return this.fetchAndConvertDoc(docId, title, attempt + 1);
+                }
+                alert(`Rate limit exceeded for "${title}". Please wait a moment.`);
+                return null;
+            }
+
             if (!response.ok) {
                 this.log('init', func, `Network Error for ${docId}: ${response.status}`);
                 return null;
