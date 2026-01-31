@@ -1,29 +1,38 @@
 // modules/StoryDownloader.ts
 
 import { Core } from './Core';
+import { Elements } from '../enums/Elements';
 import { GM_xmlhttpRequest } from '$';
 
 /**
  * Module handling the integration with Fichub API for story downloads.
+ * Injects a dropdown menu into the story header to allow downloading as EPUB, MOBI, PDF, or HTML.
  */
 export const StoryDownloader = {
+    /** Flag tracking if a download request is currently in progress. */
     isDownloading: false,
+
+    /** Reference to the dropdown menu container element. */
     dropdown: null as HTMLElement | null,
+
+    /** Reference to the main trigger button for the dropdown. */
     mainBtn: null as HTMLButtonElement | null,
 
     /**
      * Initializes the downloader by looking for the profile header.
+     * Uses the Core Delegate system to find the injection point.
      */
     init: function () {
         Core.onDomReady(() => {
-            const header = document.querySelector('#profile_top');
+            const header = Core.getElement(Elements.PROFILE_HEADER);
             if (header) this.injectDropdown(header as HTMLElement);
         });
     },
 
     /**
      * Injects the AO3-style download dropdown menu.
-     * @param parentGroup - The header container element.
+     * attempts to place the button next to the "Follow/Fav" button for visual consistency.
+     * @param parentGroup - The header container element where the dropdown should be injected.
      */
     injectDropdown: function (parentGroup: HTMLElement) {
         const container = document.createElement('div');
@@ -66,9 +75,13 @@ export const StoryDownloader = {
         container.appendChild(this.mainBtn);
         container.appendChild(menu);
 
-        const followBtn = parentGroup.querySelector('button.pull-right');
-        if (followBtn?.nextSibling) parentGroup.insertBefore(container, followBtn.nextSibling);
-        else parentGroup.appendChild(container);
+        const followBtn = Core.getElement(Elements.FOLLOW_BUTTON_CONTAINER);
+
+        if (followBtn && followBtn.parentNode === parentGroup && followBtn.nextSibling) {
+            parentGroup.insertBefore(container, followBtn.nextSibling);
+        } else {
+            parentGroup.appendChild(container);
+        }
 
         document.addEventListener('click', (e) => {
             if (!container.contains(e.target as Node)) this.toggleDropdown(false);
@@ -85,6 +98,7 @@ export const StoryDownloader = {
 
     /**
      * Sends a request to Fichub to retrieve the download URL for the specific format.
+     * Uses GM_xmlhttpRequest to bypass CORS restrictions.
      * @param format - The file format (epub, mobi, pdf, html).
      */
     processDownload: function (format: string) {
@@ -101,7 +115,10 @@ export const StoryDownloader = {
             headers: { "User-Agent": "FFN-Enhancements" },
             // Explicitly type the 'res' parameter so the alias doesn't error out
             onload: (res: { status: number; responseText: string }) => {
-                if (res.status === 429) return alert("Fichub Server Busy.");
+                if (res.status === 429) {
+                    Core.log('story-downloader', 'GM_xmlhttpRequest', "Fichub Server Busy.");
+                    return;
+                }
                 try {
                     const data = JSON.parse(res.responseText);
                     const rel = data.urls?.[format] || data[format + '_url'];
@@ -115,6 +132,7 @@ export const StoryDownloader = {
 
     /**
      * Resets the main download button state after a delay.
+     * Re-enables the button and clears the downloading flag.
      */
     resetButton: function () {
         setTimeout(() => {

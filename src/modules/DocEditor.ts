@@ -1,6 +1,7 @@
 // modules/DocEditor.ts
 
 import { Core } from './Core';
+import { Elements } from '../enums/Elements';
 import { saveAs } from 'file-saver';
 
 /**
@@ -14,7 +15,7 @@ export const DocEditor = {
         Core.onDomReady(() => {
             Core.log('doc-editor', 'DocEditor', 'Polling for TinyMCE...');
             const checkInt = setInterval(() => {
-                const toolbar = document.querySelector('#mceu_15-body');
+                const toolbar = Core.getElement(Elements.EDITOR_TOOLBAR);
                 if (toolbar) {
                     clearInterval(checkInt);
                     this.injectToolbarButton(toolbar as HTMLElement);
@@ -53,9 +54,10 @@ export const DocEditor = {
     /**
      * Extracts metadata (Title, Word Count) from the FFN header string.
      * Looks for "Edit Document: [Title] - [Count] word(s)".
+     * @returns An object containing the title and word count, or null if parsing fails.
      */
     parseDocumentHeader: function () {
-        const headerEl = document.querySelector("div.tcat b");
+        const headerEl = Core.getElement(Elements.EDITOR_HEADER_LABEL) as HTMLElement;
         if (!headerEl) return null;
 
         let textContent = null;
@@ -74,12 +76,13 @@ export const DocEditor = {
     /**
      * Retrieves the document title from the header or fallback input field.
      * Sanitizes the title for use as a filename.
+     * @returns A sanitized string suitable for use as a filename.
      */
     getTitle: function () {
         const headerData = this.parseDocumentHeader();
         let title = headerData ? headerData.title : null;
         if (!title) {
-            const titleInput = document.querySelector("input[name='title']") as HTMLInputElement;
+            const titleInput = Core.getElement(Elements.EDITOR_TITLE_INPUT) as HTMLInputElement;
             if (titleInput) title = titleInput.value.trim();
         }
         return title ? title.replace(/[/\\?%*:|"<>]/g, '-') : 'Untitled_Draft';
@@ -87,6 +90,7 @@ export const DocEditor = {
 
     /**
      * Orchestrates the export of the currently open document to Markdown.
+     * Uses FileSaver to trigger the browser download.
      */
     exportCurrentDoc: function () {
         const func = 'DocEditor.export';

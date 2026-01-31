@@ -15,8 +15,8 @@ export default defineConfig({
         license: 'GPL-3.0-or-later',
         // Adding these manually to the Userscript header
         require: [
-          'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
-          'https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js',
+          'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js',
+          'https://cdn.jsdelivr.net/npm/file-saver@2.0.4/dist/FileSaver.min.js',
           'https://cdn.jsdelivr.net/npm/turndown@7.2.2/dist/turndown.js'
         ],
       },
