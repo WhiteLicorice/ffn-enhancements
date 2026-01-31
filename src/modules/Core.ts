@@ -1,9 +1,16 @@
 // modules/Core.ts
 
 import TurndownService from 'turndown';
+import { Elements } from '../enums/Elements';
+import { StoryDelegate } from '../delegates/StoryDelegate';
+import { IDelegate } from '../delegates/IDelegate';
+import { DocManagerDelegate } from '../delegates/DocManagerDelegate';
+import { DocEditorDelegate } from '../delegates/DocEditorDelegate';
+import { GlobalDelegate } from '../delegates/GlobalDelegate';
 
 /**
- * Shared utility engine providing logging, DOM readiness, and content parsing services.
+ * Shared utility engine providing logging, DOM readiness, content parsing,
+ * and the central Broker for the Delegate (Page Object) system.
  */
 export const Core = {
     /**
@@ -14,6 +21,11 @@ export const Core = {
         'hr': '---',
         'bulletListMarker': '-',
     }),  // modern-ish presets used by Markor and the like
+
+    /**
+     * The currently active Delegate strategy (Story vs Doc vs Global).
+     */
+    activeDelegate: null as IDelegate | null,
 
     /**
      * Centralized logging function with standardized formatting.
@@ -41,14 +53,79 @@ export const Core = {
         }
     },
 
+    // ==========================================
+    // DELEGATE SYSTEM
+    // ==========================================
+
+    /**
+     * Determines which Delegate strategy to use based on the current URL path.
+     * @param pagePath - window.location.pathname
+     */
+    setDelegate: function (pagePath: string) {
+        const func = 'setDelegate';
+
+        if (pagePath.startsWith('/s/')) {
+            this.activeDelegate = StoryDelegate;
+            this.log('Core', func, 'Strategy set to StoryDelegate');
+        }
+        else if (pagePath === "/docs/docs.php") {
+            this.activeDelegate = DocManagerDelegate;
+            this.log('Core', func, 'Strategy set to DocManagerDelegate');
+        }
+        else if (pagePath.includes("/docs/edit.php")) {
+            this.activeDelegate = DocEditorDelegate;
+            this.log('Core', func, 'Strategy set to DocEditorDelegate');
+        }
+        else {
+            this.log('Core', func, 'No specific delegate found for this path.');
+        }
+    },
+
+    /**
+     * The Public API for fetching UI elements.
+     * Modules call this instead of document.querySelector.
+     * Implements Chain of Responsibility: Specific Delegate -> Global Delegate.
+     * @param key - The Element Enum key.
+     */
+    getElement: function (key: Elements): any {
+        let el = null;
+
+        // 1. Try the Page-Specific Strategy first (if active)
+        if (this.activeDelegate) {
+            el = this.activeDelegate.get(key);
+        }
+
+        // 2. If not found (or no active delegate), try the Global Strategy
+        if (!el) {
+            el = GlobalDelegate.get(key);
+        }
+
+        // 3. Logging / Error Handling
+        if (!el) {
+            // Optional: Log strict warnings for debugging
+            this.log('Core', 'getElement', `Selector failed for key: ${key}`);
+        }
+
+        return el;
+    },
+
+    // ==========================================
+    // CONTENT PARSING
+    // ==========================================
+
     /**
      * Extracts text from a DOM object and converts to Markdown.
+     * Used for both live page parsing and background fetch parsing.
      * @param doc - The document object to query.
      * @param title - The title of the content (for logging purposes).
      * @returns The converted Markdown string, or null if selectors fail.
      */
     parseContentFromDOM: function (doc: Document, title: string) {
         const func = 'Core.parseContent';
+
+        // Note: We don't use the Delegate here because 'doc' might be an
+        // iframe or a fetched HTML string, not the active 'document'.
+        // We keep these hardcoded selectors for robustness on background fetches.
         const contentElement = (doc.querySelector("textarea[name='bio']") ||
             doc.querySelector("#story_text") ||
             doc.querySelector("#content")) as HTMLTextAreaElement | HTMLElement;
