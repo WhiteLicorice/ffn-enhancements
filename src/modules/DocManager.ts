@@ -161,8 +161,10 @@ export const DocManager = {
 
         if (successCount > 0) {
             btn.innerText = "Zipping...";
-            const content = await zip.generateAsync({ type: "uint8array", compression: "STORE" });
-            const blob = new Blob([content], { type: "application/zip" });
+
+            // Generate 'blob' directly instead of 'uint8array', because TS is being strict about this
+            const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+
             const timestamp = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 19);
             saveAs(blob, `ffn_${timestamp}.zip`);
             btn.innerText = "Done";
