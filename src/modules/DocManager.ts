@@ -80,7 +80,10 @@ export const DocManager = {
         const func = 'injectTableColumn';
 
         const table = Core.getElement(Elements.DOC_TABLE);
-        if (!table) return Core.log('doc-manager', func, 'Table not found.');
+        if (!table) {
+            Core.log('doc-manager', func, 'Table not found.');
+            return;
+        }
 
         const headerRow = Core.getElement(Elements.DOC_TABLE_HEAD_ROW);
 
@@ -153,7 +156,7 @@ export const DocManager = {
             }, 2000);
         } else {
             btnElement.innerText = "Err";
-            alert("Failed to fetch document content.");
+            Core.log('doc-manager', 'runSingleExport', "Failed to fetch document content.");
         }
     },
 
@@ -167,58 +170,71 @@ export const DocManager = {
         Core.log('doc-manager', func, 'Export initiated.');
         const btn = e.target as HTMLButtonElement;
 
-        if (!Core.getElement(Elements.DOC_TABLE)) return alert("Error: Table not found.");
+        if (!Core.getElement(Elements.DOC_TABLE)) {
+            Core.log('doc-manager', func, "Table not found.");
+            return;
+        }
 
         const allRows = Core.getElements(Elements.DOC_TABLE_BODY_ROWS);
 
         // Filter for rows that actually contain documents
         const rows = allRows.filter(row => row.querySelector('a[href*="docid="]'));
 
-        if (rows.length === 0) return alert("No documents to export.");
+        if (rows.length === 0) {
+            Core.log('doc-manager', func, "No documents to export.");
+            return;
+        }
 
         const originalText = btn.innerText;
         btn.disabled = true;
         btn.style.cursor = "wait";
         btn.style.opacity = "1";
 
-        const zip = new JSZip();
-        let successCount = 0;
+        try {
+            const zip = new JSZip();
+            let successCount = 0;
 
-        for (let i = 0; i < rows.length; i++) {
-            const row = rows[i] as HTMLTableRowElement;
-            const editLink = row.querySelector('a[href*="docid="]') as HTMLAnchorElement;
-            if (!editLink) continue;
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i] as HTMLTableRowElement;
+                const editLink = row.querySelector('a[href*="docid="]') as HTMLAnchorElement;
+                if (!editLink) continue;
 
-            const docId = editLink.href.match(/docid=(\d+)/)![1];
-            const title = row.cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
+                const docId = editLink.href.match(/docid=(\d+)/)![1];
+                const title = row.cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
 
-            btn.innerText = `${i + 1}/${rows.length}`;
+                btn.innerText = `${i + 1}/${rows.length}`;
 
-            // 1500ms delay to avoid 429 Rate Limits
-            await new Promise(r => setTimeout(r, 1500));
+                // 1500ms delay to avoid 429 Rate Limits
+                await new Promise(r => setTimeout(r, 500));
 
-            const markdown = await Core.fetchAndConvertDoc(docId, title);
-            if (markdown) {
-                zip.file(`${title}.md`, markdown, { date: new Date() });
-                successCount++;
+                const markdown = await Core.fetchAndConvertDoc(docId, title);
+                if (markdown) {
+                    zip.file(`${title}.md`, markdown, { date: new Date() });
+                    successCount++;
+                }
             }
+
+            if (successCount > 0) {
+                btn.innerText = "Zipping...";
+                Core.log('doc-manager', func, `Zipping ${successCount} documents`);
+
+                // Generate 'blob' directly instead of 'uint8array', because TS is being strict about this
+                const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+                const timestamp = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 19);
+                saveAs(blob, `ffn_${timestamp}.zip`);
+                btn.innerText = "Done";
+            }
+        } catch (error) {
+            Core.log('doc-manager', func, 'An error occurred during bulk export. Check console for details.', error);
+            btn.innerText = "Error";
+        } finally {
+            // Always reset the button state, even if an error occurs
+            setTimeout(() => {
+                btn.innerText = originalText;
+                btn.disabled = false;
+                btn.style.cursor = "pointer";
+                btn.style.opacity = "0.6";
+            }, 3000);
         }
-
-        if (successCount > 0) {
-            btn.innerText = "Zipping...";
-
-            // Generate 'blob' directly instead of 'uint8array', because TS is being strict about this
-            const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
-            const timestamp = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 19);
-            saveAs(blob, `ffn_${timestamp}.zip`);
-            btn.innerText = "Done";
-        }
-
-        setTimeout(() => {
-            btn.innerText = originalText;
-            btn.disabled = false;
-            btn.style.cursor = "pointer";
-            btn.style.opacity = "0.6";
-        }, 3000);
     }
 };
