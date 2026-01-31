@@ -29,16 +29,15 @@ Once you have the extension installed, click the link below. Your userscript man
 ---
 
 ## Roadmap by Features
- * [x] Markdown Export: Download documents as Markdown from both the Document Manager (Bulk/Single) and the Doc Editor.
- * [ ] Smart Paste: Copy text from your favorite Markdown editor and paste it directly into FFN's Doc Editor. It automatically renders to HTML. (Preserves standard Docx/HTML formatting if detected).
- * [x] Selectable Text: Forces text to be selectable on story pages, bypassing FFN's copy-paste block.
- * [x] Keyboard Navigation: Bind Arrow keys (or WASD) to navigate chapters and scroll.
- * [ ] Reading Stats: Displays estimated chapter word count and reading time (e.g., "15 min read") at the top of the text.
- * [x] AO3-Style Downloads: Integrated Fichub to allow downloading stories as EPUB, MOBI, PDF, or HTML directly from a story's page.
- * [ ] Layout Modernization: Make story text more large-screen friendly? (Width constraints, typography).
- * [x] Dark Mode: Integrate native dark theme (gave up: highly suggest using the mature [Dark Reader extension](https://darkreader.org/) instead as it handles FFN's legacy DOM much better).
 
-_Feel free to open issues and make suggestions!_
+* [x] Download documents as Markdown in both Doc Manager and Doc Editor.
+* [x] Make text selectable while reading.
+* [x] Bind arrow keys or WASD keys to chapter navigation.
+* [ ] Make story text more large-screen friendly?
+* [x] Integrate Ao3's export to EPUB/PDF/HTML/MOBI feature (AZW3 is prioprietary and out of scope).
+* [x] Integrate native dark theme (gave up: may I suggest using the mature [Dark Reader](https://darkreader.org/) instead?).
+
+*Feel free to open issues and make suggestions!*
 
 ---
 
@@ -52,3 +51,64 @@ This script is designed to update automatically.
 ## Compatibility
 
 * **Tested on Browsers:** Edge & Firefox.
+
+## Development
+
+This project uses Vite, TypeScript, and vite-plugin-monkey to bundle multiple modules into a single userscript.
+
+### Prerequisites
+
+You need Node.js installed on your machine to run the build tools.
+
+### Setup
+
+1. Clone this repository or download the source code.
+2. Open your terminal in the project folder.
+3. Install the necessary dependencies:
+`npm install`
+
+### Building
+
+To generate the final ffn-enhancements.user.js file, run:
+`npm run build`
+
+The bundled script will appear in the dist/ folder. You can then drag this file into your browser or copy-paste it into your userscript manager.
+
+### Local Development
+
+If you want to see your changes in real-time without building manually every time, run:
+`npm run dev`
+
+Vite will provide a local URL (typically http://localhost:5173/__monkey.user.js). If you install this URL into Tampermonkey once, the script will automatically reload on FanFiction.net whenever you save a change in your code editor.
+
+## Contributing
+
+Contributions are welcome. Please follow these guidelines to keep the project organized.
+
+### Workflow
+
+1. Fork the repository.
+2. Create a new branch for your changes. Use a prefix that describes the type of change, followed by a specific name:
+* `feat/` for new features
+* `fix/` for bug fixes
+* `refactor/` for code restructuring
+* `docs/` for documentation updates
+* Example: `feat/vite-plugin-monkey`
+
+
+3. Make your changes and test them using `npm run dev`.
+4. Submit a Pull Request.
+
+### Commit Messages
+
+This project follows the semantic commits. Start your commit message with a type, followed by a colon and a brief description.
+
+* `feat:` A new feature
+* `fix:` A bug fix
+* `ux:` User interface or user experience improvements
+* `docs:` Documentation only changes
+* `style:` Changes that do not affect the meaning of the code (formatting, missing semi-colons, etc)
+* `refactor:` A code change that neither fixes a bug nor adds a feature, but makes the codebase better
+* `chore:` Build process or auxiliary tool changes
+* `meta:` License, metadata, dependency changes, etc.
+* Example: `feat: add markdown export to doc manager`
