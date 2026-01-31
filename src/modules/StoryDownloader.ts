@@ -1,6 +1,7 @@
 // modules/StoryDownloader.ts
 
 import { Core } from './Core';
+import { Elements } from '../enums/Elements';
 import { GM_xmlhttpRequest } from '$';
 
 /**
@@ -16,7 +17,7 @@ export const StoryDownloader = {
      */
     init: function () {
         Core.onDomReady(() => {
-            const header = document.querySelector('#profile_top');
+            const header = Core.getElement(Elements.PROFILE_HEADER);
             if (header) this.injectDropdown(header as HTMLElement);
         });
     },
@@ -66,9 +67,13 @@ export const StoryDownloader = {
         container.appendChild(this.mainBtn);
         container.appendChild(menu);
 
-        const followBtn = parentGroup.querySelector('button.pull-right');
-        if (followBtn?.nextSibling) parentGroup.insertBefore(container, followBtn.nextSibling);
-        else parentGroup.appendChild(container);
+        const followBtn = Core.getElement(Elements.FOLLOW_BUTTON_CONTAINER);
+
+        if (followBtn && followBtn.parentNode === parentGroup && followBtn.nextSibling) {
+            parentGroup.insertBefore(container, followBtn.nextSibling);
+        } else {
+            parentGroup.appendChild(container);
+        }
 
         document.addEventListener('click', (e) => {
             if (!container.contains(e.target as Node)) this.toggleDropdown(false);
