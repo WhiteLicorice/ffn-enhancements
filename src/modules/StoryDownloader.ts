@@ -115,7 +115,10 @@ export const StoryDownloader = {
             headers: { "User-Agent": "FFN-Enhancements" },
             // Explicitly type the 'res' parameter so the alias doesn't error out
             onload: (res: { status: number; responseText: string }) => {
-                if (res.status === 429) return alert("Fichub Server Busy.");
+                if (res.status === 429) {
+                    Core.log('story-downloader', 'GM_xmlhttpRequest', "Fichub Server Busy.");
+                    return;
+                }
                 try {
                     const data = JSON.parse(res.responseText);
                     const rel = data.urls?.[format] || data[format + '_url'];

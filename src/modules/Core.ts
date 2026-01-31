@@ -13,6 +13,8 @@ import { GlobalDelegate } from '../delegates/GlobalDelegate';
  * and the central Broker for the Delegate (Page Object) system.
  */
 export const Core = {
+    MODULE_NAME: 'core',
+
     /**
      * Instance of TurndownService configured for converting HTML to Markdown.
      * Configured with horizontal rule and bullet list markers.
@@ -186,7 +188,7 @@ export const Core = {
                     await new Promise(r => setTimeout(r, waitTime));
                     return this.fetchAndConvertDoc(docId, title, attempt + 1);
                 }
-                alert(`Rate limit exceeded for "${title}". Please wait a moment.`);
+                this.log('core', func, `Rate limit exceeded for "${title}". Please wait a moment.`);
                 return null;
             }
 
