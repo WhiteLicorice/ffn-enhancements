@@ -54,6 +54,7 @@ export const DocEditor = {
     /**
      * Extracts metadata (Title, Word Count) from the FFN header string.
      * Looks for "Edit Document: [Title] - [Count] word(s)".
+     * @returns An object containing the title and word count, or null if parsing fails.
      */
     parseDocumentHeader: function () {
         const headerEl = Core.getElement(Elements.EDITOR_HEADER_LABEL) as HTMLElement;
@@ -75,6 +76,7 @@ export const DocEditor = {
     /**
      * Retrieves the document title from the header or fallback input field.
      * Sanitizes the title for use as a filename.
+     * @returns A sanitized string suitable for use as a filename.
      */
     getTitle: function () {
         const headerData = this.parseDocumentHeader();
@@ -88,6 +90,7 @@ export const DocEditor = {
 
     /**
      * Orchestrates the export of the currently open document to Markdown.
+     * Uses FileSaver to trigger the browser download.
      */
     exportCurrentDoc: function () {
         const func = 'DocEditor.export';

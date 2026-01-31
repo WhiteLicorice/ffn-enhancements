@@ -10,8 +10,9 @@ import { IDelegate } from './IDelegate';
 export const DocEditorDelegate: IDelegate = {
 
     /**
-     * Primary retrieval method.
+     * Primary retrieval method for single elements.
      * @param key - The Element Enum representing the UI component to fetch.
+     * @returns The DOM element corresponding to the key, or null if not found.
      */
     getElement(key: Elements): HTMLElement | null {
         switch (key) {
@@ -38,9 +39,12 @@ export const DocEditorDelegate: IDelegate = {
     },
 
     /**
-     * Retrieval method for collections.
+     * Retrieves a collection of DOM elements.
+     * Currently, the Editor page does not require fetching lists of elements.
+     * @param key - The Element Enum key (unused in this delegate).
+     * @returns An empty array to satisfy the IDelegate contract.
      */
-    getElements(_key: Elements): HTMLElement[] {
+    getElements(key: Elements): HTMLElement[] {
         return [];
     }
 };

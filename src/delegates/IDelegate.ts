@@ -9,12 +9,14 @@ import { Elements } from "../enums/Elements";
 export interface IDelegate {
     /**
      * Retrieves a single DOM element.
+     * @param key - The Element Enum representing the UI component to fetch.
      * @returns The element or null if not found.
      */
     getElement(key: Elements): HTMLElement | null;
 
     /**
      * Retrieves a collection of DOM elements.
+     * @param key - The Element Enum representing the UI component to fetch.
      * @returns An array of elements (empty if none found).
      */
     getElements(key: Elements): HTMLElement[];

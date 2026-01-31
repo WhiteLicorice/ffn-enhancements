@@ -6,14 +6,21 @@ import { GM_xmlhttpRequest } from '$';
 
 /**
  * Module handling the integration with Fichub API for story downloads.
+ * Injects a dropdown menu into the story header to allow downloading as EPUB, MOBI, PDF, or HTML.
  */
 export const StoryDownloader = {
+    /** Flag tracking if a download request is currently in progress. */
     isDownloading: false,
+
+    /** Reference to the dropdown menu container element. */
     dropdown: null as HTMLElement | null,
+
+    /** Reference to the main trigger button for the dropdown. */
     mainBtn: null as HTMLButtonElement | null,
 
     /**
      * Initializes the downloader by looking for the profile header.
+     * Uses the Core Delegate system to find the injection point.
      */
     init: function () {
         Core.onDomReady(() => {
@@ -24,7 +31,8 @@ export const StoryDownloader = {
 
     /**
      * Injects the AO3-style download dropdown menu.
-     * @param parentGroup - The header container element.
+     * attempts to place the button next to the "Follow/Fav" button for visual consistency.
+     * @param parentGroup - The header container element where the dropdown should be injected.
      */
     injectDropdown: function (parentGroup: HTMLElement) {
         const container = document.createElement('div');
@@ -90,6 +98,7 @@ export const StoryDownloader = {
 
     /**
      * Sends a request to Fichub to retrieve the download URL for the specific format.
+     * Uses GM_xmlhttpRequest to bypass CORS restrictions.
      * @param format - The file format (epub, mobi, pdf, html).
      */
     processDownload: function (format: string) {
@@ -120,6 +129,7 @@ export const StoryDownloader = {
 
     /**
      * Resets the main download button state after a delay.
+     * Re-enables the button and clears the downloading flag.
      */
     resetButton: function () {
         setTimeout(() => {

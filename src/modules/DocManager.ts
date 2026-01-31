@@ -11,6 +11,7 @@ import { saveAs } from 'file-saver';
 export const DocManager = {
     /**
      * Initializes the module by checking for the document table.
+     * Uses polling to ensure the table is present before injecting UI.
      */
     init: function () {
         Core.onDomReady(() => {
@@ -35,6 +36,7 @@ export const DocManager = {
 
     /**
      * Injects the floating "Download All" button into the interface.
+     * Finds the "Document Manager" label or falls back to the main content wrapper.
      */
     injectBulkButton: function () {
         Core.log('doc-manager', 'injectBulkButton', 'Attempting to inject UI...');
@@ -72,6 +74,7 @@ export const DocManager = {
 
     /**
      * Injects a new "Export" column into the document management table.
+     * Adds an "Export" button to each row for individual downloading.
      */
     injectTableColumn: function () {
         const func = 'injectTableColumn';
@@ -124,6 +127,9 @@ export const DocManager = {
 
     /**
      * Handles the export of a single document given a DocID.
+     * @param btnElement - The button clicked (for UI feedback).
+     * @param docId - The FFN Document ID.
+     * @param title - The title of the document.
      */
     runSingleExport: async function (btnElement: HTMLElement, docId: string, title: string) {
         const func = 'runSingleExport';
@@ -153,6 +159,8 @@ export const DocManager = {
 
     /**
      * Handles the bulk export of all visible documents into a ZIP file.
+     * Iterates through all rows, fetches content, and packages it.
+     * @param e - The mouse event from the bulk button.
      */
     runBulkExport: async function (e: MouseEvent) {
         const func = 'runBulkExport';
@@ -161,7 +169,6 @@ export const DocManager = {
 
         if (!Core.getElement(Elements.DOC_TABLE)) return alert("Error: Table not found.");
 
-        // USE NEW API: Get all rows via getElements
         const allRows = Core.getElements(Elements.DOC_TABLE_BODY_ROWS);
 
         // Filter for rows that actually contain documents

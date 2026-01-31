@@ -10,6 +10,8 @@ export const StoryDelegate: IDelegate = {
 
     /**
      * Primary retrieval method for single elements.
+     * @param key - The Element Enum representing the UI component to fetch.
+     * @returns The DOM element corresponding to the key, or null if not found.
      */
     getElement(key: Elements): HTMLElement | null {
         switch (key) {
@@ -44,6 +46,9 @@ export const StoryDelegate: IDelegate = {
 
     /**
      * Retrieval method for collections.
+     * Currently, the Story page does not require fetching lists of elements.
+     * @param key - The Element Enum key (unused in this delegate).
+     * @returns An empty array to satisfy the IDelegate contract.
      */
     getElements(key: Elements): HTMLElement[] {
         // No collections currently mapped for Story view
@@ -54,6 +59,8 @@ export const StoryDelegate: IDelegate = {
 /**
  * Helper: FFN does not use IDs for navigation buttons.
  * We must search for buttons containing specific text.
+ * @param text - The text content to search for inside button elements.
+ * @returns The matching button element or null.
  */
 function getButtonByText(text: string): HTMLElement | null {
     const buttons = document.getElementsByTagName('button');

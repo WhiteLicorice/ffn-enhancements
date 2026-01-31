@@ -59,6 +59,7 @@ export const Core = {
 
     /**
      * Determines which Delegate strategy to use based on the current URL path.
+     * This abstracts away the DOM differences between Story pages and Doc pages.
      * @param pagePath - window.location.pathname
      */
     setDelegate: function (pagePath: string) {
@@ -84,6 +85,9 @@ export const Core = {
     /**
      * Public API: Fetches a SINGLE element.
      * Guaranteed to return an HTMLElement or null. No Arrays.
+     * Implements Chain of Responsibility: Specific Delegate -> Global Delegate.
+     * @param key - The Element Enum key.
+     * @returns The found HTMLElement or null.
      */
     getElement: function (key: Elements): HTMLElement | null {
         let el: HTMLElement | null = null;
@@ -93,14 +97,13 @@ export const Core = {
             el = this.activeDelegate.getElement(key);
         }
 
-        // 2. If not found (or no active delegate), try the Global Strategy
+        // 2. Try Global
         if (!el) {
             el = GlobalDelegate.getElement(key);
         }
 
         // 3. Logging / Error Handling
         if (!el) {
-            // Optional: Log strict warnings for debugging
             this.log('Core', 'getElement', `Selector failed for key: ${key}`);
         }
 
@@ -110,6 +113,9 @@ export const Core = {
     /**
      * Public API: Fetches a LIST of elements.
      * Guaranteed to return an Array. No nulls.
+     * Implements Chain of Responsibility: Specific Delegate -> Global Delegate.
+     * @param key - The Element Enum key.
+     * @returns An array of HTMLElements (empty if none found).
      */
     getElements: function (key: Elements): HTMLElement[] {
         let els: HTMLElement[] = [];

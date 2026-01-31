@@ -11,6 +11,8 @@ export const DocManagerDelegate: IDelegate = {
 
     /**
      * Retrieves single UI components.
+     * @param key - The Element Enum representing the UI component to fetch.
+     * @returns The DOM element corresponding to the key, or null if not found.
      */
     getElement(key: Elements): HTMLElement | null {
         switch (key) {
@@ -32,6 +34,8 @@ export const DocManagerDelegate: IDelegate = {
 
     /**
      * Retrieves lists of components (e.g., Table Rows).
+     * @param key - The Element Enum representing the UI component to fetch.
+     * @returns An array of DOM elements (empty if none found).
      */
     getElements(key: Elements): HTMLElement[] {
         switch (key) {

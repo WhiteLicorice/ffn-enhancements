@@ -11,6 +11,8 @@ export const GlobalDelegate: IDelegate = {
 
     /**
      * Retrieves a single site-wide element.
+     * @param key - The Element Enum representing the UI component to fetch.
+     * @returns The DOM element corresponding to the key, or null if not found.
      */
     getElement(key: Elements): HTMLElement | null {
         switch (key) {
@@ -29,6 +31,9 @@ export const GlobalDelegate: IDelegate = {
 
     /**
      * Retrieves site-wide collections.
+     * Currently, there are no global collections needed.
+     * @param _key - The Element Enum key (unused in this delegate).
+     * @returns An empty array to satisfy the IDelegate contract.
      */
     getElements(_key: Elements): HTMLElement[] {
         // Currently, there are no global collections needed.
