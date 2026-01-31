@@ -1,6 +1,7 @@
 // modules/DocManager.ts
 
 import { Core } from './Core';
+import { Elements } from '../enums/Elements';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
@@ -13,12 +14,12 @@ export const DocManager = {
      */
     init: function () {
         Core.onDomReady(() => {
-            if (document.querySelector('#gui_table1')) {
+            if (Core.getElement(Elements.DOC_TABLE)) {
                 this.injectUI();
             } else {
                 Core.log('doc-manager', 'DocManager', 'Table not found. Waiting...');
                 setTimeout(() => {
-                    if (document.querySelector('#gui_table1')) this.injectUI();
+                    if (Core.getElement(Elements.DOC_TABLE)) this.injectUI();
                 }, 1500);
             }
         });
@@ -37,9 +38,13 @@ export const DocManager = {
      */
     injectBulkButton: function () {
         Core.log('doc-manager', 'injectBulkButton', 'Attempting to inject UI...');
-        const xpath = "//*[text()='Document Manager']";
-        const textNode = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue as HTMLElement;
-        const container = textNode ? textNode.parentElement : document.querySelector('#content_wrapper_inner') as HTMLElement;
+
+        let container = Core.getElement(Elements.DOC_MANAGER_LABEL) as HTMLElement;
+
+        // Fallback to Main Content Wrapper if the label isn't found (using Global logic via Core)
+        if (!container) {
+            container = Core.getElement(Elements.MAIN_CONTENT_WRAPPER) as HTMLElement;
+        }
 
         if (!container) return Core.log('doc-manager', 'injectBulkButton', 'ERROR: Container not found.');
 
@@ -70,10 +75,11 @@ export const DocManager = {
      */
     injectTableColumn: function () {
         const func = 'injectTableColumn';
-        const table = document.querySelector('#gui_table1') as HTMLTableElement;
+
+        const table = Core.getElement(Elements.DOC_TABLE);
         if (!table) return Core.log('doc-manager', func, 'Table not found.');
 
-        const headerRow = table.querySelector('thead tr') || table.querySelector('tbody tr');
+        const headerRow = Core.getElement(Elements.DOC_TABLE_HEAD_ROW) as HTMLElement;
 
         if (headerRow) {
             const th = document.createElement('th');
@@ -84,32 +90,38 @@ export const DocManager = {
             headerRow.appendChild(th);
         }
 
-        const rows = table.querySelectorAll('tbody tr');
-        rows.forEach((row: any) => {
-            if (row.querySelector('th') || row.className.includes('thead')) return;
-            const editLink = row.querySelector('a[href*="docid="]') as HTMLAnchorElement;
-            if (!editLink) return;
+        const rows = Core.getElement(Elements.DOC_TABLE_BODY_ROWS) as HTMLElement[];
 
-            const td = document.createElement('td');
-            td.align = 'center';
-            td.vAlign = 'top';
-            td.width = '5%';
+        if (rows) {
+            rows.forEach((row) => {
+                // We can skip explicit class checks since the Delegate already targets 'tbody tr'
+                // but we still check specifically for the link to be safe.
+                if (row.querySelector('th') || row.className.includes('thead')) return;
 
-            const docId = editLink.href.match(/docid=(\d+)/)![1];
-            const title = row.cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
+                const editLink = row.querySelector('a[href*="docid="]') as HTMLAnchorElement;
+                if (!editLink) return;
 
-            const link = document.createElement('a');
-            link.innerText = "Export";
-            link.href = "#";
-            link.style.textDecoration = "none";
-            link.style.whiteSpace = "nowrap";
-            link.onclick = (e) => {
-                e.preventDefault();
-                this.runSingleExport(e.target as HTMLElement, docId, title);
-            };
-            td.appendChild(link);
-            row.appendChild(td);
-        });
+                const td = document.createElement('td');
+                td.align = 'center';
+                td.vAlign = 'top';
+                td.width = '5%';
+
+                const docId = editLink.href.match(/docid=(\d+)/)![1];
+                const title = (row as HTMLTableRowElement).cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
+
+                const link = document.createElement('a');
+                link.innerText = "Export";
+                link.href = "#";
+                link.style.textDecoration = "none";
+                link.style.whiteSpace = "nowrap";
+                link.onclick = (e) => {
+                    e.preventDefault();
+                    this.runSingleExport(e.target as HTMLElement, docId, title);
+                };
+                td.appendChild(link);
+                row.appendChild(td);
+            });
+        }
         Core.log('doc-manager', func, 'Column injected.');
     },
 
@@ -153,11 +165,13 @@ export const DocManager = {
         const func = 'runBulkExport';
         Core.log('doc-manager', func, 'Export initiated.');
         const btn = e.target as HTMLButtonElement;
-        const table = document.querySelector('#gui_table1') as HTMLTableElement;
 
-        if (!table) return alert("Error: Table not found.");
+        if (!Core.getElement(Elements.DOC_TABLE)) return alert("Error: Table not found.");
 
-        const rows = Array.from(table.querySelectorAll('tbody tr')).filter(row => row.querySelector('a[href*="docid="]'));
+        const allRows = Core.getElement(Elements.DOC_TABLE_BODY_ROWS) as HTMLElement[];
+
+        const rows = allRows.filter(row => row.querySelector('a[href*="docid="]'));
+
         if (rows.length === 0) return alert("No documents to export.");
 
         const originalText = btn.innerText;
@@ -177,7 +191,9 @@ export const DocManager = {
             const title = row.cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
 
             btn.innerText = `${i + 1}/${rows.length}`;
-            await new Promise(r => setTimeout(r, 200));
+
+            // TODO: Is this enough to avoid being rate limited early?
+            await new Promise(r => setTimeout(r, 500));
 
             const markdown = await Core.fetchAndConvertDoc(docId, title);
             if (markdown) {
