@@ -79,7 +79,8 @@ export const StoryDownloader = {
             method: "GET",
             url: apiUrl,
             headers: { "User-Agent": "FFN-Enhancements" },
-            onload: (res) => {
+            // Explicitly type the 'res' parameter so the alias doesn't error out
+            onload: (res: { status: number; responseText: string }) => {
                 if (res.status === 429) return alert("Fichub Server Busy.");
                 try {
                     const data = JSON.parse(res.responseText);
