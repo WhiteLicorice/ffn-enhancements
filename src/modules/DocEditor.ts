@@ -1,7 +1,15 @@
+// modules/DocEditor.ts
+
 import { Core } from './Core';
 import { saveAs } from 'file-saver';
 
+/**
+ * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).
+ */
 export const DocEditor = {
+    /**
+     * Initializes the module by waiting for the DOM and polling for the TinyMCE instance.
+     */
     init: function () {
         Core.onDomReady(() => {
             Core.log('doc-editor', 'DocEditor', 'Polling for TinyMCE...');
@@ -16,6 +24,10 @@ export const DocEditor = {
         });
     },
 
+    /**
+     * Injects a custom download button into the TinyMCE toolbar.
+     * @param toolbar - The toolbar HTMLElement to append the button to.
+     */
     injectToolbarButton: function (toolbar: HTMLElement) {
         const container = document.createElement('div');
         container.className = 'mce-widget mce-btn';
@@ -38,6 +50,10 @@ export const DocEditor = {
         toolbar.appendChild(container);
     },
 
+    /**
+     * Extracts metadata (Title, Word Count) from the FFN header string.
+     * Looks for "Edit Document: [Title] - [Count] word(s)".
+     */
     parseDocumentHeader: function () {
         const headerEl = document.querySelector("div.tcat b");
         if (!headerEl) return null;
@@ -55,6 +71,10 @@ export const DocEditor = {
         return match ? { title: match[1].trim(), wordCount: match[2].trim() } : null;
     },
 
+    /**
+     * Retrieves the document title from the header or fallback input field.
+     * Sanitizes the title for use as a filename.
+     */
     getTitle: function () {
         const headerData = this.parseDocumentHeader();
         let title = headerData ? headerData.title : null;
@@ -65,6 +85,9 @@ export const DocEditor = {
         return title ? title.replace(/[/\\?%*:|"<>]/g, '-') : 'Untitled_Draft';
     },
 
+    /**
+     * Orchestrates the export of the currently open document to Markdown.
+     */
     exportCurrentDoc: function () {
         const func = 'DocEditor.export';
         const title = this.getTitle();

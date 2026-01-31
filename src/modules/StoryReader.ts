@@ -1,6 +1,14 @@
+// modules/StoryReader.ts
+
 import { Core } from './Core';
 
+/**
+ * Module responsible for UX enhancements on Story pages (`/s/*`).
+ */
 export const StoryReader = {
+    /**
+     * Initializes the module logic.
+     */
     init: function () {
         Core.onDomReady(() => {
             Core.log('story-reader', 'StoryReader', 'Initializing UX Enhancements...');
@@ -9,6 +17,9 @@ export const StoryReader = {
         });
     },
 
+    /**
+     * Injects CSS to force text selection, bypassing FFN's copy blocks.
+     */
     enableSelectableText: function () {
         const style = document.createElement('style');
         style.innerHTML = `
@@ -27,6 +38,9 @@ export const StoryReader = {
         }
     },
 
+    /**
+     * Attaches event listeners for keyboard shortcuts (Arrow keys, WASD).
+     */
     enableKeyboardNav: function () {
         document.addEventListener('keydown', (e) => {
             const target = e.target as HTMLElement;

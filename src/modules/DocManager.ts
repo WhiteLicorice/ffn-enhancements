@@ -1,8 +1,16 @@
+// modules/DocManager.ts
+
 import { Core } from './Core';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
+/**
+ * Module responsible for enhancing the Document Manager page (`/docs/docs.php`).
+ */
 export const DocManager = {
+    /**
+     * Initializes the module by checking for the document table.
+     */
     init: function () {
         Core.onDomReady(() => {
             if (document.querySelector('#gui_table1')) {
@@ -16,11 +24,17 @@ export const DocManager = {
         });
     },
 
+    /**
+     * Orchestrator for injecting all UI elements (Buttons, Columns).
+     */
     injectUI: function () {
         this.injectBulkButton();
         this.injectTableColumn();
     },
 
+    /**
+     * Injects the floating "Download All" button into the interface.
+     */
     injectBulkButton: function () {
         Core.log('doc-manager', 'injectBulkButton', 'Attempting to inject UI...');
         const xpath = "//*[text()='Document Manager']";
@@ -51,6 +65,9 @@ export const DocManager = {
         Core.log('doc-manager', 'injectBulkButton', 'Bulk Button injected.');
     },
 
+    /**
+     * Injects a new "Export" column into the document management table.
+     */
     injectTableColumn: function () {
         const func = 'injectTableColumn';
         const table = document.querySelector('#gui_table1') as HTMLTableElement;
@@ -96,6 +113,12 @@ export const DocManager = {
         Core.log('doc-manager', func, 'Column injected.');
     },
 
+    /**
+     * Handles the export of a single document given a DocID.
+     * @param btnElement - The button clicked (for UI feedback).
+     * @param docId - The FFN Document ID.
+     * @param title - The title of the document.
+     */
     runSingleExport: async function (btnElement: HTMLElement, docId: string, title: string) {
         const func = 'runSingleExport';
         const originalText = btnElement.innerText;
@@ -122,6 +145,10 @@ export const DocManager = {
         }
     },
 
+    /**
+     * Handles the bulk export of all visible documents into a ZIP file.
+     * @param e - The mouse event from the bulk button.
+     */
     runBulkExport: async function (e: MouseEvent) {
         const func = 'runBulkExport';
         Core.log('doc-manager', func, 'Export initiated.');

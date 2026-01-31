@@ -1,11 +1,19 @@
+// modules/StoryDownloader.ts
+
 import { Core } from './Core';
 import { GM_xmlhttpRequest } from '$';
 
+/**
+ * Module handling the integration with Fichub API for story downloads.
+ */
 export const StoryDownloader = {
     isDownloading: false,
     dropdown: null as HTMLElement | null,
     mainBtn: null as HTMLButtonElement | null,
 
+    /**
+     * Initializes the downloader by looking for the profile header.
+     */
     init: function () {
         Core.onDomReady(() => {
             const header = document.querySelector('#profile_top');
@@ -13,6 +21,10 @@ export const StoryDownloader = {
         });
     },
 
+    /**
+     * Injects the AO3-style download dropdown menu.
+     * @param parentGroup - The header container element.
+     */
     injectDropdown: function (parentGroup: HTMLElement) {
         const container = document.createElement('div');
         container.style.cssText = "display: inline-block; position: relative; margin-right: 5px; vertical-align: top; float: right;";
@@ -63,10 +75,18 @@ export const StoryDownloader = {
         });
     },
 
+    /**
+     * Toggles the visibility of the download menu.
+     * @param force - Optional boolean to force show (true) or hide (false).
+     */
     toggleDropdown: function (force?: boolean) {
         if (this.dropdown) this.dropdown.style.display = (force ?? this.dropdown.style.display === 'none') ? 'block' : 'none';
     },
 
+    /**
+     * Sends a request to Fichub to retrieve the download URL for the specific format.
+     * @param format - The file format (epub, mobi, pdf, html).
+     */
     processDownload: function (format: string) {
         if (!this.mainBtn) return;
         this.mainBtn.disabled = true;
@@ -93,6 +113,9 @@ export const StoryDownloader = {
         });
     },
 
+    /**
+     * Resets the main download button state after a delay.
+     */
     resetButton: function () {
         setTimeout(() => {
             if (this.mainBtn) {
