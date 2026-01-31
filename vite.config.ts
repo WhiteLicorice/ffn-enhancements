@@ -8,19 +8,14 @@ export default defineConfig({
       userscript: {
         name: 'FFN Enhancements',
         namespace: 'http://tampermonkey.net/',
-        version: '5.9',
-        description: 'A suite of modern enhancements to FFN\'s old-school interface. Inspired by ao3-enhancements.',
+        version: '6.0',
         author: 'WhiteLicorice',
         match: ['https://www.fanfiction.net/*'],
-        'run-at': 'document-start',
         grant: ['GM_xmlhttpRequest'],
+        // This plugin automatically handles @require for libraries
       },
       build: {
-        externalGlobals: {
-          jszip: 'JSZip',
-          turndown: 'TurndownService',
-          'file-saver': 'saveAs',
-        },
+        fileName: 'ffn-enhancements.user.js',
       },
     }),
   ],
