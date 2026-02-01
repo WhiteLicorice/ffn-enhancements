@@ -4,14 +4,14 @@ import { Core } from './Core';
 import { Elements } from '../enums/Elements';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import { DocIframeHandler } from './DocIframeHandler';
 
 /**
  * Module responsible for enhancing the Document Manager page (`/docs/docs.php`).
  */
 export const DocManager = {
     /**
-     * Initializes the module by checking for the document table.
-     * Uses MutationObserver (instead of polling) to react instantly when the table loads.
+     * Initializes the module by checking for the document table and observing for the Copy-N-Paste editor.
      */
     init: function () {
         const log = Core.getLogger('doc-manager', 'init');
@@ -20,28 +20,57 @@ export const DocManager = {
             // 1. Fast Path: Check if table exists immediately
             if (Core.getElement(Elements.DOC_TABLE)) {
                 this.injectUI();
-                return;
+            } else {
+                this.waitForTable();
             }
 
-            // 2. Observer Strategy: Wait for table injection
-            log('Table not found. Setting up MutationObserver...');
-            const observer = new MutationObserver((_mutations, obs) => {
-                const table = Core.getElement(Elements.DOC_TABLE);
-                if (table) {
-                    log('Table detected via Observer.');
-                    obs.disconnect(); // Stop observing to save resources
-                    this.injectUI();
+            // 2. Observer for Dynamic Copy-N-Paste Editor Iframe
+            // The editor spawns dynamically when the radio button is clicked.
+            log('Setting up Observer for Copy-N-Paste Iframe...');
+            const editorObserver = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node instanceof HTMLElement) {
+                            // Check if the node itself is the iframe or contains it.
+                            // The ID is usually 'webcontent_ifr' for the Copy-N-Paste box.
+                            const iframe = node.matches('#webcontent_ifr')
+                                ? node
+                                : node.querySelector('#webcontent_ifr');
+
+                            if (iframe && iframe instanceof HTMLIFrameElement) {
+                                log('Copy-N-Paste Editor Iframe detected.');
+                                DocIframeHandler.attachMarkdownPasterListener(iframe);
+                            }
+                        }
+                    }
                 }
             });
 
-            // Observe the body subtree as FFN tables often load dynamically
-            observer.observe(document.body, { childList: true, subtree: true });
-
-            // 3. Safety Timeout: Stop observing after 10s to prevent memory leaks
-            setTimeout(() => {
-                observer.disconnect();
-            }, 10000);
+            // We observe the body for subtree additions as the editor container is injected dynamically.
+            editorObserver.observe(document.body, { childList: true, subtree: true });
         });
+    },
+
+    /**
+     * Waiting strategy for the main Document Table.
+     */
+    waitForTable: function () {
+        const log = Core.getLogger('doc-manager', 'waitForTable');
+        log('Table not found. Setting up MutationObserver...');
+
+        const observer = new MutationObserver((_mutations, obs) => {
+            const table = Core.getElement(Elements.DOC_TABLE);
+            if (table) {
+                log('Table detected via Observer.');
+                obs.disconnect();
+                this.injectUI();
+            }
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        // Safety Timeout
+        setTimeout(() => { observer.disconnect(); }, 10000);
     },
 
     /**

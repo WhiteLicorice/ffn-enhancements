@@ -4,6 +4,7 @@ import { Core } from './Core';
 import { Elements } from '../enums/Elements';
 import { saveAs } from 'file-saver';
 import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
+import { DocIframeHandler } from './DocIframeHandler';
 
 /**
  * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).
@@ -11,6 +12,9 @@ import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
 export const DocEditor = {
     /** Cached reference to the editor toolbar element. */
     toolbar: null as HTMLElement | null,
+
+    /** Reference to the editor iframe where content lives. */
+    editorIframe: null as HTMLIFrameElement | null,
 
     /**
      * Initializes the module by waiting for the DOM and observing for the TinyMCE instance.
@@ -24,8 +28,7 @@ export const DocEditor = {
             const existingToolbar = Core.getElement(Elements.EDITOR_TOOLBAR);
             if (existingToolbar) {
                 log('TinyMCE found immediately.');
-                this.toolbar = existingToolbar;
-                this.setupDownloadButton();
+                this.handleEditorFound(existingToolbar);
                 return;
             }
 
@@ -36,8 +39,7 @@ export const DocEditor = {
                 if (toolbar) {
                     log('TinyMCE detected via Observer.');
                     obs.disconnect(); // Stop observing to save resources
-                    this.toolbar = toolbar;
-                    this.setupDownloadButton();
+                    this.handleEditorFound(toolbar);
                 }
             });
 
@@ -52,20 +54,27 @@ export const DocEditor = {
     },
 
     /**
-     * Constructs the specific "Download Markdown" button using the Factory
-     * and injects it into the toolbar.
+     * Common handler for when the Editor DOM is located.
      */
-    setupDownloadButton: function () {
-        // Content: Simple span, no layout hacks needed if line-height is set on button
-        const content = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
-        
-        const btn = TinyMCEButtonFactory.create(
+    handleEditorFound: function (toolbar: HTMLElement) {
+        this.toolbar = toolbar;
+        this.setupButtons();
+        this.setupPasteHandler();
+    },
+
+    /**
+     * Sets up the toolbar buttons.
+     */
+    setupButtons: function () {
+        // Download Button
+        const dlContent = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
+        const dlBtn = TinyMCEButtonFactory.create(
             'Download Markdown',
-            content,
+            dlContent,
             () => this.exportCurrentDoc()
         );
 
-        this.injectToolbarButton(btn);
+        this.injectToolbarButton(dlBtn);
     },
 
     /**
@@ -78,6 +87,24 @@ export const DocEditor = {
         } else {
             Core.log('doc-editor', 'injectToolbarButton', 'Toolbar reference missing.');
         }
+    },
+
+    /**
+     * Locates the Editor Iframe and delegates paste handling to the shared module.
+     */
+    setupPasteHandler: function () {
+        const log = Core.getLogger('doc-editor', 'setupPasteHandler');
+
+        const iframe = Core.getElement(Elements.EDITOR_TEXT_AREA_IFRAME) as HTMLIFrameElement;
+
+        if (!iframe) {
+            log('Editor Iframe not found. Retrying in 1s...');
+            setTimeout(() => this.setupPasteHandler(), 1000);
+            return;
+        }
+
+        this.editorIframe = iframe;
+        DocIframeHandler.attachMarkdownPasterListener(iframe);
     },
 
     /**
