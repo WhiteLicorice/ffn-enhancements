@@ -4,7 +4,7 @@ import { Core } from './Core';
 import { Elements } from '../enums/Elements';
 import { saveAs } from 'file-saver';
 import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
-import { SimpleMarkdownParser } from './SimpleMarkdownParser';
+import { DocIframeHandler } from './DocIframeHandler';
 
 /**
  * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).
@@ -90,7 +90,7 @@ export const DocEditor = {
     },
 
     /**
-     * Locates the Editor Iframe and attaches the paste listener.
+     * Locates the Editor Iframe and delegates paste handling to the shared module.
      */
     setupPasteHandler: function () {
         const log = Core.getLogger('doc-editor', 'setupPasteHandler');
@@ -104,51 +104,7 @@ export const DocEditor = {
         }
 
         this.editorIframe = iframe;
-
-        // We need to wait for the Iframe to fully load its document
-        const attachListener = () => {
-            if (iframe.contentDocument && iframe.contentDocument.body) {
-                log('Attaching Paste Listener to Editor Body.');
-                iframe.contentDocument.body.addEventListener('paste', (e) => this.handlePaste(e));
-            }
-        };
-
-        if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
-            attachListener();
-        } else {
-            iframe.addEventListener('load', attachListener);
-        }
-    },
-
-    /**
-     * Intercepts paste events. 
-     * If the clipboard content looks like Markdown, it parses and inserts it as HTML.
-     * Otherwise, it allows the default TinyMCE behavior (RichText pasting).
-     */
-    handlePaste: function (e: ClipboardEvent) {
-        const log = Core.getLogger('doc-editor', 'handlePaste');
-
-        const text = e.clipboardData?.getData('text/plain');
-        if (!text) return;
-
-        // Heuristic: Check if the text actually contains Markdown syntax.
-        // If it's just a plain sentence, we let TinyMCE handle it (preserves existing behavior).
-        // If it has headers, lists, or bolding markers, we take over.
-        if (SimpleMarkdownParser.isMarkdown(text)) {
-            log('Markdown pattern detected in clipboard. Intercepting paste.');
-
-            e.preventDefault();
-            e.stopPropagation();
-
-            const parsedHtml = SimpleMarkdownParser.parse(text);
-
-            // Insert the parsed HTML into the editor via execCommand to support Undo/Redo
-            if (this.editorIframe && this.editorIframe.contentDocument) {
-                this.editorIframe.contentDocument.execCommand('insertHTML', false, parsedHtml);
-            }
-        } else {
-            log('No Markdown pattern detected. Passing through to TinyMCE.');
-        }
+        DocIframeHandler.attach(iframe);
     },
 
     /**
