@@ -65,51 +65,54 @@ export const TinyMCEButtonFactory = {
     },
 
     /**
-     * Simulates the TinyMCE tooltip behavior.
-     * Since we inject after TinyMCE initializes, the native tooltip manager 
-     * won't see our button. We must render the tooltip ourselves.
+     * Simulates the TinyMCE tooltip behavior by injecting the EXACT DOM structure
+     * used by TinyMCE 4. This ensures the site's existing CSS styles the tooltip.
      */
     attachCustomTooltip: function (element: HTMLElement, text: string) {
-        let tooltipFn: HTMLElement | null = null;
+        let tooltipEl: HTMLElement | null = null;
 
         element.addEventListener('mouseenter', () => {
-            if (tooltipFn) return;
+            if (tooltipEl) return;
 
-            // Create Tooltip Element
-            const tooltip = document.createElement('div');
-            tooltip.textContent = text;
-            // Native TinyMCE tooltip style replication
-            tooltip.style.cssText = `
-                position: fixed; z-index: 100000;
-                background: #333; color: white;
-                padding: 5px 10px; border-radius: 3px;
-                font-family: Arial, sans-serif; font-size: 11px;
-                pointer-events: none; white-space: nowrap;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            // 1. Create the outer container with native classes
+            // 'mce-tooltip-n' means the arrow points North (so the tooltip is below)
+            tooltipEl = document.createElement('div');
+            tooltipEl.className = 'mce-widget mce-tooltip mce-tooltip-n';
+            tooltipEl.style.position = 'absolute';
+            tooltipEl.style.zIndex = '100100'; // Higher than toolbar
+            tooltipEl.style.display = 'block';
+
+            // 2. Create the internal structure required by the theme CSS
+            // <div class="mce-tooltip-arrow"></div>
+            // <div class="mce-tooltip-inner">Text</div>
+            tooltipEl.innerHTML = `
+                <div class="mce-tooltip-arrow"></div>
+                <div class="mce-tooltip-inner">${text}</div>
             `;
 
-            document.body.appendChild(tooltip);
-            tooltipFn = tooltip;
+            document.body.appendChild(tooltipEl);
 
-            // Calculate Position (Centered below the button)
+            // 3. Position Calculation
             const rect = element.getBoundingClientRect();
-            const tooltipRect = tooltip.getBoundingClientRect();
+            const tooltipRect = tooltipEl.getBoundingClientRect();
 
-            const top = rect.bottom + 5; // 5px gap
+            // Center horizontally relative to button
             const left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+            // Place below the button
+            const top = rect.bottom;
 
-            tooltip.style.top = `${top}px`;
-            tooltip.style.left = `${left}px`;
+            tooltipEl.style.left = `${left}px`;
+            tooltipEl.style.top = `${top}px`;
         });
 
         const removeTooltip = () => {
-            if (tooltipFn) {
-                tooltipFn.remove();
-                tooltipFn = null;
+            if (tooltipEl) {
+                tooltipEl.remove();
+                tooltipEl = null;
             }
         };
 
         element.addEventListener('mouseleave', removeTooltip);
-        element.addEventListener('click', removeTooltip); // Remove on click too
+        element.addEventListener('click', removeTooltip);
     }
 };
