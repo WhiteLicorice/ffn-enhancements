@@ -104,7 +104,7 @@ export const DocEditor = {
         }
 
         this.editorIframe = iframe;
-        DocIframeHandler.attach(iframe);
+        DocIframeHandler.attachMarkdownPasterListener(iframe);
     },
 
     /**

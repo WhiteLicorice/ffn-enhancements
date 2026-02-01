@@ -18,7 +18,7 @@ export const DocIframeHandler = {
      * If the iframe document isn't ready, it waits for the 'load' event.
      * @param iframe - The iframe element to enhance.
      */
-    attach: function (iframe: HTMLIFrameElement) {
+    attachMarkdownPasterListener: function (iframe: HTMLIFrameElement) {
         const log = Core.getLogger('DocIframeHandler', 'attach');
 
         const setup = () => {

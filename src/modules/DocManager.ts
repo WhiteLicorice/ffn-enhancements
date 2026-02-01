@@ -39,7 +39,7 @@ export const DocManager = {
 
                             if (iframe && iframe instanceof HTMLIFrameElement) {
                                 log('Copy-N-Paste Editor Iframe detected.');
-                                DocIframeHandler.attach(iframe);
+                                DocIframeHandler.attachMarkdownPasterListener(iframe);
                             }
                         }
                     }
