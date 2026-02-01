@@ -149,11 +149,11 @@ export const Core = {
      * @returns The converted Markdown string, or null if selectors fail.
      */
     parseContentFromPrivateDoc: function (doc: Document, title: string) {
-        const func = 'Core.parseContent';
+        const func = 'parseContent';
         const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc)
 
         if (!contentElement) {
-            this.log('init', func, `Selectors failed for "${title}"`);
+            this.log(this.MODULE_NAME, func, `Selectors failed for "${title}"`);
             return null;
         }
 
@@ -170,7 +170,7 @@ export const Core = {
      * @returns A promise resolving to the Markdown string or null.
      */
     fetchAndConvertPrivateDoc: async function (docId: string, title: string, attempt = 1): Promise<string | null> {
-        const func = 'Core.fetchAndConvert';
+        const func = 'fetchAndConvert';
         const MAX_RETRIES = 3;
 
         try {
@@ -180,7 +180,7 @@ export const Core = {
             if (response.status === 429) {
                 if (attempt <= MAX_RETRIES) {
                     const waitTime = attempt * 2000; // 2s, 4s, 6s...
-                    this.log('init', func, `Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
+                    this.log(this.MODULE_NAME, func, `Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
                     await new Promise(r => setTimeout(r, waitTime));
                     return this.fetchAndConvertPrivateDoc(docId, title, attempt + 1);
                 }
@@ -189,7 +189,7 @@ export const Core = {
             }
 
             if (!response.ok) {
-                this.log('init', func, `Network Error for ${docId}: ${response.status}`);
+                this.log(this.MODULE_NAME, func, `Network Error for ${docId}: ${response.status}`);
                 return null;
             }
 
@@ -198,11 +198,11 @@ export const Core = {
             const markdown = this.parseContentFromPrivateDoc(doc, title);
 
             if (markdown) {
-                this.log('init', func, `Content extracted for "${title}". Length: ${markdown.length}`);
+                this.log(this.MODULE_NAME, func, `Content extracted for "${title}". Length: ${markdown.length}`);
                 return markdown;
             }
         } catch (err) {
-            this.log('init', func, `Error processing ${title}`, err);
+            this.log(this.MODULE_NAME, func, `Error processing ${title}`, err);
         }
         return null;
     }
