@@ -89,19 +89,20 @@ export const Core = {
      * Guaranteed to return an HTMLElement or null. No Arrays.
      * Implements Chain of Responsibility: Specific Delegate -> Global Delegate.
      * @param key - The Element Enum key.
+     * @param doc - A document override if the delegate is supposed to be fetching from another window.
      * @returns The found HTMLElement or null.
      */
-    getElement: function (key: Elements): HTMLElement | null {
+    getElement: function (key: Elements, doc?: Document): HTMLElement | null {
         let el: HTMLElement | null = null;
 
         // 1. Try Page-Specific
         if (this.activeDelegate) {
-            el = this.activeDelegate.getElement(key);
+            el = this.activeDelegate.getElement(key, doc);
         }
 
         // 2. Try Global
         if (!el) {
-            el = GlobalDelegate.getElement(key);
+            el = GlobalDelegate.getElement(key, doc);
         }
 
         // 3. Logging / Error Handling
@@ -117,19 +118,20 @@ export const Core = {
      * Guaranteed to return an Array. No nulls.
      * Implements Chain of Responsibility: Specific Delegate -> Global Delegate.
      * @param key - The Element Enum key.
+     * @param doc - A document override if the delegate is supposed to be fetching from another window.
      * @returns An array of HTMLElements (empty if none found).
      */
-    getElements: function (key: Elements): HTMLElement[] {
+    getElements: function (key: Elements, doc?: Document): HTMLElement[] {
         let els: HTMLElement[] = [];
 
         // 1. Try Page-Specific
         if (this.activeDelegate) {
-            els = this.activeDelegate.getElements(key);
+            els = this.activeDelegate.getElements(key, doc);
         }
 
         // 2. Try Global (only if page specific returned nothing)
         if (els.length === 0) {
-            els = GlobalDelegate.getElements(key);
+            els = GlobalDelegate.getElements(key, doc);
         }
 
         return els;
@@ -140,21 +142,15 @@ export const Core = {
     // ==========================================
 
     /**
-     * Extracts text from a DOM object and converts to Markdown.
+     * Extracts text from a private author-accessible document and converts it to Markdown.
      * Used for both live page parsing and background fetch parsing.
      * @param doc - The document object to query.
      * @param title - The title of the content (for logging purposes).
      * @returns The converted Markdown string, or null if selectors fail.
      */
-    parseContentFromDOM: function (doc: Document, title: string) {
+    parseContentFromPrivateDoc: function (doc: Document, title: string) {
         const func = 'Core.parseContent';
-
-        // Note: We don't use the Delegate here because 'doc' might be an
-        // iframe or a fetched HTML string, not the active 'document'.
-        // We keep these hardcoded selectors for robustness on background fetches.
-        const contentElement = (doc.querySelector("textarea[name='bio']") ||
-            doc.querySelector("#story_text") ||
-            doc.querySelector("#content")) as HTMLTextAreaElement | HTMLElement;
+        const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc)
 
         if (!contentElement) {
             this.log('init', func, `Selectors failed for "${title}"`);
@@ -166,14 +162,14 @@ export const Core = {
     },
 
     /**
-     * Fetches a specific DocID and returns the Markdown content.
+     * Fetches a specific DocID of an author-accessible document and returns the Markdown content.
      * Includes Exponential Backoff to handle FFN's rate limiting (429).
      * @param docId - The internal FFN Document ID.
      * @param title - The title of the document.
      * @param attempt - (Internal) Current retry attempt number.
      * @returns A promise resolving to the Markdown string or null.
      */
-    fetchAndConvertDoc: async function (docId: string, title: string, attempt = 1): Promise<string | null> {
+    fetchAndConvertPrivateDoc: async function (docId: string, title: string, attempt = 1): Promise<string | null> {
         const func = 'Core.fetchAndConvert';
         const MAX_RETRIES = 3;
 
@@ -186,7 +182,7 @@ export const Core = {
                     const waitTime = attempt * 2000; // 2s, 4s, 6s...
                     this.log('init', func, `Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
                     await new Promise(r => setTimeout(r, waitTime));
-                    return this.fetchAndConvertDoc(docId, title, attempt + 1);
+                    return this.fetchAndConvertPrivateDoc(docId, title, attempt + 1);
                 }
                 this.log('core', func, `Rate limit exceeded for "${title}". Please wait a moment.`);
                 return null;
@@ -199,7 +195,7 @@ export const Core = {
 
             const text = await response.text();
             const doc = new DOMParser().parseFromString(text, 'text/html');
-            const markdown = this.parseContentFromDOM(doc, title);
+            const markdown = this.parseContentFromPrivateDoc(doc, title);
 
             if (markdown) {
                 this.log('init', func, `Content extracted for "${title}". Length: ${markdown.length}`);

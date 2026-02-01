@@ -143,7 +143,7 @@ export const DocManager = {
         btnElement.style.cursor = "wait";
 
         Core.log('doc-manager', func, `Starting export for ${title} (${docId})`);
-        const markdown = await Core.fetchAndConvertDoc(docId, title);
+        const markdown = await Core.fetchAndConvertPrivateDoc(docId, title);
 
         if (markdown) {
             const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
@@ -207,7 +207,7 @@ export const DocManager = {
                 // 1500ms delay to avoid 429 Rate Limits
                 await new Promise(r => setTimeout(r, 500));
 
-                const markdown = await Core.fetchAndConvertDoc(docId, title);
+                const markdown = await Core.fetchAndConvertPrivateDoc(docId, title);
                 if (markdown) {
                     zip.file(`${title}.md`, markdown, { date: new Date() });
                     successCount++;

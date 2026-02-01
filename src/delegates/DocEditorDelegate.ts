@@ -12,26 +12,22 @@ export const DocEditorDelegate: IDelegate = {
     /**
      * Primary retrieval method for single elements.
      * @param key - The Element Enum representing the UI component to fetch.
+     * @param doc - A document override if the delegate is supposed to be fetching from another window.
      * @returns The DOM element corresponding to the key, or null if not found.
      */
-    getElement(key: Elements): HTMLElement | null {
+    getElement(key: Elements, doc:Document=document): HTMLElement | null {
         switch (key) {
             case Elements.EDITOR_TOOLBAR:
                 // The TinyMCE toolbar often has a generated ID like 'mceu_15-body'.
                 // We might need a more robust selector if this ID changes dynamically.
-                return document.querySelector('#mceu_15-body');
+                return doc.querySelector('#mceu_15-body');
 
             case Elements.EDITOR_HEADER_LABEL:
                 // The header usually looks like "Edit Document: Title - WordCount"
-                return document.querySelector("div.tcat b");
+                return doc.querySelector("div.tcat b");
 
             case Elements.EDITOR_TITLE_INPUT:
-                return document.querySelector("input[name='title']");
-
-            case Elements.EDITOR_TEXT_AREA:
-                // Fallback for when TinyMCE isn't fully loaded or we need raw access
-                return document.querySelector("textarea[name='bio']") ||
-                    document.querySelector("#story_text");
+                return doc.querySelector("input[name='title']");
 
             default:
                 return null;
@@ -41,10 +37,11 @@ export const DocEditorDelegate: IDelegate = {
     /**
      * Retrieves a collection of DOM elements.
      * Currently, the Editor page does not require fetching lists of elements.
-     * @param key - The Element Enum key (unused in this delegate).
+     * @param _key - The Element Enum key (unused in this delegate).
+     * @param _doc - A document override if the delegate is supposed to be fetching from another window.
      * @returns An empty array to satisfy the IDelegate contract.
      */
-    getElements(_key: Elements): HTMLElement[] {
+    getElements(_key: Elements, _doc:Document=document): HTMLElement[] {
         return [];
     }
 };

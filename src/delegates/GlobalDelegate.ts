@@ -12,18 +12,18 @@ export const GlobalDelegate: IDelegate = {
     /**
      * Retrieves a single site-wide element.
      * @param key - The Element Enum representing the UI component to fetch.
+     * @param doc - A document override if the delegate is supposed to be fetching from another window.
      * @returns The DOM element corresponding to the key, or null if not found.
      */
-    getElement(key: Elements): HTMLElement | null {
+    getElement(key: Elements, doc:Document=document): HTMLElement | null {
         switch (key) {
             case Elements.MAIN_CONTENT_WRAPPER:
                 // FFN usually uses #content_wrapper_inner, but sometimes just #content_wrapper
-                return (document.querySelector('#content_wrapper_inner') ||
-                    document.querySelector('#content_wrapper')) as HTMLElement;
-
-            // If we eventually add support for the top navigation bar (Login/Signup/User),
-            // it would go here.
-
+                return (doc.querySelector('#content_wrapper_inner') ||
+                    doc.querySelector('#content_wrapper')) as HTMLElement;
+            case Elements.EDITOR_TEXT_AREA:
+                // Used globally for all docs that have editable textareas (usually author-accessible pages only)
+                return doc.querySelector("textarea[name='bio']") as HTMLElement;
             default:
                 return null;
         }
@@ -32,10 +32,11 @@ export const GlobalDelegate: IDelegate = {
     /**
      * Retrieves site-wide collections.
      * Currently, there are no global collections needed.
-     * @param _key - The Element Enum key (unused in this delegate).
+     * @param _key - The Element Enum key.
+     * @param _doc - A document override if the delegate is supposed to be fetching from another window.
      * @returns An empty array to satisfy the IDelegate contract.
      */
-    getElements(_key: Elements): HTMLElement[] {
+    getElements(_key: Elements, _doc:Document=document): HTMLElement[] {
         // Currently, there are no global collections needed.
         return [];
     }

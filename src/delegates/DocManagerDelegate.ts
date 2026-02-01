@@ -12,15 +12,16 @@ export const DocManagerDelegate: IDelegate = {
     /**
      * Retrieves single UI components.
      * @param key - The Element Enum representing the UI component to fetch.
+     * @param doc - A document override if the delegate is supposed to be fetching from another window.
      * @returns The DOM element corresponding to the key, or null if not found.
      */
-    getElement(key: Elements): HTMLElement | null {
+    getElement(key: Elements, doc:Document=document): HTMLElement | null {
         switch (key) {
             case Elements.DOC_TABLE:
-                return document.querySelector('#gui_table1') as HTMLElement;
+                return doc.querySelector('#gui_table1') as HTMLElement;
 
             case Elements.DOC_TABLE_HEAD_ROW:
-                const table = document.querySelector('#gui_table1');
+                const table = doc.querySelector('#gui_table1');
                 if (!table) return null;
                 return (table.querySelector('thead tr') || table.querySelector('tbody tr')) as HTMLElement;
 
@@ -35,12 +36,13 @@ export const DocManagerDelegate: IDelegate = {
     /**
      * Retrieves lists of components (e.g., Table Rows).
      * @param key - The Element Enum representing the UI component to fetch.
+     * @param doc - A document override if the delegate is supposed to be fetching from another window.
      * @returns An array of DOM elements (empty if none found).
      */
-    getElements(key: Elements): HTMLElement[] {
+    getElements(key: Elements, doc:Document=document): HTMLElement[] {
         switch (key) {
             case Elements.DOC_TABLE_BODY_ROWS:
-                const bodyTable = document.querySelector('#gui_table1');
+                const bodyTable = doc.querySelector('#gui_table1');
                 if (!bodyTable) return [];
                 const rows = bodyTable.querySelectorAll('tbody tr');
                 return Array.from(rows) as HTMLElement[];
@@ -54,10 +56,11 @@ export const DocManagerDelegate: IDelegate = {
 /**
  * Helper: Finds the "Document Manager" text node or label.
  * Used as an anchor point for injecting the "Download All" button.
+ * @param doc - A document override if the delegate is supposed to be fetching from another window.
  */
-function findDocManagerLabel(): HTMLElement | null {
+function findDocManagerLabel(doc:Document=document): HTMLElement | null {
     const xpath = "//*[text()='Document Manager']";
-    const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    const result = doc.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
     const textNode = result.singleNodeValue as HTMLElement;
     return textNode ? textNode.parentElement : null;
 }

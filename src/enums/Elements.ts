@@ -68,6 +68,6 @@ export enum Elements {
     /** The input field for the document title (fallback if header parsing fails). */
     EDITOR_TITLE_INPUT = 'EDITOR_TITLE_INPUT',
 
-    /** The raw text area (if TinyMCE isn't active or for fallback). */
+    /** The raw text area from private author-only editors. */
     EDITOR_TEXT_AREA = 'EDITOR_TEXT_AREA',
 }

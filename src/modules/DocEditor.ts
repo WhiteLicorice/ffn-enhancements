@@ -96,7 +96,7 @@ export const DocEditor = {
         const func = 'DocEditor.export';
         const title = this.getTitle();
         try {
-            const markdown = Core.parseContentFromDOM(document, title);
+            const markdown = Core.parseContentFromPrivateDoc(document, title);
             if (markdown) {
                 saveAs(new Blob([markdown], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
             }
