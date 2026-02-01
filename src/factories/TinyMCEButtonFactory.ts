@@ -6,7 +6,7 @@
  */
 export const TinyMCEButtonFactory = {
     /**
-     * Creates a fully styled TinyMCE button element.
+     * Creates a fully styled TinyMCE button element with a native-style tooltip.
      * @param ariaLabel - Text for accessibility and tooltip.
      * @param htmlContent - The inner HTML (icon or text).
      * @param onClick - The click event handler.
@@ -14,27 +14,29 @@ export const TinyMCEButtonFactory = {
      */
     create: function (ariaLabel: string, htmlContent: string, onClick: (e: MouseEvent) => void): HTMLElement {
         // 1. Container: Replicates the wrapper div structure
-        // <div class="mce-widget mce-btn" tabindex="-1" role="button" aria-label="...">
         const container = document.createElement('div');
         container.className = 'mce-widget mce-btn';
-        container.style.float = 'right'; // Keep positioning consistent
+        container.style.float = 'right';
         container.setAttribute('tabindex', '-1');
         container.setAttribute('role', 'button');
         container.setAttribute('aria-label', ariaLabel);
-        // Added to match native button state signature
         container.setAttribute('aria-pressed', 'false');
 
-        // container.title = ariaLabel; 
-        // The 'title' attribute triggers the browser's default "plain" tooltip. 
-        // Native TinyMCE buttons do not have a 'title' attribute; they rely on 
-        // 'aria-label' and internal JS to render the dark custom tooltip.
+        // We DO NOT set 'title' here. Setting 'title' forces the browser's 
+        // default ugly tooltip. Instead, we manually render a custom tooltip 
+        // on hover to match the dark TinyMCE style.
+        this.attachCustomTooltip(container, ariaLabel);
 
         // Manually toggle the hover class to ensure the theme applies the correct gradient/border
-        container.onmouseenter = () => container.classList.add('mce-hover');
-        container.onmouseleave = () => container.classList.remove('mce-hover');
+        container.onmouseenter = (_e) => {
+            container.classList.add('mce-hover');
+            // Tooltip logic is handled in attachCustomTooltip
+        };
+        container.onmouseleave = (_e) => {
+            container.classList.remove('mce-hover');
+        };
 
-        // 2. Inner Button: Presentation role only, just like native
-        // <button role="presentation" type="button" tabindex="-1">
+        // 2. Inner Button: Presentation role only
         const button = document.createElement('button');
         button.setAttribute('role', 'presentation');
         button.type = 'button';
@@ -60,5 +62,54 @@ export const TinyMCEButtonFactory = {
 
         container.appendChild(button);
         return container;
+    },
+
+    /**
+     * Simulates the TinyMCE tooltip behavior.
+     * Since we inject after TinyMCE initializes, the native tooltip manager 
+     * won't see our button. We must render the tooltip ourselves.
+     */
+    attachCustomTooltip: function (element: HTMLElement, text: string) {
+        let tooltipFn: HTMLElement | null = null;
+
+        element.addEventListener('mouseenter', () => {
+            if (tooltipFn) return;
+
+            // Create Tooltip Element
+            const tooltip = document.createElement('div');
+            tooltip.textContent = text;
+            // Native TinyMCE tooltip style replication
+            tooltip.style.cssText = `
+                position: fixed; z-index: 100000;
+                background: #333; color: white;
+                padding: 5px 10px; border-radius: 3px;
+                font-family: Arial, sans-serif; font-size: 11px;
+                pointer-events: none; white-space: nowrap;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            `;
+
+            document.body.appendChild(tooltip);
+            tooltipFn = tooltip;
+
+            // Calculate Position (Centered below the button)
+            const rect = element.getBoundingClientRect();
+            const tooltipRect = tooltip.getBoundingClientRect();
+
+            const top = rect.bottom + 5; // 5px gap
+            const left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+
+            tooltip.style.top = `${top}px`;
+            tooltip.style.left = `${left}px`;
+        });
+
+        const removeTooltip = () => {
+            if (tooltipFn) {
+                tooltipFn.remove();
+                tooltipFn = null;
+            }
+        };
+
+        element.addEventListener('mouseleave', removeTooltip);
+        element.addEventListener('click', removeTooltip); // Remove on click too
     }
 };
