@@ -11,20 +11,36 @@ import { saveAs } from 'file-saver';
 export const DocManager = {
     /**
      * Initializes the module by checking for the document table.
-     * Uses polling to ensure the table is present before injecting UI.
+     * Uses MutationObserver (instead of polling) to react instantly when the table loads.
      */
     init: function () {
         const log = Core.getLogger('doc-manager', 'init');
 
         Core.onDomReady(() => {
+            // 1. Fast Path: Check if table exists immediately
             if (Core.getElement(Elements.DOC_TABLE)) {
                 this.injectUI();
-            } else {
-                log('Table not found. Waiting...');
-                setTimeout(() => {
-                    if (Core.getElement(Elements.DOC_TABLE)) this.injectUI();
-                }, 1500);
+                return;
             }
+
+            // 2. Observer Strategy: Wait for table injection
+            log('Table not found. Setting up MutationObserver...');
+            const observer = new MutationObserver((_mutations, obs) => {
+                const table = Core.getElement(Elements.DOC_TABLE);
+                if (table) {
+                    log('Table detected via Observer.');
+                    obs.disconnect(); // Stop observing to save resources
+                    this.injectUI();
+                }
+            });
+
+            // Observe the body subtree as FFN tables often load dynamically
+            observer.observe(document.body, { childList: true, subtree: true });
+
+            // 3. Safety Timeout: Stop observing after 10s to prevent memory leaks
+            setTimeout(() => {
+                observer.disconnect();
+            }, 10000);
         });
     },
 
