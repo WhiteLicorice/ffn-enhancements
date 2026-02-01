@@ -1,10 +1,9 @@
 // factories/TinyMCEButtonFactory.ts
 
 /**
- * Factory responsible for creating buttons that exactly replicate the
+ * Factory responsible for creating buttons that exactly replicate the 
  * DOM structure, CSS metrics, and behavior of native TinyMCE 4 buttons.
  */
-
 export const TinyMCEButtonFactory = {
     /**
      * Creates a fully styled TinyMCE button element.
@@ -22,8 +21,13 @@ export const TinyMCEButtonFactory = {
         container.setAttribute('tabindex', '-1');
         container.setAttribute('role', 'button');
         container.setAttribute('aria-label', ariaLabel);
-        container.title = ariaLabel; // Native tooltip fallback
+        // Added to match native button state signature
+        container.setAttribute('aria-pressed', 'false');
 
+        // container.title = ariaLabel; 
+        // The 'title' attribute triggers the browser's default "plain" tooltip. 
+        // Native TinyMCE buttons do not have a 'title' attribute; they rely on 
+        // 'aria-label' and internal JS to render the dark custom tooltip.
 
         // Manually toggle the hover class to ensure the theme applies the correct gradient/border
         container.onmouseenter = () => container.classList.add('mce-hover');
