@@ -60,7 +60,7 @@ export const DocManagerDelegate: IDelegate = {
  */
 function findDocManagerLabel(doc:Document=document): HTMLElement | null {
     const xpath = "//*[text()='Document Manager']";
-    const result = doc.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+    const result = doc.evaluate(xpath, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
     const textNode = result.singleNodeValue as HTMLElement;
     return textNode ? textNode.parentElement : null;
 }
