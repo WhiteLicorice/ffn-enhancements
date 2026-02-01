@@ -9,21 +9,39 @@ import { saveAs } from 'file-saver';
  */
 export const DocEditor = {
     /**
-     * Initializes the module by waiting for the DOM and polling for the TinyMCE instance.
+     * Initializes the module by waiting for the DOM and observing for the TinyMCE instance.
+     * Uses MutationObserver to react instantly when the toolbar is injected, preventing UI flicker.
      */
     init: function () {
         const log = Core.getLogger('doc-editor', 'init');
 
         Core.onDomReady(() => {
-            log('Polling for TinyMCE...');
-            const checkInt = setInterval(() => {
+            // 1. Fast Path: Check if it's already there
+            const existingToolbar = Core.getElement(Elements.EDITOR_TOOLBAR);
+            if (existingToolbar) {
+                log('TinyMCE found immediately.');
+                this.injectToolbarButton(existingToolbar);
+                return;
+            }
+
+            // 2. Observer Strategy: Wait for injection
+            log('Setting up MutationObserver for TinyMCE...');
+            const observer = new MutationObserver((_mutations, obs) => {
                 const toolbar = Core.getElement(Elements.EDITOR_TOOLBAR);
                 if (toolbar) {
-                    clearInterval(checkInt);
-                    this.injectToolbarButton(toolbar as HTMLElement);
+                    log('TinyMCE detected via Observer.');
+                    obs.disconnect(); // Stop observing to save resources
+                    this.injectToolbarButton(toolbar);
                 }
-            }, 500);
-            setTimeout(() => { if (checkInt) clearInterval(checkInt); }, 5000);
+            });
+
+            // Observe the body subtree because TinyMCE injects deep into the DOM
+            observer.observe(document.body, { childList: true, subtree: true });
+
+            // 3. Safety Timeout: Stop observing after 10s if it never loads
+            setTimeout(() => {
+                observer.disconnect();
+            }, 10000);
         });
     },
 
