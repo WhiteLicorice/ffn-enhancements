@@ -3,11 +3,15 @@
 import { Core } from './Core';
 import { Elements } from '../enums/Elements';
 import { saveAs } from 'file-saver';
+import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
 
 /**
  * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).
  */
 export const DocEditor = {
+    /** Cached reference to the editor toolbar element. */
+    toolbar: null as HTMLElement | null,
+
     /**
      * Initializes the module by waiting for the DOM and observing for the TinyMCE instance.
      * Uses MutationObserver to react instantly when the toolbar is injected, preventing UI flicker.
@@ -20,7 +24,8 @@ export const DocEditor = {
             const existingToolbar = Core.getElement(Elements.EDITOR_TOOLBAR);
             if (existingToolbar) {
                 log('TinyMCE found immediately.');
-                this.injectToolbarButton(existingToolbar as HTMLElement);
+                this.toolbar = existingToolbar;
+                this.setupDownloadButton();
                 return;
             }
 
@@ -31,7 +36,8 @@ export const DocEditor = {
                 if (toolbar) {
                     log('TinyMCE detected via Observer.');
                     obs.disconnect(); // Stop observing to save resources
-                    this.injectToolbarButton(toolbar as HTMLElement);
+                    this.toolbar = toolbar;
+                    this.setupDownloadButton();
                 }
             });
 
@@ -46,55 +52,32 @@ export const DocEditor = {
     },
 
     /**
-     * Injects a custom download button into the TinyMCE toolbar.
-     * Replicates the exact DOM structure of native TinyMCE 4 buttons to ensure
-     * identical hover states and aesthetics.
-     * @param toolbar - The toolbar HTMLElement to append the button to.
+     * Constructs the specific "Download Markdown" button using the Factory
+     * and injects it into the toolbar.
      */
-    injectToolbarButton: function (toolbar: HTMLElement) {
-        // 1. Container: Replicates the wrapper div structure
-        // <div class="mce-widget mce-btn" tabindex="-1" role="button" aria-label="...">
-        const container = document.createElement('div');
-        container.className = 'mce-widget mce-btn';
-        container.style.float = 'right'; // Keep our positioning
-        container.setAttribute('tabindex', '-1');
-        container.setAttribute('role', 'button');
-        container.setAttribute('aria-label', 'Download Markdown');
-        container.title = 'Download as Markdown'; // Native tooltip fallback
+    setupDownloadButton: function () {
+        // Content: Simple span, no layout hacks needed if line-height is set on button
+        const content = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
+        
+        const btn = TinyMCEButtonFactory.create(
+            'Download Markdown',
+            content,
+            () => this.exportCurrentDoc()
+        );
 
-        // Manually toggle the hover class to ensure the theme applies the correct gradient/border
-        container.onmouseenter = () => container.classList.add('mce-hover');
-        container.onmouseleave = () => container.classList.remove('mce-hover');
+        this.injectToolbarButton(btn);
+    },
 
-        // 2. Inner Button: Presentation role only, just like native
-        // <button role="presentation" type="button" tabindex="-1">
-        const button = document.createElement('button');
-        button.setAttribute('role', 'presentation');
-        button.type = 'button';
-        button.setAttribute('tabindex', '-1');
-
-        // CSS to match native TinyMCE button metrics EXACTLY.
-        // TinyMCE 4 buttons rely on padding + line-height to define their size, not explicit height.
-        // Standard is padding: 4px and line-height: 20px -> Total Height ~28px-30px.
-        button.style.cssText = `
-            background: transparent; border: 0; margin: 0; 
-            padding: 4px 8px; /* Standard padding for touch targets */
-            outline: none; cursor: pointer; display: block;
-            line-height: 20px; /* Crucial: Defines the vertical size of the button */
-        `;
-
-        // 3. Content: The Icon/Text
-        // Simple span, no layout hacks needed if line-height is set on button
-        button.innerHTML = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
-
-        button.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this.exportCurrentDoc();
-        };
-
-        container.appendChild(button);
-        toolbar.appendChild(container);
+    /**
+     * Injects a pre-constructed button into the cached TinyMCE toolbar.
+     * @param button - The fully constructed DOM element to append.
+     */
+    injectToolbarButton: function (button: HTMLElement) {
+        if (this.toolbar) {
+            this.toolbar.appendChild(button);
+        } else {
+            Core.log('doc-editor', 'injectToolbarButton', 'Toolbar reference missing.');
+        }
     },
 
     /**
