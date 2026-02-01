@@ -8,11 +8,13 @@ export default defineConfig({
       userscript: {
         name: 'FFN Enhancements',
         namespace: 'http://tampermonkey.net/',
-        version: '8.0',
+        version: '8.1',
         author: 'WhiteLicorice',
         match: ['https://www.fanfiction.net/*'],
         grant: ['GM_xmlhttpRequest'],
         license: 'GPL-3.0-or-later',
+        updateURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',
+        downloadURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',
         // Adding these manually to the Userscript header
         require: [
           'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js',
