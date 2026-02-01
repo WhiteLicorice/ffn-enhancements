@@ -1,6 +1,7 @@
 // delegates/GlobalDelegate.ts
 
 import { Elements } from '../enums/Elements';
+import { BaseDelegate } from './BaseDelegate';
 import { IDelegate } from './IDelegate';
 
 /**
@@ -8,6 +9,7 @@ import { IDelegate } from './IDelegate';
  * Acts as a fallback for specific delegates.
  */
 export const GlobalDelegate: IDelegate = {
+    ...BaseDelegate,
 
     /**
      * Retrieves a single site-wide element.
@@ -28,16 +30,4 @@ export const GlobalDelegate: IDelegate = {
                 return null;
         }
     },
-
-    /**
-     * Retrieves site-wide collections.
-     * Currently, there are no global collections needed.
-     * @param _key - The Element Enum key.
-     * @param _doc - A document override if the delegate is supposed to be fetching from another window.
-     * @returns An empty array to satisfy the IDelegate contract.
-     */
-    getElements(_key: Elements, _doc:Document=document): HTMLElement[] {
-        // Currently, there are no global collections needed.
-        return [];
-    }
 };

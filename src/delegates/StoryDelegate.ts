@@ -1,13 +1,15 @@
 // delegates/StoryDelegate.ts
 
 import { Elements } from '../enums/Elements';
+import { BaseDelegate } from './BaseDelegate';
 import { IDelegate } from './IDelegate';
 
 /**
  * Delegate responsible for DOM retrieval on Story Reading pages (`/s/*`).
  */
 export const StoryDelegate: IDelegate = {
-
+    ...BaseDelegate,
+    
     /**
      * Primary retrieval method for single elements.
      * @param key - The Element Enum representing the UI component to fetch.
@@ -44,18 +46,6 @@ export const StoryDelegate: IDelegate = {
                 return null;
         }
     },
-
-    /**
-     * Retrieval method for collections.
-     * Currently, the Story page does not require fetching lists of elements.
-     * @param _key - The Element Enum key (unused in this delegate).
-     * @param _doc - A document override if the delegate is supposed to be fetching from another window.
-     * @returns An empty array to satisfy the IDelegate contract.
-     */
-    getElements(_key: Elements, _doc:Document=document): HTMLElement[] {
-        // No collections currently mapped for Story view
-        return [];
-    }
 };
 
 /**

@@ -1,6 +1,7 @@
 // delegates/DocManagerDelegate.ts
 
 import { Elements } from '../enums/Elements';
+import { BaseDelegate } from './BaseDelegate';
 import { IDelegate } from './IDelegate';
 
 /**
@@ -8,7 +9,8 @@ import { IDelegate } from './IDelegate';
  * Handles the table structure and injection points for bulk operations.
  */
 export const DocManagerDelegate: IDelegate = {
-
+    ...BaseDelegate,
+    
     /**
      * Retrieves single UI components.
      * @param key - The Element Enum representing the UI component to fetch.

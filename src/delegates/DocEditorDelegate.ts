@@ -1,6 +1,7 @@
 // delegates/DocEditorDelegate.ts
 
 import { Elements } from '../enums/Elements';
+import { BaseDelegate } from './BaseDelegate';
 import { IDelegate } from './IDelegate';
 
 /**
@@ -8,6 +9,7 @@ import { IDelegate } from './IDelegate';
  * Handles TinyMCE toolbars, title inputs, and header text.
  */
 export const DocEditorDelegate: IDelegate = {
+    ...BaseDelegate,
 
     /**
      * Primary retrieval method for single elements.
@@ -33,15 +35,4 @@ export const DocEditorDelegate: IDelegate = {
                 return null;
         }
     },
-
-    /**
-     * Retrieves a collection of DOM elements.
-     * Currently, the Editor page does not require fetching lists of elements.
-     * @param _key - The Element Enum key (unused in this delegate).
-     * @param _doc - A document override if the delegate is supposed to be fetching from another window.
-     * @returns An empty array to satisfy the IDelegate contract.
-     */
-    getElements(_key: Elements, _doc:Document=document): HTMLElement[] {
-        return [];
-    }
 };
