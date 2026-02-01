@@ -96,10 +96,14 @@ export const TinyMCEButtonFactory = {
             const rect = element.getBoundingClientRect();
             const tooltipRect = tooltipEl.getBoundingClientRect();
 
-            // Center horizontally relative to button
-            const left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
-            // Place below the button
-            const top = rect.bottom;
+            // Center horizontally relative to button.
+            // We MUST add window.scrollX because we are absolute positioning relative 
+            // to the document body, not the viewport.
+            const left = rect.left + (rect.width / 2) - (tooltipRect.width / 2) + window.scrollX;
+
+            // Place below the button.
+            // We MUST add window.scrollY to account for the user's scroll position.
+            const top = rect.bottom + window.scrollY;
 
             tooltipEl.style.left = `${left}px`;
             tooltipEl.style.top = `${top}px`;
