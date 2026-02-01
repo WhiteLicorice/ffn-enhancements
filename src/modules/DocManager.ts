@@ -162,7 +162,10 @@ export const DocManager = {
 
     /**
      * Handles the bulk export of all visible documents into a ZIP file.
-     * Iterates through all rows, fetches content, and packages it.
+     * Implements a robust Two-Pass System:
+     * 1. Iterates through all rows.
+     * 2. If any fail (due to rate limits), waits for a cool-down period.
+     * 3. Retries the failed items with a longer delay.
      * @param e - The mouse event from the bulk button.
      */
     runBulkExport: async function (e: MouseEvent) {
@@ -190,10 +193,17 @@ export const DocManager = {
         btn.style.cursor = "wait";
         btn.style.opacity = "1";
 
+        // Store failed items for the second pass
+        interface ExportItem { docId: string; title: string; }
+        let failedItems: ExportItem[] = [];
+
         try {
             const zip = new JSZip();
             let successCount = 0;
 
+            // ============================================================
+            // PASS 1: Main Iteration
+            // ============================================================
             for (let i = 0; i < rows.length; i++) {
                 const row = rows[i] as HTMLTableRowElement;
                 const editLink = row.querySelector('a[href*="docid="]') as HTMLAnchorElement;
@@ -204,17 +214,55 @@ export const DocManager = {
 
                 btn.innerText = `${i + 1}/${rows.length}`;
 
-                // 1500ms delay to avoid 429 Rate Limits
-                await new Promise(r => setTimeout(r, 500));
+                // Standard delay: 1000ms
+                await new Promise(r => setTimeout(r, 1000));
 
+                // Attempt Fetch
                 const markdown = await Core.fetchAndConvertPrivateDoc(docId, title);
+
                 if (markdown) {
                     zip.file(`${title}.md`, markdown, { date: new Date() });
                     successCount++;
+                } else {
+                    Core.log('doc-manager', func, `Pass 1 Failed for ${title}. Queueing for retry.`);
+                    failedItems.push({ docId, title });
                 }
             }
 
-            if (successCount > 0) {
+            // ============================================================
+            // PASS 2: Retry Logic for Skipped Items
+            // ============================================================
+            if (failedItems.length > 0) {
+                Core.log('doc-manager', func, `Pass 1 complete. ${failedItems.length} items failed. Starting Cool Down...`);
+                btn.innerText = "Cooling...";
+
+                // Cool Down: 5 Seconds to let FFN servers breathe
+                await new Promise(r => setTimeout(r, 5000));
+
+                for (let i = 0; i < failedItems.length; i++) {
+                    const item = failedItems[i];
+                    btn.innerText = `Retry ${i + 1}/${failedItems.length}`;
+
+                    // Extended Delay: 3000ms (Very polite)
+                    await new Promise(r => setTimeout(r, 3000));
+
+                    const markdown = await Core.fetchAndConvertPrivateDoc(item.docId, item.title);
+
+                    if (markdown) {
+                        zip.file(`${item.title}.md`, markdown, { date: new Date() });
+                        successCount++;
+                    } else {
+                        Core.log('doc-manager', func, `Pass 2 Permanent Failure for ${item.title}`);
+                        // Create a placeholder file so the user knows it failed
+                        zip.file(`ERROR_${item.title}.txt`, `Failed to retrieve content for DocID ${item.docId} after multiple attempts.`);
+                    }
+                }
+            }
+
+            // ============================================================
+            // Finalization
+            // ============================================================
+            if (successCount > 0 || failedItems.length > 0) {
                 btn.innerText = "Zipping...";
                 Core.log('doc-manager', func, `Zipping ${successCount} documents`);
 
@@ -223,7 +271,10 @@ export const DocManager = {
                 const timestamp = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 19);
                 saveAs(blob, `ffn_${timestamp}.zip`);
                 btn.innerText = "Done";
+            } else {
+                btn.innerText = "Empty";
             }
+
         } catch (error) {
             Core.log('doc-manager', func, 'An error occurred during bulk export. Check console for details.', error);
             btn.innerText = "Error";
