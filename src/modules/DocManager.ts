@@ -14,11 +14,13 @@ export const DocManager = {
      * Uses polling to ensure the table is present before injecting UI.
      */
     init: function () {
+        const log = Core.getLogger('doc-manager', 'init');
+
         Core.onDomReady(() => {
             if (Core.getElement(Elements.DOC_TABLE)) {
                 this.injectUI();
             } else {
-                Core.log('doc-manager', 'DocManager', 'Table not found. Waiting...');
+                log('Table not found. Waiting...');
                 setTimeout(() => {
                     if (Core.getElement(Elements.DOC_TABLE)) this.injectUI();
                 }, 1500);
@@ -39,7 +41,8 @@ export const DocManager = {
      * Finds the "Document Manager" label or falls back to the main content wrapper.
      */
     injectBulkButton: function () {
-        Core.log('doc-manager', 'injectBulkButton', 'Attempting to inject UI...');
+        const log = Core.getLogger('doc-manager', 'injectBulkButton');
+        log('Attempting to inject UI...');
 
         let container = Core.getElement(Elements.DOC_MANAGER_LABEL);
 
@@ -48,7 +51,7 @@ export const DocManager = {
             container = Core.getElement(Elements.MAIN_CONTENT_WRAPPER);
         }
 
-        if (!container) return Core.log('doc-manager', 'injectBulkButton', 'ERROR: Container not found.');
+        if (!container) return log('ERROR: Container not found.');
 
         if (getComputedStyle(container).position === 'static') {
             container.style.position = 'relative';
@@ -69,7 +72,7 @@ export const DocManager = {
         btn.onclick = this.runBulkExport.bind(this);
 
         container.appendChild(btn);
-        Core.log('doc-manager', 'injectBulkButton', 'Bulk Button injected.');
+        log('Bulk Button injected.');
     },
 
     /**
@@ -77,11 +80,11 @@ export const DocManager = {
      * Adds an "Export" button to each row for individual downloading.
      */
     injectTableColumn: function () {
-        const func = 'injectTableColumn';
+        const log = Core.getLogger('doc-manager', 'injectTableColumn');
 
         const table = Core.getElement(Elements.DOC_TABLE);
         if (!table) {
-            Core.log('doc-manager', func, 'Table not found.');
+            log('Table not found.');
             return;
         }
 
@@ -125,7 +128,7 @@ export const DocManager = {
             row.appendChild(td);
         });
 
-        Core.log('doc-manager', func, 'Column injected.');
+        log('Column injected.');
     },
 
     /**
@@ -135,14 +138,14 @@ export const DocManager = {
      * @param title - The title of the document.
      */
     runSingleExport: async function (btnElement: HTMLElement, docId: string, title: string) {
-        const func = 'runSingleExport';
+        const log = Core.getLogger('doc-manager', 'runSingleExport');
         const originalText = btnElement.innerText;
 
         btnElement.innerText = "...";
         btnElement.style.color = "gray";
         btnElement.style.cursor = "wait";
 
-        Core.log('doc-manager', func, `Starting export for ${title} (${docId})`);
+        log(`Starting export for ${title} (${docId})`);
         const markdown = await Core.fetchAndConvertPrivateDoc(docId, title);
 
         if (markdown) {
@@ -156,7 +159,7 @@ export const DocManager = {
             }, 2000);
         } else {
             btnElement.innerText = "Err";
-            Core.log('doc-manager', 'runSingleExport', "Failed to fetch document content.");
+            log("Failed to fetch document content.");
         }
     },
 
@@ -169,12 +172,13 @@ export const DocManager = {
      * @param e - The mouse event from the bulk button.
      */
     runBulkExport: async function (e: MouseEvent) {
-        const func = 'runBulkExport';
-        Core.log('doc-manager', func, 'Export initiated.');
+        const log = Core.getLogger('doc-manager', 'runBulkExport');
+
+        log('Export initiated.');
         const btn = e.target as HTMLButtonElement;
 
         if (!Core.getElement(Elements.DOC_TABLE)) {
-            Core.log('doc-manager', func, "Table not found.");
+            log("Table not found.");
             return;
         }
 
@@ -184,7 +188,7 @@ export const DocManager = {
         const rows = allRows.filter(row => row.querySelector('a[href*="docid="]'));
 
         if (rows.length === 0) {
-            Core.log('doc-manager', func, "No documents to export.");
+            log("No documents to export.");
             return;
         }
 
@@ -224,7 +228,7 @@ export const DocManager = {
                     zip.file(`${title}.md`, markdown, { date: new Date() });
                     successCount++;
                 } else {
-                    Core.log('doc-manager', func, `Pass 1 Failed for ${title}. Queueing for retry.`);
+                    log(`Pass 1 Failed for ${title}. Queueing for retry.`);
                     failedItems.push({ docId, title });
                 }
             }
@@ -233,7 +237,7 @@ export const DocManager = {
             // PASS 2: Retry Logic for Skipped Items
             // ============================================================
             if (failedItems.length > 0) {
-                Core.log('doc-manager', func, `Pass 1 complete. ${failedItems.length} items failed. Starting Cool Down...`);
+                log(`Pass 1 complete. ${failedItems.length} items failed. Starting Cool Down...`);
                 btn.innerText = "Cooling...";
 
                 // Cool Down: 5 Seconds to let FFN servers breathe
@@ -252,7 +256,7 @@ export const DocManager = {
                         zip.file(`${item.title}.md`, markdown, { date: new Date() });
                         successCount++;
                     } else {
-                        Core.log('doc-manager', func, `Pass 2 Permanent Failure for ${item.title}`);
+                        log(`Pass 2 Permanent Failure for ${item.title}`);
                         // Create a placeholder file so the user knows it failed
                         zip.file(`ERROR_${item.title}.txt`, `Failed to retrieve content for DocID ${item.docId} after multiple attempts.`);
                     }
@@ -264,7 +268,7 @@ export const DocManager = {
             // ============================================================
             if (successCount > 0 || failedItems.length > 0) {
                 btn.innerText = "Zipping...";
-                Core.log('doc-manager', func, `Zipping ${successCount} documents`);
+                log(`Zipping ${successCount} documents`);
 
                 // Generate 'blob' directly instead of 'uint8array', because TS is being strict about this
                 const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
@@ -276,7 +280,7 @@ export const DocManager = {
             }
 
         } catch (error) {
-            Core.log('doc-manager', func, 'An error occurred during bulk export. Check console for details.', error);
+            log('An error occurred during bulk export. Check console for details.', error);
             btn.innerText = "Error";
         } finally {
             // Always reset the button state, even if an error occurs

@@ -8,15 +8,14 @@ import { Elements } from '../enums/Elements';
  * Handles unlocking text selection and enabling hotkey navigation.
  */
 export const StoryReader = {
-    MODULE_NAME: 'story-reader',
-
     /**
      * Initializes the module logic.
      * Waits for the DOM to be ready before applying enhancements.
      */
     init: function () {
+        const log = Core.getLogger('story-reader', 'init');
         Core.onDomReady(() => {
-            Core.log(this.MODULE_NAME, 'init', 'Initializing UX Enhancements...');
+            log('Initializing UX Enhancements...');
             this.enableSelectableText();
             this.enableKeyboardNav();
         });
@@ -27,7 +26,8 @@ export const StoryReader = {
      * Also replaces the story text node with a clone to strip inline event listeners (like oncopy/onselectstart).
      */
     enableSelectableText: function () {
-        const func = 'enableSelectableText'
+        const log = Core.getLogger('story-reader', 'enableSelectableText');
+
         const style = document.createElement('style');
         style.innerHTML = `
             #storytext, .storytext, p {
@@ -36,13 +36,16 @@ export const StoryReader = {
             }
         `;
         document.head.appendChild(style);
+        log('Selection CSS injected.');
 
         const storyText = Core.getElement(Elements.STORY_TEXT);
         if (storyText) {
             // Cloning the node removes event listeners attached via JS, effectively neutralizing anti-copy scripts
             const clone = storyText.cloneNode(true);
             storyText.parentNode?.replaceChild(clone, storyText);
-            Core.log(this.MODULE_NAME, func, 'Text selection blocking removed.');
+            log('Text selection blocking removed (Event Listeners stripped via clone).');
+        } else {
+            log('Story text container not found.');
         }
     },
 
@@ -55,28 +58,40 @@ export const StoryReader = {
      * - Down Arrow / S: Scroll Down
      */
     enableKeyboardNav: function () {
+        const log = Core.getLogger('story-reader', 'enableKeyboardNav');
+
         document.addEventListener('keydown', (e) => {
             const target = e.target as HTMLElement;
 
             // Check if user is typing in an input or the review box
             const reviewBox = Core.getElement(Elements.REVIEW_BOX);
             if (['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable || target === reviewBox) return;
-            
+
             // TODO: Utilize a Command design pattern so we can change keybinds here.
             if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') {
                 const nextBtn = Core.getElement(Elements.NEXT_CHAPTER_BTN);
-                if (nextBtn) nextBtn.click();
+                if (nextBtn) {
+                    log('Triggering Next Chapter');
+                    nextBtn.click();
+                }
             }
             else if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') {
                 const prevBtn = Core.getElement(Elements.PREV_CHAPTER_BTN);
-                if (prevBtn) prevBtn.click();
+                if (prevBtn) {
+                    log('Triggering Previous Chapter');
+                    prevBtn.click();
+                }
             }
             else if (e.key.toLowerCase() === 'w' || e.key === 'ArrowUp') {
+                log('Scrolling Up');
                 window.scrollBy({ top: -300, behavior: 'smooth' });
             }
             else if (e.key.toLowerCase() === 's' || e.key === 'ArrowDown') {
+                log('Scrolling Down');
                 window.scrollBy({ top: 300, behavior: 'smooth' });
             }
         });
+
+        log('Keyboard navigation listeners attached.');
     }
 };

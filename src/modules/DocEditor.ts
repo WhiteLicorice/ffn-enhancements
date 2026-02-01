@@ -12,8 +12,10 @@ export const DocEditor = {
      * Initializes the module by waiting for the DOM and polling for the TinyMCE instance.
      */
     init: function () {
+        const log = Core.getLogger('doc-editor', 'init');
+
         Core.onDomReady(() => {
-            Core.log('doc-editor', 'DocEditor', 'Polling for TinyMCE...');
+            log('Polling for TinyMCE...');
             const checkInt = setInterval(() => {
                 const toolbar = Core.getElement(Elements.EDITOR_TOOLBAR);
                 if (toolbar) {
@@ -93,15 +95,16 @@ export const DocEditor = {
      * Uses FileSaver to trigger the browser download.
      */
     exportCurrentDoc: function () {
-        const func = 'DocEditor.export';
+        const log = Core.getLogger('doc-editor', 'exportCurrentDoc');
         const title = this.getTitle();
+
         try {
             const markdown = Core.parseContentFromPrivateDoc(document, title);
             if (markdown) {
                 saveAs(new Blob([markdown], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
             }
         } catch (e) {
-            Core.log('doc-editor', func, 'CRITICAL ERROR', e);
+            log('CRITICAL ERROR', e);
         }
     }
 };

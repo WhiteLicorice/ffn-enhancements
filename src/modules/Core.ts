@@ -43,6 +43,19 @@ export const Core = {
     },
 
     /**
+     * Logger Factory: Returns a bound logging function for a specific context.
+     * This prevents manual repetition of page and function names in every log call.
+     * @param page_name - The context/module name.
+     * @param funcName - The specific function name.
+     * @returns A function that accepts (msg, data).
+     */
+    getLogger: function (page_name: string, funcName: string) {
+        return (msg: string, data?: any) => {
+            this.log(page_name, funcName, msg, data);
+        };
+    },
+
+    /**
      * Runs a callback when the DOM is fully loaded.
      * Essential for userscripts running at 'document-start'.
      * @param callback - The function to execute once the DOM is ready.
@@ -65,22 +78,22 @@ export const Core = {
      * @param pagePath - window.location.pathname
      */
     setDelegate: function (pagePath: string) {
-        const func = 'setDelegate';
+        const log = this.getLogger(this.MODULE_NAME, 'setDelegate');
 
         if (pagePath.startsWith('/s/')) {
             this.activeDelegate = StoryDelegate;
-            this.log(this.MODULE_NAME, func, 'Strategy set to StoryDelegate');
+            log('Strategy set to StoryDelegate');
         }
         else if (pagePath === "/docs/docs.php") {
             this.activeDelegate = DocManagerDelegate;
-            this.log(this.MODULE_NAME, func, 'Strategy set to DocManagerDelegate');
+            log('Strategy set to DocManagerDelegate');
         }
         else if (pagePath.includes("/docs/edit.php")) {
             this.activeDelegate = DocEditorDelegate;
-            this.log(this.MODULE_NAME, func, 'Strategy set to DocEditorDelegate');
+            log('Strategy set to DocEditorDelegate');
         }
         else {
-            this.log(this.MODULE_NAME, func, 'No specific delegate found for this path.');
+            log('No specific delegate found for this path.');
         }
     },
 
@@ -93,6 +106,7 @@ export const Core = {
      * @returns The found HTMLElement or null.
      */
     getElement: function (key: Elements, doc?: Document): HTMLElement | null {
+        const log = this.getLogger(this.MODULE_NAME, 'getElement');
         let el: HTMLElement | null = null;
 
         // 1. Try Page-Specific
@@ -107,7 +121,7 @@ export const Core = {
 
         // 3. Logging / Error Handling
         if (!el) {
-            this.log(this.MODULE_NAME, 'getElement', `Selector failed for key: ${key}`);
+            log(`Selector failed for key: ${key}`);
         }
 
         return el;
@@ -149,11 +163,11 @@ export const Core = {
      * @returns The converted Markdown string, or null if selectors fail.
      */
     parseContentFromPrivateDoc: function (doc: Document, title: string) {
-        const func = 'parseContent';
-        const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc)
+        const log = this.getLogger(this.MODULE_NAME, 'parseContentFromPrivateDoc');
+        const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc);
 
         if (!contentElement) {
-            this.log(this.MODULE_NAME, func, `Selectors failed for "${title}"`);
+            log(`Selectors failed for "${title}"`);
             return null;
         }
 
@@ -170,7 +184,7 @@ export const Core = {
      * @returns A promise resolving to the Markdown string or null.
      */
     fetchAndConvertPrivateDoc: async function (docId: string, title: string, attempt = 1): Promise<string | null> {
-        const func = 'fetchAndConvert';
+        const log = this.getLogger(this.MODULE_NAME, 'fetchAndConvertPrivateDoc');
         const MAX_RETRIES = 3;
 
         try {
@@ -180,16 +194,16 @@ export const Core = {
             if (response.status === 429) {
                 if (attempt <= MAX_RETRIES) {
                     const waitTime = attempt * 2000; // 2s, 4s, 6s...
-                    this.log(this.MODULE_NAME, func, `Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
+                    log(`Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
                     await new Promise(r => setTimeout(r, waitTime));
                     return this.fetchAndConvertPrivateDoc(docId, title, attempt + 1);
                 }
-                this.log(this.MODULE_NAME, func, `Rate limit exceeded for "${title}". Please wait a moment.`);
+                log(`Rate limit exceeded for "${title}". Please wait a moment.`);
                 return null;
             }
 
             if (!response.ok) {
-                this.log(this.MODULE_NAME, func, `Network Error for ${docId}: ${response.status}`);
+                log(`Network Error for ${docId}: ${response.status}`);
                 return null;
             }
 
@@ -198,11 +212,11 @@ export const Core = {
             const markdown = this.parseContentFromPrivateDoc(doc, title);
 
             if (markdown) {
-                this.log(this.MODULE_NAME, func, `Content extracted for "${title}". Length: ${markdown.length}`);
+                log(`Content extracted for "${title}". Length: ${markdown.length}`);
                 return markdown;
             }
         } catch (err) {
-            this.log(this.MODULE_NAME, func, `Error processing ${title}`, err);
+            log(`Error processing ${title}`, err);
         }
         return null;
     }

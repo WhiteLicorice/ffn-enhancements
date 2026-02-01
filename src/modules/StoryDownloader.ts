@@ -23,9 +23,15 @@ export const StoryDownloader = {
      * Uses the Core Delegate system to find the injection point.
      */
     init: function () {
+        const log = Core.getLogger('story-downloader', 'init');
         Core.onDomReady(() => {
             const header = Core.getElement(Elements.PROFILE_HEADER);
-            if (header) this.injectDropdown(header as HTMLElement);
+            if (header) {
+                log('Header found. Proceeding to inject UI.');
+                this.injectDropdown(header as HTMLElement);
+            } else {
+                log('Profile header not found. Aborting initialization.');
+            }
         });
     },
 
@@ -35,6 +41,7 @@ export const StoryDownloader = {
      * @param parentGroup - The header container element where the dropdown should be injected.
      */
     injectDropdown: function (parentGroup: HTMLElement) {
+        const log = Core.getLogger('story-downloader', 'injectDropdown');
         const container = document.createElement('div');
         container.style.cssText = "display: inline-block; position: relative; margin-right: 5px; vertical-align: top; float: right;";
 
@@ -78,8 +85,10 @@ export const StoryDownloader = {
         const followBtn = Core.getElement(Elements.FOLLOW_BUTTON_CONTAINER);
 
         if (followBtn && followBtn.parentNode === parentGroup && followBtn.nextSibling) {
+            log('Injecting dropdown before Follow/Fav sibling.');
             parentGroup.insertBefore(container, followBtn.nextSibling);
         } else {
+            log('Appending dropdown to parent group.');
             parentGroup.appendChild(container);
         }
 
@@ -102,6 +111,8 @@ export const StoryDownloader = {
      * @param format - The file format (epub, mobi, pdf, html).
      */
     processDownload: function (format: string) {
+        const log = Core.getLogger('story-downloader', 'processDownload');
+
         if (!this.mainBtn) return;
         this.mainBtn.disabled = true;
         this.isDownloading = true;
@@ -109,24 +120,41 @@ export const StoryDownloader = {
         const storyUrl = window.location.href.split('?')[0];
         const apiUrl = `https://fichub.net/api/v0/epub?q=${encodeURIComponent(storyUrl)}`;
 
+        log(`Initiating download for ${format}. API: ${apiUrl}`);
+
         GM_xmlhttpRequest({
             method: "GET",
             url: apiUrl,
             headers: { "User-Agent": "FFN-Enhancements" },
             // Explicitly type the 'res' parameter so the alias doesn't error out
             onload: (res: { status: number; responseText: string }) => {
+                log(`Response received. Status: ${res.status}`);
+
                 if (res.status === 429) {
-                    Core.log('story-downloader', 'GM_xmlhttpRequest', "Fichub Server Busy.");
+                    log("Fichub Server Busy (429).");
+                    alert("Fichub Server Busy. Please try again later.");
+                    this.resetButton();
                     return;
                 }
                 try {
                     const data = JSON.parse(res.responseText);
                     const rel = data.urls?.[format] || data[format + '_url'];
-                    if (rel) window.location.href = "https://fichub.net" + rel;
-                } catch (e) { Core.log('story-reader', 'Fichub', 'JSON Error', e); }
+                    if (rel) {
+                        const dlUrl = "https://fichub.net" + rel;
+                        log(`Download URL found: ${dlUrl}`);
+                        window.location.href = dlUrl;
+                    } else {
+                        log(`Format '${format}' not found in API response.`, data);
+                    }
+                } catch (e) {
+                    log('JSON Parsing Error', e);
+                }
                 this.resetButton();
             },
-            onerror: () => this.resetButton()
+            onerror: (err) => {
+                log('Network/GM_xmlhttpRequest Error', err);
+                this.resetButton();
+            }
         });
     },
 
