@@ -19,7 +19,8 @@ export default defineConfig({
         require: [
           'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js',
           'https://cdn.jsdelivr.net/npm/file-saver@2.0.4/dist/FileSaver.min.js',
-          'https://cdn.jsdelivr.net/npm/turndown@7.2.2/dist/turndown.js'
+          'https://cdn.jsdelivr.net/npm/turndown@7.2.2/dist/turndown.js',
+          'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
         ],
       },
       build: {
@@ -30,6 +31,7 @@ export default defineConfig({
           'jszip': 'JSZip',
           'file-saver': 'saveAs',
           'turndown': 'TurndownService',
+          'marked': 'marked'
         },
       },
     }),

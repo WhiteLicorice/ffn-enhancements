@@ -4,6 +4,7 @@ import { Core } from './Core';
 import { Elements } from '../enums/Elements';
 import { saveAs } from 'file-saver';
 import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
+import { SimpleMarkdownParser } from './SimpleMarkdownParser';
 
 /**
  * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).
@@ -11,6 +12,9 @@ import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
 export const DocEditor = {
     /** Cached reference to the editor toolbar element. */
     toolbar: null as HTMLElement | null,
+
+    /** Reference to the editor iframe where content lives. */
+    editorIframe: null as HTMLIFrameElement | null,
 
     /**
      * Initializes the module by waiting for the DOM and observing for the TinyMCE instance.
@@ -24,8 +28,7 @@ export const DocEditor = {
             const existingToolbar = Core.getElement(Elements.EDITOR_TOOLBAR);
             if (existingToolbar) {
                 log('TinyMCE found immediately.');
-                this.toolbar = existingToolbar;
-                this.setupDownloadButton();
+                this.handleEditorFound(existingToolbar);
                 return;
             }
 
@@ -36,8 +39,7 @@ export const DocEditor = {
                 if (toolbar) {
                     log('TinyMCE detected via Observer.');
                     obs.disconnect(); // Stop observing to save resources
-                    this.toolbar = toolbar;
-                    this.setupDownloadButton();
+                    this.handleEditorFound(toolbar);
                 }
             });
 
@@ -52,20 +54,27 @@ export const DocEditor = {
     },
 
     /**
-     * Constructs the specific "Download Markdown" button using the Factory
-     * and injects it into the toolbar.
+     * Common handler for when the Editor DOM is located.
      */
-    setupDownloadButton: function () {
-        // Content: Simple span, no layout hacks needed if line-height is set on button
-        const content = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
-        
-        const btn = TinyMCEButtonFactory.create(
+    handleEditorFound: function (toolbar: HTMLElement) {
+        this.toolbar = toolbar;
+        this.setupButtons();
+        this.setupPasteHandler();
+    },
+
+    /**
+     * Sets up the toolbar buttons.
+     */
+    setupButtons: function () {
+        // Download Button
+        const dlContent = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
+        const dlBtn = TinyMCEButtonFactory.create(
             'Download Markdown',
-            content,
+            dlContent,
             () => this.exportCurrentDoc()
         );
 
-        this.injectToolbarButton(btn);
+        this.injectToolbarButton(dlBtn);
     },
 
     /**
@@ -77,6 +86,68 @@ export const DocEditor = {
             this.toolbar.appendChild(button);
         } else {
             Core.log('doc-editor', 'injectToolbarButton', 'Toolbar reference missing.');
+        }
+    },
+
+    /**
+     * Locates the Editor Iframe and attaches the paste listener.
+     */
+    setupPasteHandler: function () {
+        const log = Core.getLogger('doc-editor', 'setupPasteHandler');
+
+        const iframe = Core.getElement(Elements.EDITOR_TEXT_AREA_IFRAME) as HTMLIFrameElement;
+
+        if (!iframe) {
+            log('Editor Iframe not found. Retrying in 1s...');
+            setTimeout(() => this.setupPasteHandler(), 1000);
+            return;
+        }
+
+        this.editorIframe = iframe;
+
+        // We need to wait for the Iframe to fully load its document
+        const attachListener = () => {
+            if (iframe.contentDocument && iframe.contentDocument.body) {
+                log('Attaching Paste Listener to Editor Body.');
+                iframe.contentDocument.body.addEventListener('paste', (e) => this.handlePaste(e));
+            }
+        };
+
+        if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+            attachListener();
+        } else {
+            iframe.addEventListener('load', attachListener);
+        }
+    },
+
+    /**
+     * Intercepts paste events. 
+     * If the clipboard content looks like Markdown, it parses and inserts it as HTML.
+     * Otherwise, it allows the default TinyMCE behavior (RichText pasting).
+     */
+    handlePaste: function (e: ClipboardEvent) {
+        const log = Core.getLogger('doc-editor', 'handlePaste');
+
+        const text = e.clipboardData?.getData('text/plain');
+        if (!text) return;
+
+        // Heuristic: Check if the text actually contains Markdown syntax.
+        // If it's just a plain sentence, we let TinyMCE handle it (preserves existing behavior).
+        // If it has headers, lists, or bolding markers, we take over.
+        if (SimpleMarkdownParser.isMarkdown(text)) {
+            log('Markdown pattern detected in clipboard. Intercepting paste.');
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            const parsedHtml = SimpleMarkdownParser.parse(text);
+
+            // Insert the parsed HTML into the editor via execCommand to support Undo/Redo
+            if (this.editorIframe && this.editorIframe.contentDocument) {
+                this.editorIframe.contentDocument.execCommand('insertHTML', false, parsedHtml);
+            }
+        } else {
+            log('No Markdown pattern detected. Passing through to TinyMCE.');
         }
     },
 

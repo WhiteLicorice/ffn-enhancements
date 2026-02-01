@@ -70,4 +70,8 @@ export enum Elements {
 
     /** The raw text area from private author-only editors. */
     EDITOR_TEXT_AREA = 'EDITOR_TEXT_AREA',
+
+    /** The editor i-frame that EDITOR_TEXT_AREA uses. */
+    EDITOR_TEXT_AREA_IFRAME = 'EDITOR_TEXT_AREA_IFRAME',
+    
 }

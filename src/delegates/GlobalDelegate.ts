@@ -26,6 +26,8 @@ export const GlobalDelegate: IDelegate = {
             case Elements.EDITOR_TEXT_AREA:
                 // Used globally for all docs that have editable textareas (usually author-accessible pages only)
                 return doc.querySelector("textarea[name='bio']") as HTMLElement;
+            case Elements.EDITOR_TEXT_AREA_IFRAME:
+                return doc.querySelector("#bio_ifr") as HTMLElement;
             default:
                 return null;
         }
