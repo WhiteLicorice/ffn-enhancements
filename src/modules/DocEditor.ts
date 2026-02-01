@@ -20,7 +20,7 @@ export const DocEditor = {
             const existingToolbar = Core.getElement(Elements.EDITOR_TOOLBAR);
             if (existingToolbar) {
                 log('TinyMCE found immediately.');
-                this.injectToolbarButton(existingToolbar);
+                this.injectToolbarButton(existingToolbar as HTMLElement);
                 return;
             }
 
@@ -31,7 +31,7 @@ export const DocEditor = {
                 if (toolbar) {
                     log('TinyMCE detected via Observer.');
                     obs.disconnect(); // Stop observing to save resources
-                    this.injectToolbarButton(toolbar);
+                    this.injectToolbarButton(toolbar as HTMLElement);
                 }
             });
 
@@ -47,19 +47,45 @@ export const DocEditor = {
 
     /**
      * Injects a custom download button into the TinyMCE toolbar.
+     * Replicates the exact DOM structure of native TinyMCE 4 buttons to ensure
+     * identical hover states and aesthetics.
      * @param toolbar - The toolbar HTMLElement to append the button to.
      */
     injectToolbarButton: function (toolbar: HTMLElement) {
+        // 1. Container: Replicates the wrapper div structure
+        // <div class="mce-widget mce-btn" tabindex="-1" role="button" aria-label="...">
         const container = document.createElement('div');
         container.className = 'mce-widget mce-btn';
-        container.style.float = 'right';
-        container.setAttribute('aria-label', 'Download Markdown');
+        container.style.float = 'right'; // Keep our positioning
+        container.setAttribute('tabindex', '-1');
         container.setAttribute('role', 'button');
+        container.setAttribute('aria-label', 'Download Markdown');
+        container.title = 'Download as Markdown'; // Native tooltip fallback
 
+        // Manually toggle the hover class to ensure the theme applies the correct gradient/border
+        container.onmouseenter = () => container.classList.add('mce-hover');
+        container.onmouseleave = () => container.classList.remove('mce-hover');
+
+        // 2. Inner Button: Presentation role only, just like native
+        // <button role="presentation" type="button" tabindex="-1">
         const button = document.createElement('button');
-        button.style.cssText = 'padding: 4px 6px; font-size: 14px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; outline: none;';
-        button.innerHTML = '↓';
-        button.title = "Download as Markdown";
+        button.setAttribute('role', 'presentation');
+        button.type = 'button';
+        button.setAttribute('tabindex', '-1');
+
+        // CSS to match native TinyMCE button metrics EXACTLY.
+        // TinyMCE 4 buttons rely on padding + line-height to define their size, not explicit height.
+        // Standard is padding: 4px and line-height: 20px -> Total Height ~28px-30px.
+        button.style.cssText = `
+            background: transparent; border: 0; margin: 0; 
+            padding: 4px 8px; /* Standard padding for touch targets */
+            outline: none; cursor: pointer; display: block;
+            line-height: 20px; /* Crucial: Defines the vertical size of the button */
+        `;
+
+        // 3. Content: The Icon/Text
+        // Simple span, no layout hacks needed if line-height is set on button
+        button.innerHTML = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
 
         button.onclick = (e) => {
             e.preventDefault();
