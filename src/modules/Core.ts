@@ -69,18 +69,18 @@ export const Core = {
 
         if (pagePath.startsWith('/s/')) {
             this.activeDelegate = StoryDelegate;
-            this.log('Core', func, 'Strategy set to StoryDelegate');
+            this.log(this.MODULE_NAME, func, 'Strategy set to StoryDelegate');
         }
         else if (pagePath === "/docs/docs.php") {
             this.activeDelegate = DocManagerDelegate;
-            this.log('Core', func, 'Strategy set to DocManagerDelegate');
+            this.log(this.MODULE_NAME, func, 'Strategy set to DocManagerDelegate');
         }
         else if (pagePath.includes("/docs/edit.php")) {
             this.activeDelegate = DocEditorDelegate;
-            this.log('Core', func, 'Strategy set to DocEditorDelegate');
+            this.log(this.MODULE_NAME, func, 'Strategy set to DocEditorDelegate');
         }
         else {
-            this.log('Core', func, 'No specific delegate found for this path.');
+            this.log(this.MODULE_NAME, func, 'No specific delegate found for this path.');
         }
     },
 
@@ -107,7 +107,7 @@ export const Core = {
 
         // 3. Logging / Error Handling
         if (!el) {
-            this.log('Core', 'getElement', `Selector failed for key: ${key}`);
+            this.log(this.MODULE_NAME, 'getElement', `Selector failed for key: ${key}`);
         }
 
         return el;
@@ -184,7 +184,7 @@ export const Core = {
                     await new Promise(r => setTimeout(r, waitTime));
                     return this.fetchAndConvertPrivateDoc(docId, title, attempt + 1);
                 }
-                this.log('core', func, `Rate limit exceeded for "${title}". Please wait a moment.`);
+                this.log(this.MODULE_NAME, func, `Rate limit exceeded for "${title}". Please wait a moment.`);
                 return null;
             }
 
