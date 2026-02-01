@@ -120,15 +120,20 @@ export const DocManager = {
         rows.forEach((row) => {
             if (row.querySelector('th') || row.className.includes('thead')) return;
 
+            // Robust extraction: target the specific edit link to get the ID
             const editLink = row.querySelector('a[href*="docid="]') as HTMLAnchorElement;
             if (!editLink) return;
+
+            // Safe regex match
+            const match = editLink.href.match(/docid=(\d+)/);
+            if (!match) return;
+            const docId = match[1];
 
             const td = document.createElement('td');
             td.align = 'center';
             td.vAlign = 'top';
             td.width = '5%';
 
-            const docId = editLink.href.match(/docid=(\d+)/)![1];
             const title = (row as HTMLTableRowElement).cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
 
             const link = document.createElement('a');
@@ -229,7 +234,14 @@ export const DocManager = {
                 const editLink = row.querySelector('a[href*="docid="]') as HTMLAnchorElement;
                 if (!editLink) continue;
 
-                const docId = editLink.href.match(/docid=(\d+)/)![1];
+                // Safe ID Extraction
+                const match = editLink.href.match(/docid=(\d+)/);
+                if (!match) {
+                    log('Could not extract ID from row', row);
+                    continue;
+                }
+                const docId = match[1];
+
                 const title = row.cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
 
                 btn.innerText = `${i + 1}/${rows.length}`;
