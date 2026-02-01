@@ -8,13 +8,15 @@ import { Elements } from '../enums/Elements';
  * Handles unlocking text selection and enabling hotkey navigation.
  */
 export const StoryReader = {
+    MODULE_NAME: 'story-reader',
+
     /**
      * Initializes the module logic.
      * Waits for the DOM to be ready before applying enhancements.
      */
     init: function () {
         Core.onDomReady(() => {
-            Core.log('story-reader', 'StoryReader', 'Initializing UX Enhancements...');
+            Core.log(this.MODULE_NAME, 'init', 'Initializing UX Enhancements...');
             this.enableSelectableText();
             this.enableKeyboardNav();
         });
@@ -25,6 +27,7 @@ export const StoryReader = {
      * Also replaces the story text node with a clone to strip inline event listeners (like oncopy/onselectstart).
      */
     enableSelectableText: function () {
+        const func = 'enableSelectableText'
         const style = document.createElement('style');
         style.innerHTML = `
             #storytext, .storytext, p {
@@ -39,7 +42,7 @@ export const StoryReader = {
             // Cloning the node removes event listeners attached via JS, effectively neutralizing anti-copy scripts
             const clone = storyText.cloneNode(true);
             storyText.parentNode?.replaceChild(clone, storyText);
-            Core.log('story-reader', 'StoryReader', 'Text selection blocking removed.');
+            Core.log(this.MODULE_NAME, func, 'Text selection blocking removed.');
         }
     },
 
