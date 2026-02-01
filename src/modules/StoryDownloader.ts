@@ -18,6 +18,11 @@ export const StoryDownloader = {
     /** Reference to the main trigger button for the dropdown. */
     mainBtn: null as HTMLButtonElement | null,
 
+    /** * Controller to manage the lifecycle of document event listeners. 
+     * Prevents memory leaks by aborting previous listeners on re-injection.
+     */
+    abortController: null as AbortController | null,
+
     /**
      * Initializes the downloader by looking for the profile header.
      * Uses the Core Delegate system to find the injection point.
@@ -42,6 +47,13 @@ export const StoryDownloader = {
      */
     injectDropdown: function (parentGroup: HTMLElement) {
         const log = Core.getLogger('story-downloader', 'injectDropdown');
+
+        // Clean up previous event listeners to prevent stacking/leaks
+        if (this.abortController) {
+            this.abortController.abort();
+        }
+        this.abortController = new AbortController();
+
         const container = document.createElement('div');
         container.style.cssText = "display: inline-block; position: relative; margin-right: 5px; vertical-align: top; float: right;";
 
@@ -92,9 +104,10 @@ export const StoryDownloader = {
             parentGroup.appendChild(container);
         }
 
+        // Attach listener with the AbortSignal to ensure cleanup
         document.addEventListener('click', (e) => {
             if (!container.contains(e.target as Node)) this.toggleDropdown(false);
-        });
+        }, { signal: this.abortController.signal });
     },
 
     /**
