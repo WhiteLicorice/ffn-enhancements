@@ -6,38 +6,75 @@ import { marked } from 'marked';
 /**
  * Robust Markdown Parser powered by the 'marked' library.
  * Handles detection and conversion following CommonMark standards.
- * Strategies allow for seamless integration into the Editor paste workflow.
+ * Features a weighted heuristic to prevent hijacking standard document pastes.
  */
 export const SimpleMarkdownParser = {
     /**
      * Checks if the input text contains intentional Markdown formatting.
-     * It uses the library's lexer to see if any tokens other than plain text exist.
+     * Uses a deep-search heuristic to distinguish between Markdown intent and accidental prose.
      * @param text - The raw text content from the clipboard.
-     * @returns True if structural or inline Markdown syntax is detected; false if plain text.
+     * @returns True if high-confidence Markdown syntax is detected; false if plain text.
      */
     isMarkdown: function (text: string): boolean {
         const log = Core.getLogger('SimpleMarkdownParser', 'isMarkdown');
-        const tokens = marked.lexer(text);
 
-        // Deep search for any token that isn't just a basic paragraph/text.
-        const hasFormatting = (tokenList: any[]): boolean => {
+        // We trim to ensure leading whitespace doesn't trigger "indented code" logic prematurely
+        const tokens = marked.lexer(text.trim());
+
+        /**
+         * Recursive helper to scan tokens for "High Confidence" Markdown signals.
+         * We ignore ambiguous signs (like URLs or dashes) to avoid breaking standard document pastes.
+         */
+        const hasIntentionalFormatting = (tokenList: any[]): boolean => {
             return tokenList.some(token => {
-                // 1. Check for Structural Elements
-                // We explicitly exclude 'hr' and 'br' from triggering Markdown mode.
-                // REASON: Docx/Word pastes often contain visual separators (dashes/underscores) 
-                // that 'marked' interprets as HRs. If we let HR trigger the parser, 
-                // we interpret the whole doc as Markdown, stripping the original Rich Text (Bold/Italic).
-                // We only want to take over if we see UNAMBIGUOUS Markdown (Headers, Lists, Blockquotes, etc).
-                if (!['paragraph', 'text', 'space', 'hr', 'br'].includes(token.type)) {
-                    log(`Detected structural token: ${token.type}`);
+                // 1. Content Baseline
+                // These are ignored as triggers because they appear constantly in standard prose.
+                // We exclude 'hr' and 'br' here to fix the "dashes in text" issue.
+                // We exclude 'html' to allow native browser handling of raw HTML snippets.
+                if (['paragraph', 'text', 'space', 'hr', 'br', 'html'].includes(token.type)) {
+                    // Check children (inlines) of paragraphs
+                    if (token.tokens && hasIntentionalFormatting(token.tokens)) return true;
+                    return false;
+                }
+
+                // 2. High-Confidence Structural Triggers
+                // Headings (#), Blockquotes (>), Tables, and GFM Strikethrough (~~) 
+                // are very rare in standard prose and are strong signals of Markdown intent.
+                if (['heading', 'blockquote', 'table', 'image', 'del'].includes(token.type)) {
+                    log(`High-confidence trigger detected: ${token.type}`);
                     return true;
                 }
 
-                // 2. Check for Inline Elements (inside Paragraphs)
-                // If it's a paragraph, check if it contains inline formatting (Bold, Italic, Code, Link, Image)
-                if (token.tokens && hasFormatting(token.tokens)) {
-                    // Note: We don't log here to avoid spamming for every bold word, 
-                    // but the top-level return will indicate success.
+                // 3. Specialized Check: Code Blocks
+                // We ONLY trigger on "Fenced" code blocks (using backticks ```).
+                // Standard indented code (4 spaces) is a major false positive for authors 
+                // who use spaces to indent their paragraphs.
+                if (token.type === 'code') {
+                    const isFenced = token.raw.trim().startsWith('```') || token.raw.trim().startsWith('~~~');
+                    if (isFenced) {
+                        log('Detected fenced code block.');
+                        return true;
+                    }
+                    return false;
+                }
+
+                // 4. Specialized Check: Links
+                // Autolinks (just a URL) shouldn't trigger a hijack.
+                // We only trigger on explicit Markdown bracketed links: [title](url).
+                if (token.type === 'link') {
+                    const isBracketed = token.raw.startsWith('[');
+                    if (isBracketed) {
+                        log('Detected bracketed Markdown link.');
+                        return true;
+                    }
+                    return false;
+                }
+
+                // 5. Common Markers: Emphasis and Lists
+                // These are the most common Markdown signs. While slightly ambiguous, 
+                // their presence in plain-text copy-pastes usually indicates Markdown intent.
+                if (['strong', 'em', 'list', 'codespan'].includes(token.type)) {
+                    log(`Detected Markdown marker: ${token.type}`);
                     return true;
                 }
 
@@ -45,14 +82,14 @@ export const SimpleMarkdownParser = {
             });
         };
 
-        const result = hasFormatting(tokens);
+        const result = hasIntentionalFormatting(tokens);
         log(`Analysis complete. Is Markdown? ${result}`);
         return result;
     },
 
     /**
      * Converts Markdown string to HTML using the 'marked' library.
-     * 'marked' handles edge cases like em-dashes vs HRs and nested lists natively.
+     * Configured specifically for the FanFiction.net editor environment.
      * @param text - The raw Markdown text to convert.
      * @returns A string of HTML, ready for insertion into the TinyMCE editor.
      */
@@ -61,9 +98,9 @@ export const SimpleMarkdownParser = {
 
         // Configure marked for security and standard behavior
         marked.setOptions({
-            gfm: true,          // GitHub Flavored Markdown (Tables, Strikethrough)
-            breaks: true,       // Convert \n to <br> (Essential for fiction writing flow)
-            silent: true        // Don't throw errors on malformed MD, just parse what's possible
+            gfm: true,          // GitHub Flavored Markdown
+            breaks: true,       // Convert \n to <br> (Essential for fiction line-breaks)
+            silent: true        // Prevent crashing on malformed syntax
         });
 
         log('Converting Markdown content to HTML...');
