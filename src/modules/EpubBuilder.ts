@@ -40,6 +40,7 @@ export const EpubBuilder = {
             ul.toc { list-style-type: none; padding: 0; }
             ul.toc li { margin-bottom: 0.5em; }
             .title-page { text-align: center; margin-top: 20%; }
+            .cover-img { max-width: 100%; height: auto; margin-bottom: 1em; display: block; margin-left: auto; margin-right: auto; }
             .meta-info { margin-top: 2em; font-size: 0.9em; color: #555; }
         `;
         zip.file('OEBPS/style.css', css);
@@ -52,7 +53,7 @@ export const EpubBuilder = {
             zip.file('OEBPS/cover.xhtml', this.generateCoverPage());
         }
 
-        // 4. Title Page (Text Only)
+        // 4. Title Page (Text + Little Cover)
         zip.file('OEBPS/title.xhtml', this.generateTitlePage(meta));
 
         // 5. Table of Contents HTML
@@ -79,7 +80,7 @@ export const EpubBuilder = {
     /**
      * Generates a dedicated Cover Page using SVG wrapping.
      * This technique forces the image to scale to fit ANY screen size perfectly
-     * without scrollbars or white margins.
+     * without scrollbars, though white bars (aspect ratio) are normal.
      */
     generateCoverPage: function (): string {
         return `<?xml version="1.0" encoding="utf-8"?>
@@ -105,9 +106,14 @@ export const EpubBuilder = {
     },
 
     /**
-     * Generates the Title Page XHTML (Metadata only).
+     * Generates the Title Page XHTML.
+     * Includes the cover image inline above the title.
      */
     generateTitlePage: function (meta: StoryMetadata): string {
+        const coverHtml = meta.coverBlob
+            ? '<div class="cover"><img src="cover.jpg" alt="Cover Image" class="cover-img"/></div>'
+            : '';
+
         return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -117,6 +123,7 @@ export const EpubBuilder = {
 </head>
 <body>
     <div class="title-page">
+        ${coverHtml}
         <h1>${this.escape(meta.title)}</h1>
         <h2>by ${this.escape(meta.author)}</h2>
         <div class="meta-info">
