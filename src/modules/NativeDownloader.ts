@@ -83,10 +83,10 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
     let coverBlob: Blob | undefined;
     const coverImg = Core.getElement(Elements.STORY_COVER) as HTMLImageElement;
     if (coverImg && coverImg.src) {
-        // Attempt to upgrade resolution from thumb (75px) to medium (150px)
+        // Attempt to upgrade resolution from thumb (75px) to medium (180px)
         let highResSrc = coverImg.src;
         if (highResSrc.includes('/75/')) {
-            highResSrc = highResSrc.replace('/75/', '/150/');
+            highResSrc = highResSrc.replace('/75/', '/180/');
             log(`Upgrading cover image resolution: ${highResSrc}`);
         } else {
             log(`Found cover image: ${highResSrc}`);
