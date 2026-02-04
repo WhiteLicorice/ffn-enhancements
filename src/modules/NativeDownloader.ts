@@ -83,30 +83,35 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
     let coverBlob: Blob | undefined;
     const coverImg = Core.getElement(Elements.STORY_COVER) as HTMLImageElement;
     if (coverImg && coverImg.src) {
-        // Attempt to upgrade resolution from thumb (75px) to medium (180px)
-        let highResSrc = coverImg.src;
-        if (highResSrc.includes('/75/')) {
-            highResSrc = highResSrc.replace('/75/', '/180/');
-            log(`Upgrading cover image resolution: ${highResSrc}`);
-        } else {
-            log(`Found cover image: ${highResSrc}`);
+        // Try resolutions in order of preference: 180 (Mobile High Res) -> 150 (Desktop) -> Original
+        const baseUrl = coverImg.src;
+        const resolutions = ['/180/', '/150/'];
+
+        for (const res of resolutions) {
+            try {
+                // If the current src contains /75/ or /150/, try to upgrade it
+                const targetUrl = baseUrl.replace(/\/75\/|\/150\/|\/180\//, res);
+                log(`Probing cover resolution: ${res}`);
+
+                const imgResp = await fetch(targetUrl);
+                if (imgResp.ok) {
+                    coverBlob = await imgResp.blob();
+                    log(`Successfully fetched ${res} resolution.`);
+                    break; // Exit loop on success
+                }
+            } catch (e) {
+                log(`Failed to fetch resolution ${res}, trying next...`);
+            }
         }
 
-        try {
-            const imgResp = await fetch(highResSrc);
-            if (imgResp.ok) {
-                coverBlob = await imgResp.blob();
-                log('Cover image fetched successfully.');
-            } else {
-                // Fallback to original src if upgrade fails
-                log('High-res fetch failed, falling back to original.');
-                const originalResp = await fetch(coverImg.src);
-                if (originalResp.ok) {
-                    coverBlob = await originalResp.blob();
-                }
+        // Final fallback to the exact src found on page if probes failed
+        if (!coverBlob) {
+            try {
+                const finalResp = await fetch(baseUrl);
+                if (finalResp.ok) coverBlob = await finalResp.blob();
+            } catch (e) {
+                log('Final cover fallback failed.', e);
             }
-        } catch (e) {
-            log('Failed to fetch cover image.', e);
         }
     }
 
