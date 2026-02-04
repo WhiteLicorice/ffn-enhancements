@@ -187,7 +187,7 @@ export const StoryDownloader = {
      */
     runFicHubStrategy: async function (formatId: SupportedFormats, url: string, cb: CallableFunction) {
         const log = Core.getLogger('story-downloader', 'runFicHubStrategy');
-        try {
+        try { // FIXME: Staleness isn't being detected properly.
             switch (formatId) {
                 case SupportedFormats.EPUB: await FicHubDownloader.downloadAsEPUB(url, cb); break;
                 case SupportedFormats.MOBI: await FicHubDownloader.downloadAsMOBI(url, cb); break;
