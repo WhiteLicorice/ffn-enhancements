@@ -18,42 +18,45 @@ export const NativeDownloader: IFanficDownloader = {
         await _runScraper(storyId, onProgress);
     },
 
-    async downloadAsHTML(storyIdOrUrl: string, onProgress?: CallableFunction): Promise<void> {
-        // We could implement a simple HTML dump here, 
-        // but for now we'll alias it to EPUB or throw, 
-        // as parsing to single-file HTML is complex.
-        if (confirm("Native HTML download not fully supported. Download EPUB instead?")) {
-            return this.downloadAsEPUB(storyIdOrUrl, onProgress);
-        }
+    async downloadAsHTML(_u: string, _onProgress?: CallableFunction): Promise<void> {
+        alert("Native HTML download is not yet supported. Please use EPUB.");
     },
 
     async downloadAsMOBI(_u: string, _p?: CallableFunction): Promise<void> {
-        alert("Native MOBI generation is not supported. Please use EPUB.");
+        alert("Native MOBI generation is not yet supported. Please use EPUB.");
     },
 
     async downloadAsPDF(_u: string, _p?: CallableFunction): Promise<void> {
-        alert("Native PDF generation is not supported. Please use EPUB.");
+        alert("Native PDF generation is not yet supported. Please use EPUB.");
     },
 };
 
+/**
+ * Fetches and parses a single chapter.
+ * Uses the Core Delegate to identify the content container within the fetched HTML.
+ */
 async function _fetchChapter(storyId: string, chapterNum: number): Promise<string> {
     const url = `/s/${storyId}/${chapterNum}/`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error("Network error");
+
     const text = await resp.text();
     const doc = new DOMParser().parseFromString(text, 'text/html');
 
-    // Use Core Delegate to find the story text in the parsed document
-    return Core.getElement(Elements.STORY_TEXT, doc)?.innerHTML || "<p>Error: Content missing</p>";
+    // Use the Delegate with the 'doc' override to find elements in the parsed HTML
+    const contentEl = Core.getElement(Elements.STORY_TEXT, doc);
+    return contentEl?.innerHTML || "<p>Error: Content missing</p>";
 }
 
 /**
  * The core scraping logic.
+ * Orchestrates the fetching of metadata and all chapters.
  */
 async function _runScraper(storyId: string, onProgress?: CallableFunction): Promise<void> {
     const log = Core.getLogger('NativeDownloader', 'runScraper');
 
-    // 1. Metadata Scraping (Header) via Core Delegate
+    // 1. Metadata Scraping (Header)
+    // We use the Core Delegate to fetch these, ensuring selector changes are handled centrally.
     const title = Core.getElement(Elements.STORY_TITLE)?.textContent || 'Unknown Title';
     const author = Core.getElement(Elements.STORY_AUTHOR)?.textContent || 'Unknown Author';
     const summary = Core.getElement(Elements.STORY_SUMMARY)?.textContent || '';
@@ -83,13 +86,14 @@ async function _runScraper(storyId: string, onProgress?: CallableFunction): Prom
 
         try {
             const content = await _fetchChapter(storyId, num);
+            log(`Fetched Chapter ${num}.`);
             chapters.push({
                 title: chapterList[i].name,
-                number: num, // Propagated change: Adding the chapter number
+                number: num,
                 content
             });
 
-            // RANDOM DELAY: 1.5s to 3s to avoid rate limits
+            // RANDOM DELAY: 1.5s to 3s to avoid rate limits (Polite Crawler)
             if (i < total - 1) {
                 const delay = Math.floor(Math.random() * 1500) + 1500;
                 await new Promise(r => setTimeout(r, delay));
