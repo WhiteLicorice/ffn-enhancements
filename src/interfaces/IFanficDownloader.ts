@@ -9,24 +9,28 @@ export interface IFanficDownloader {
     /**
      * Downloads the story as an EPUB (E-book) file.
      * @param storyIdOrUrl - The ID or full URL of the story.
+     * @param onProgress - Optional generic callback for status updates.
      */
-    downloadAsEPUB(storyIdOrUrl: string): Promise<void>;
+    downloadAsEPUB(storyIdOrUrl: string, onProgress?: CallableFunction): Promise<void>;
 
     /**
      * Downloads the story as a MOBI (Kindle) file.
      * @param storyIdOrUrl - The ID or full URL of the story.
+     * @param onProgress - Optional generic callback for status updates.
      */
-    downloadAsMOBI(storyIdOrUrl: string): Promise<void>;
+    downloadAsMOBI(storyIdOrUrl: string, onProgress?: CallableFunction): Promise<void>;
 
     /**
      * Downloads the story as a PDF document.
      * @param storyIdOrUrl - The ID or full URL of the story.
+     * @param onProgress - Optional generic callback for status updates.
      */
-    downloadAsPDF(storyIdOrUrl: string): Promise<void>;
+    downloadAsPDF(storyIdOrUrl: string, onProgress?: CallableFunction): Promise<void>;
 
     /**
      * Downloads the story as a single HTML file.
      * @param storyIdOrUrl - The ID or full URL of the story.
+     * @param onProgress - Optional generic callback for status updates.
      */
-    downloadAsHTML(storyIdOrUrl: string): Promise<void>;
+    downloadAsHTML(storyIdOrUrl: string, onProgress?: CallableFunction): Promise<void>;
 }

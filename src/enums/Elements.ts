@@ -30,6 +30,9 @@ export enum Elements {
     /** The container usually found at top/bottom allowing chapter selection. */
     CHAPTER_NAV_CONTAINER = 'CHAPTER_NAV_CONTAINER',
 
+    /** The dropdown select input for navigating chapters. */
+    CHAPTER_DROPDOWN = 'CHAPTER_DROPDOWN',
+
     /** The specific button to go to the next chapter. */
     NEXT_CHAPTER_BTN = 'NEXT_CHAPTER_BTN',
 
@@ -38,6 +41,15 @@ export enum Elements {
 
     /** The "Review" text area or input box. */
     REVIEW_BOX = 'REVIEW_BOX',
+
+    /** The title element in the header. */
+    STORY_TITLE = 'STORY_TITLE',
+
+    /** The author link in the header. */
+    STORY_AUTHOR = 'STORY_AUTHOR',
+
+    /** The summary text block in the header. */
+    STORY_SUMMARY = 'STORY_SUMMARY',
 
     // =============================
     // DOC MANAGER (/docs/docs.php)
@@ -73,5 +85,4 @@ export enum Elements {
 
     /** The editor i-frame that EDITOR_TEXT_AREA uses. */
     EDITOR_TEXT_AREA_IFRAME = 'EDITOR_TEXT_AREA_IFRAME',
-    
 }

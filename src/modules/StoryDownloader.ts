@@ -142,20 +142,27 @@ export const StoryDownloader = {
 
         const storyUrl = window.location.href.split('?')[0];
 
+        // Define the progress callback that updates the button text
+        const progressCallback = (msg: string) => {
+            if (this.mainBtn) {
+                this.mainBtn.innerText = msg;
+            }
+        };
+
         try {
             // Explicitly call the specific method on the strategy
             switch (formatId) {
                 case SupportedFormats.EPUB:
-                    await FicHubDownloader.downloadAsEPUB(storyUrl);
+                    await FicHubDownloader.downloadAsEPUB(storyUrl, progressCallback);
                     break;
                 case SupportedFormats.MOBI:
-                    await FicHubDownloader.downloadAsMOBI(storyUrl);
+                    await FicHubDownloader.downloadAsMOBI(storyUrl, progressCallback);
                     break;
                 case SupportedFormats.PDF:
-                    await FicHubDownloader.downloadAsPDF(storyUrl);
+                    await FicHubDownloader.downloadAsPDF(storyUrl, progressCallback);
                     break;
                 case SupportedFormats.HTML:
-                    await FicHubDownloader.downloadAsHTML(storyUrl);
+                    await FicHubDownloader.downloadAsHTML(storyUrl, progressCallback);
                     break;
                 default:
                     throw new Error(`Unsupported format requested: ${formatId}`);
