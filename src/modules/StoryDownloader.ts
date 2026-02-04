@@ -187,7 +187,7 @@ export const StoryDownloader = {
      */
     runFicHubStrategy: async function (formatId: SupportedFormats, url: string, cb: CallableFunction) {
         const log = Core.getLogger('story-downloader', 'runFicHubStrategy');
-        try { // FIXME: Staleness isn't being detected properly.
+        try {
             switch (formatId) {
                 case SupportedFormats.EPUB: await FicHubDownloader.downloadAsEPUB(url, cb); break;
                 case SupportedFormats.MOBI: await FicHubDownloader.downloadAsMOBI(url, cb); break;
@@ -197,16 +197,25 @@ export const StoryDownloader = {
             }
         } catch (e) {
             log("FicHub Strategy failed or returned error.", e);
+
             // 3. User Guidance on Stale/Failed FicHub
             if (formatId !== SupportedFormats.EPUB) {
                 alert("FicHub is currently unreachable or stale for this format.\n\nPlease select 'EPUB' and choose the 'Native' option to generate a fresh copy directly.");
+                throw e; // Re-throw so parent UI shows "Error"
             } else {
                 // If they were already trying EPUB via FicHub and it failed
-                if (confirm("FicHub download failed. Would you like to try the Native Downloader instead?")) {
+                if (confirm("FicHub download failed or is stale. Would you like to try the Native Downloader instead?\n\n(This will scrape the story directly from the page.)")) {
+                    // Try fallback. If this fails, it throws to parent catch block (correct behavior).
                     await this.runNativeStrategy(SupportedFormats.EPUB, url, cb);
+
+                    // Do NOT throw 'e' here. If we reached this line, the fallback succeeded.
+                    // Returning here ensures the parent processDownload sees this as a success.
+                    return;
+                } else {
+                    // User declined fallback.
+                    throw e;
                 }
             }
-            throw e; // Re-throw to trigger finally block in parent
         }
     },
 
