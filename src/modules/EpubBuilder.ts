@@ -146,7 +146,6 @@ export const EpubBuilder = {
         </div>
 
         <div class="meta-table">
-            ${metaRow('Source', sourceHtml)} // Pass HTML directly implies trusting sourceHtml construction
             <div class="meta-row"><span class="label">Source:</span> ${sourceHtml}</div>
             <div class="meta-row"><span class="label">ID:</span> ${this.escape(meta.id)}</div>
             ${metaRow('Rated', meta.rating)}

@@ -103,6 +103,23 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
     const metaBlock = Core.getElement(Elements.STORY_META_BLOCK);
     const extendedMeta = _parseFFNMetadata(metaBlock?.textContent || '');
 
+    // 1b-2. Fix Dates using data-xutime for accuracy (Unix Timestamps)
+    // FFN stores full timestamps in 'data-xutime' attributes on spans
+    if (metaBlock) {
+        const timeNodes = metaBlock.querySelectorAll('[data-xutime]');
+        // Logic: FFN separates items with ' - '.
+        // If "Updated:" was found in the text parse, the first timestamp is Updated, second is Published.
+        // If "Updated:" was NOT found, the first timestamp is Published.
+
+        if (extendedMeta.updated && timeNodes.length >= 2) {
+            extendedMeta.updated = _formatUnixDate(timeNodes[0].getAttribute('data-xutime'));
+            extendedMeta.published = _formatUnixDate(timeNodes[1].getAttribute('data-xutime'));
+        } else if (timeNodes.length >= 1) {
+            // Default to Published for the first/only date found
+            extendedMeta.published = _formatUnixDate(timeNodes[0].getAttribute('data-xutime'));
+        }
+    }
+
     log(`Fetched metadata for "${title}".`);
 
     // 1c. Cover Art Scraping
@@ -201,6 +218,20 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
     };
 
     await EpubBuilder.build(finalMeta, chapters);
+}
+
+/**
+ * Helper to convert FFN Unix timestamp (seconds) to a full readable Date string.
+ */
+function _formatUnixDate(timestamp: string | null): string | undefined {
+    if (!timestamp) return undefined;
+    try {
+        const date = new Date(parseInt(timestamp, 10) * 1000);
+        // Returns "YYYY-MM-DD" format, or use .toLocaleDateString() for localized
+        return date.toISOString().split('T')[0];
+    } catch (e) {
+        return undefined;
+    }
 }
 
 /**
