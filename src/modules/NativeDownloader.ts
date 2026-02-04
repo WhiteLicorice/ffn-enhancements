@@ -46,18 +46,54 @@ export const NativeDownloader: IFanficDownloader = {
 /**
  * Fetches and parses a single chapter.
  * Uses the Core Delegate to identify the content container within the fetched HTML.
+ * IMPLEMENTS: Exponential Backoff for HTTP 429 (Rate Limiting).
  */
-async function _fetchChapter(storyId: string, chapterNum: number): Promise<string> {
+async function _fetchChapter(storyId: string, chapterNum: number, onProgress?: CallableFunction): Promise<string> {
     const url = `/s/${storyId}/${chapterNum}/`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error("Network error");
+    const log = Core.getLogger('NativeDownloader', 'fetchChapter');
 
-    const text = await resp.text();
-    const doc = new DOMParser().parseFromString(text, 'text/html');
+    let attempt = 0;
+    const maxRetries = 5;
+    let backoffDelay = 5000; // Start with 5 seconds
 
-    // Use the Delegate with the 'doc' override to find elements in the parsed HTML
-    const contentEl = Core.getElement(Elements.STORY_TEXT, doc);
-    return contentEl?.innerHTML || "<p>Error: Content missing</p>";
+    while (attempt <= maxRetries) {
+        const resp = await fetch(url);
+
+        // Success case
+        if (resp.ok) {
+            const text = await resp.text();
+            const doc = new DOMParser().parseFromString(text, 'text/html');
+
+            // Use the Delegate with the 'doc' override to find elements in the parsed HTML
+            const contentEl = Core.getElement(Elements.STORY_TEXT, doc);
+            return contentEl?.innerHTML || "<p>Error: Content missing</p>";
+        }
+
+        // Rate Limit case (429)
+        if (resp.status === 429) {
+            attempt++;
+            if (attempt > maxRetries) {
+                log(`Max retries (${maxRetries}) exceeded for chapter ${chapterNum}.`);
+                throw new Error("Download aborted: Too many rate limit errors.");
+            }
+
+            const waitSeconds = backoffDelay / 1000;
+            const msg = `Rate limit hit (429). Cooling down for ${waitSeconds}s...`;
+            log(msg);
+
+            // Update UI so user knows why it's stuck
+            if (onProgress) onProgress(msg);
+
+            // Wait and then double the delay for next time
+            await new Promise(resolve => setTimeout(resolve, backoffDelay));
+            backoffDelay *= 2;
+        } else {
+            // Hard error (404, 500, etc)
+            throw new Error(`Network error: ${resp.status}`);
+        }
+    }
+
+    throw new Error("Unknown error in fetch loop.");
 }
 
 /**
@@ -135,11 +171,12 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
     for (let i = 0; i < total; i++) {
         const num = i + 1;
 
-        // Notify UI
+        // Notify UI (only if not currently cooling down)
         if (onProgress) onProgress(`Fetching ${num}/${total}...`);
 
         try {
-            const content = await _fetchChapter(storyId, num);
+            // Pass onProgress down so _fetchChapter can update UI during backoff
+            const content = await _fetchChapter(storyId, num, onProgress);
             log(`Fetched Chapter ${num}.`);
             chapters.push({
                 title: chapterList[i].name,
@@ -148,6 +185,7 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
             });
 
             // RANDOM DELAY: 1.5s to 3s to avoid rate limits (Polite Crawler)
+            // This runs on successful fetches to prevent hitting the limit in the first place
             if (i < total - 1) {
                 const delay = Math.floor(Math.random() * 1500) + 1500;
                 await new Promise(r => setTimeout(r, delay));
