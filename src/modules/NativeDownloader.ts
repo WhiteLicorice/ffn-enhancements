@@ -64,12 +64,27 @@ async function _runScraper(storyId: string, onProgress?: CallableFunction): Prom
     let coverBlob: Blob | undefined;
     const coverImg = Core.getElement(Elements.STORY_COVER) as HTMLImageElement;
     if (coverImg && coverImg.src) {
-        log(`Found cover image: ${coverImg.src}`);
+        // Attempt to upgrade resolution from thumb (75px) to medium (150px)
+        let highResSrc = coverImg.src;
+        if (highResSrc.includes('/75/')) {
+            highResSrc = highResSrc.replace('/75/', '/150/');
+            log(`Upgrading cover image resolution: ${highResSrc}`);
+        } else {
+            log(`Found cover image: ${highResSrc}`);
+        }
+
         try {
-            const imgResp = await fetch(coverImg.src);
+            const imgResp = await fetch(highResSrc);
             if (imgResp.ok) {
                 coverBlob = await imgResp.blob();
                 log('Cover image fetched successfully.');
+            } else {
+                // Fallback to original src if upgrade fails
+                log('High-res fetch failed, falling back to original.');
+                const originalResp = await fetch(coverImg.src);
+                if (originalResp.ok) {
+                    coverBlob = await originalResp.blob();
+                }
             }
         } catch (e) {
             log('Failed to fetch cover image.', e);
