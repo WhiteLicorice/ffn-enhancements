@@ -40,20 +40,22 @@ export const EpubBuilder = {
             ul.toc { list-style-type: none; padding: 0; }
             ul.toc li { margin-bottom: 0.5em; }
             .title-page { text-align: center; margin-top: 20%; }
-            .cover-img { max-width: 100%; height: auto; margin-bottom: 1em; display: block; margin-left: auto; margin-right: auto; }
             .meta-info { margin-top: 2em; font-size: 0.9em; color: #555; }
         `;
         zip.file('OEBPS/style.css', css);
 
-        // 3.5 Cover Image (If exists)
+        // 3.5 Cover Image Handling
+        // If we have a cover, we create a dedicated Cover Page (cover.xhtml)
+        // This is the standard "Best Practice" for eBooks to look professional.
         if (meta.coverBlob) {
             zip.file('OEBPS/cover.jpg', meta.coverBlob);
+            zip.file('OEBPS/cover.xhtml', this.generateCoverPage());
         }
 
-        // 4. Title Page (New)
+        // 4. Title Page (Text Only)
         zip.file('OEBPS/title.xhtml', this.generateTitlePage(meta));
 
-        // 5. Table of Contents HTML (New)
+        // 5. Table of Contents HTML
         zip.file('OEBPS/toc.xhtml', this.generateTOCPage(meta, chapters));
 
         // 6. Content.opf (Manifest)
@@ -64,7 +66,6 @@ export const EpubBuilder = {
 
         // 8. Chapter Files
         chapters.forEach((chap) => {
-            // Use the specific chapter number for the filename
             const filename = `OEBPS/chapter_${chap.number}.xhtml`;
             zip.file(filename, this.generateXHTML(chap.title, chap.content));
         });
@@ -76,13 +77,37 @@ export const EpubBuilder = {
     },
 
     /**
-     * Generates the Title Page XHTML.
+     * Generates a dedicated Cover Page using SVG wrapping.
+     * This technique forces the image to scale to fit ANY screen size perfectly
+     * without scrollbars or white margins.
+     */
+    generateCoverPage: function (): string {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+    <title>Cover</title>
+    <style type="text/css">
+        @page { padding: 0; margin: 0; }
+        body { text-align: center; padding: 0; margin: 0; }
+        div { padding: 0; margin: 0; text-align: center; }
+        img { width: 100%; height: 100%; max-width: 100%; }
+    </style>
+</head>
+<body>
+    <div>
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="100%" height="100%" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid meet">
+            <image width="600" height="800" xlink:href="cover.jpg" />
+        </svg>
+    </div>
+</body>
+</html>`;
+    },
+
+    /**
+     * Generates the Title Page XHTML (Metadata only).
      */
     generateTitlePage: function (meta: StoryMetadata): string {
-        const coverHtml = meta.coverBlob
-            ? '<div class="cover"><img src="cover.jpg" alt="Cover Image" class="cover-img"/></div>'
-            : '';
-
         return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -92,7 +117,6 @@ export const EpubBuilder = {
 </head>
 <body>
     <div class="title-page">
-        ${coverHtml}
         <h1>${this.escape(meta.title)}</h1>
         <h2>by ${this.escape(meta.author)}</h2>
         <div class="meta-info">
@@ -133,14 +157,24 @@ export const EpubBuilder = {
     generateOPF: function (meta: StoryMetadata, chapters: ChapterData[]): string {
         const uuid = `urn:uuid:${meta.id}`;
 
-        // Conditionally add the cover item to the manifest
-        const coverManifestItem = meta.coverBlob
+        // Add cover image to Manifest if present
+        const coverImageItem = meta.coverBlob
             ? '<item id="cover-image" href="cover.jpg" media-type="image/jpeg"/>'
             : '';
 
-        // Ensure meta name="cover" points to a valid ID if it exists
+        // Add cover PAGE to Manifest if present
+        const coverPageItem = meta.coverBlob
+            ? '<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>'
+            : '';
+
+        // Add cover Meta Tag
         const coverMeta = meta.coverBlob
             ? '<meta name="cover" content="cover-image" />'
+            : '';
+
+        // Add cover to Spine (First item!)
+        const coverSpine = meta.coverBlob
+            ? '<itemref idref="cover"/>'
             : '';
 
         return `<?xml version="1.0" encoding="utf-8"?>
@@ -158,15 +192,18 @@ export const EpubBuilder = {
         <item id="style" href="style.css" media-type="text/css"/>
         <item id="titlepage" href="title.xhtml" media-type="application/xhtml+xml"/>
         <item id="toc" href="toc.xhtml" media-type="application/xhtml+xml"/>
-        ${coverManifestItem}
+        ${coverImageItem}
+        ${coverPageItem}
         ${chapters.map((chap) => `<item id="chap${chap.number}" href="chapter_${chap.number}.xhtml" media-type="application/xhtml+xml"/>`).join('\n')}
     </manifest>
     <spine toc="ncx">
+        ${coverSpine}
         <itemref idref="titlepage"/>
         <itemref idref="toc"/>
         ${chapters.map((chap) => `<itemref idref="chap${chap.number}"/>`).join('\n')}
     </spine>
     <guide>
+        ${meta.coverBlob ? '<reference type="cover" title="Cover" href="cover.xhtml"/>' : ''}
         <reference type="title-page" title="Title Page" href="title.xhtml"/>
         <reference type="toc" title="Table of Contents" href="toc.xhtml"/>
         <reference type="text" title="Start" href="chapter_1.xhtml"/>
@@ -175,6 +212,36 @@ export const EpubBuilder = {
     },
 
     generateNCX: function (meta: StoryMetadata, chapters: ChapterData[]): string {
+        // Dynamic Nav Points
+        let playOrder = 1;
+        let navPoints = '';
+
+        if (meta.coverBlob) {
+            navPoints += `
+        <navPoint id="navPoint-cover" playOrder="${playOrder++}">
+            <navLabel><text>Cover</text></navLabel>
+            <content src="cover.xhtml"/>
+        </navPoint>`;
+        }
+
+        navPoints += `
+        <navPoint id="navPoint-title" playOrder="${playOrder++}">
+            <navLabel><text>Title Page</text></navLabel>
+            <content src="title.xhtml"/>
+        </navPoint>
+        <navPoint id="navPoint-toc" playOrder="${playOrder++}">
+            <navLabel><text>Table of Contents</text></navLabel>
+            <content src="toc.xhtml"/>
+        </navPoint>`;
+
+        chapters.forEach((chap) => {
+            navPoints += `
+        <navPoint id="navPoint-${chap.number}" playOrder="${playOrder++}">
+            <navLabel><text>${this.escape(chap.title)}</text></navLabel>
+            <content src="chapter_${chap.number}.xhtml"/>
+        </navPoint>`;
+        });
+
         return `<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
     <head>
@@ -182,19 +249,7 @@ export const EpubBuilder = {
     </head>
     <docTitle><text>${this.escape(meta.title)}</text></docTitle>
     <navMap>
-        <navPoint id="navPoint-title" playOrder="0">
-            <navLabel><text>Title Page</text></navLabel>
-            <content src="title.xhtml"/>
-        </navPoint>
-        <navPoint id="navPoint-toc" playOrder="0">
-            <navLabel><text>Table of Contents</text></navLabel>
-            <content src="toc.xhtml"/>
-        </navPoint>
-        ${chapters.map((chap, i) => `
-        <navPoint id="navPoint-${chap.number}" playOrder="${i + 1}">
-            <navLabel><text>${this.escape(chap.title)}</text></navLabel>
-            <content src="chapter_${chap.number}.xhtml"/>
-        </navPoint>`).join('')}
+        ${navPoints}
     </navMap>
 </ncx>`;
     },
