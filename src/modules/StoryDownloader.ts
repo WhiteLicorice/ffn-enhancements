@@ -2,11 +2,13 @@
 
 import { Core } from './Core';
 import { Elements } from '../enums/Elements';
-import { GM_xmlhttpRequest } from '$';
+import { FicHubDownloader } from './FicHubDownloader';
+import { SupportedFormats } from '../enums/SupportedFormats';
 
 /**
- * Module handling the integration with Fichub API for story downloads.
- * Injects a dropdown menu into the story header to allow downloading as EPUB, MOBI, PDF, or HTML.
+ * Module handling the UI integration for story downloads.
+ * Acts as a Facade/Orchestrator, injecting the UI and delegating 
+ * the actual download logic to specific strategies (currently FicHub).
  */
 export const StoryDownloader = {
     /** Flag tracking if a download request is currently in progress. */
@@ -42,7 +44,7 @@ export const StoryDownloader = {
 
     /**
      * Injects the AO3-style download dropdown menu.
-     * attempts to place the button next to the "Follow/Fav" button for visual consistency.
+     * Attempts to place the button next to the "Follow/Fav" button for visual consistency.
      * @param parentGroup - The header container element where the dropdown should be injected.
      */
     injectDropdown: function (parentGroup: HTMLElement) {
@@ -74,18 +76,25 @@ export const StoryDownloader = {
         `;
         this.dropdown = menu;
 
-        const formats = [{ l: 'EPUB', e: 'epub' }, { l: 'MOBI', e: 'mobi' }, { l: 'PDF', e: 'pdf' }, { l: 'HTML', e: 'html' }];
+        // Map labels to internal IDs used in processDownload switch
+        const formats = [
+            { label: 'EPUB', id: SupportedFormats.EPUB },
+            { label: 'MOBI', id: SupportedFormats.MOBI },
+            { label: 'PDF', id: SupportedFormats.PDF },
+            { label: 'HTML', id: SupportedFormats.HTML }
+        ];
+
         formats.forEach(fmt => {
             const li = document.createElement('li');
             const a = document.createElement('a');
-            a.innerText = fmt.l;
+            a.innerText = fmt.label;
             a.href = "#";
             a.style.cssText = "display: block; padding: 3px 20px; color: #333; text-decoration: none;";
             a.onclick = (e) => {
                 e.preventDefault();
                 if (this.isDownloading) return;
                 this.toggleDropdown(false);
-                this.processDownload(fmt.e);
+                this.processDownload(fmt.id);
             };
             li.appendChild(a);
             menu.appendChild(li);
@@ -106,7 +115,7 @@ export const StoryDownloader = {
 
         // Attach listener with the AbortSignal to ensure cleanup
         document.addEventListener('click', (e) => {
-            if (!container.contains(e.target as Node)) this.toggleDropdown(false);
+            if (container && !container.contains(e.target as Node)) this.toggleDropdown(false);
         }, { signal: this.abortController.signal });
     },
 
@@ -119,56 +128,45 @@ export const StoryDownloader = {
     },
 
     /**
-     * Sends a request to Fichub to retrieve the download URL for the specific format.
-     * Uses GM_xmlhttpRequest to bypass CORS restrictions.
-     * @param format - The file format (epub, mobi, pdf, html).
+     * Delegates the download task to the appropriate Strategy via explicit methods.
+     * Handles UI state (disabling buttons, error reporting).
+     * @param formatId - The internal ID of the format (epub, mobi, pdf, html).
      */
-    processDownload: function (format: string) {
+    processDownload: async function (formatId: SupportedFormats) {
         const log = Core.getLogger('story-downloader', 'processDownload');
 
         if (!this.mainBtn) return;
         this.mainBtn.disabled = true;
         this.isDownloading = true;
+        this.mainBtn.innerHTML = "Working...";
 
         const storyUrl = window.location.href.split('?')[0];
-        const apiUrl = `https://fichub.net/api/v0/epub?q=${encodeURIComponent(storyUrl)}`;
 
-        log(`Initiating download for ${format}. API: ${apiUrl}`);
-
-        GM_xmlhttpRequest({
-            method: "GET",
-            url: apiUrl,
-            headers: { "User-Agent": "FFN-Enhancements" },
-            // Explicitly type the 'res' parameter so the alias doesn't error out
-            onload: (res: { status: number; responseText: string }) => {
-                log(`Response received. Status: ${res.status}`);
-
-                if (res.status === 429) {
-                    log("Fichub Server Busy (429).");
-                    alert("Fichub Server Busy. Please try again later.");
-                    this.resetButton();
-                    return;
-                }
-                try {
-                    const data = JSON.parse(res.responseText);
-                    const rel = data.urls?.[format] || data[format + '_url'];
-                    if (rel) {
-                        const dlUrl = "https://fichub.net" + rel;
-                        log(`Download URL found: ${dlUrl}`);
-                        window.location.href = dlUrl;
-                    } else {
-                        log(`Format '${format}' not found in API response.`, data);
-                    }
-                } catch (e) {
-                    log('JSON Parsing Error', e);
-                }
-                this.resetButton();
-            },
-            onerror: (err) => {
-                log('Network/GM_xmlhttpRequest Error', err);
-                this.resetButton();
+        try {
+            // Explicitly call the specific method on the strategy
+            switch (formatId) {
+                case SupportedFormats.EPUB:
+                    await FicHubDownloader.downloadAsEPUB(storyUrl);
+                    break;
+                case SupportedFormats.MOBI:
+                    await FicHubDownloader.downloadAsMOBI(storyUrl);
+                    break;
+                case SupportedFormats.PDF:
+                    await FicHubDownloader.downloadAsPDF(storyUrl);
+                    break;
+                case SupportedFormats.HTML:
+                    await FicHubDownloader.downloadAsHTML(storyUrl);
+                    break;
+                default:
+                    throw new Error(`Unsupported format requested: ${formatId}`);
             }
-        });
+        } catch (e) {
+            log('Download strategy failed', e);
+            this.mainBtn.innerHTML = "Error";
+            alert("Download failed. Please check the console or try again later.");
+        } finally {
+            this.resetButton();
+        }
     },
 
     /**

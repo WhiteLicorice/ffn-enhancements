@@ -74,7 +74,7 @@ export const Core = {
 
     /**
      * Determines which Delegate strategy to use based on the current URL path.
-     * This abstracts away the DOM differences between Story pages and Doc pages.
+     * This abstracts away the DOM differences between pages.
      * @param pagePath - window.location.pathname
      */
     setDelegate: function (pagePath: string) {
@@ -183,7 +183,7 @@ export const Core = {
      * @param attempt - (Internal) Current retry attempt number.
      * @returns A promise resolving to the Markdown string or null.
      */
-    fetchAndConvertPrivateDoc: async function (docId: string, title: string, attempt = 1): Promise<string | null> {
+    fetchAndConvertPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<string | null> {
         const log = this.getLogger(this.MODULE_NAME, 'fetchAndConvertPrivateDoc');
         const MAX_RETRIES = 3;
 
