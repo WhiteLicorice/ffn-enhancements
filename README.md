@@ -32,7 +32,7 @@ Once you have the extension installed, [Click This Button](https://github.com/Wh
 * [x] Make text selectable while reading.
 * [x] Bind arrow keys or WASD keys to chapter navigation.
 * [x] Integrate Ao3's export to EPUB/PDF/HTML/MOBI feature (AZW3 is prioprietary and out of scope).
-* [ ] Allow slow, but fresh exporting of stories because FicHub's API may be stale for a while.
+* [x] Allow slow, but fresh exporting of stories because FicHub's API may be stale for a while.
 * [x] Integrate native dark theme (gave up: may I suggest using the mature [Dark Reader](https://darkreader.org/) instead?).
 * [ ] Make story text more large-screen friendly? Expand it so the borders at the sides are gone.
 * [ ] Fix FFN's bug where clicking on a story's picture doesn't do anything and just darkens the screen lmao.

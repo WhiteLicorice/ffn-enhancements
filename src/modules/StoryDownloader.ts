@@ -3,12 +3,13 @@
 import { Core } from './Core';
 import { Elements } from '../enums/Elements';
 import { FicHubDownloader } from './FicHubDownloader';
+import { NativeDownloader } from './NativeDownloader';
 import { SupportedFormats } from '../enums/SupportedFormats';
 
 /**
  * Module handling the UI integration for story downloads.
  * Acts as a Facade/Orchestrator, injecting the UI and delegating 
- * the actual download logic to specific strategies (currently FicHub).
+ * the actual download logic to specific strategies (FicHub or Native).
  */
 export const StoryDownloader = {
     /** Flag tracking if a download request is currently in progress. */
@@ -129,7 +130,7 @@ export const StoryDownloader = {
 
     /**
      * Delegates the download task to the appropriate Strategy via explicit methods.
-     * Handles UI state (disabling buttons, error reporting).
+     * Handles UI state and Fallback Logic (FicHub -> Native).
      * @param formatId - The internal ID of the format (epub, mobi, pdf, html).
      */
     processDownload: async function (formatId: SupportedFormats) {
@@ -142,30 +143,92 @@ export const StoryDownloader = {
 
         const storyUrl = window.location.href.split('?')[0];
 
-        try {
-            // Explicitly call the specific method on the strategy
-            switch (formatId) {
-                case SupportedFormats.EPUB:
-                    await FicHubDownloader.downloadAsEPUB(storyUrl);
-                    break;
-                case SupportedFormats.MOBI:
-                    await FicHubDownloader.downloadAsMOBI(storyUrl);
-                    break;
-                case SupportedFormats.PDF:
-                    await FicHubDownloader.downloadAsPDF(storyUrl);
-                    break;
-                case SupportedFormats.HTML:
-                    await FicHubDownloader.downloadAsHTML(storyUrl);
-                    break;
-                default:
-                    throw new Error(`Unsupported format requested: ${formatId}`);
+        // Define the progress callback that updates the button text
+        const progressCallback = (msg: string) => {
+            if (this.mainBtn) {
+                this.mainBtn.innerText = msg;
             }
+        };
+
+        try {
+            // 1. Interactive Choice for EPUB
+            if (formatId === SupportedFormats.EPUB) {
+                // Best UX: Explain the trade-off clearly using a confirmation dialog
+                // OK = FicHub (Fast), Cancel = Native (Slow/Better)
+                const userWantsFicHub = confirm(
+                    "Select Download Source:\n\n" +
+                    "[OK] - FicHub (Fast, plain formatting, and sometimes stale)\n" +
+                    "[Cancel] - Native (Slower, best formatting, always fresh)"
+                );
+
+                if (userWantsFicHub) {
+                    await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
+                } else {
+                    await this.runNativeStrategy(formatId, storyUrl, progressCallback);
+                }
+            }
+            // 2. Standard Behavior for other formats (FicHub Only)
+            else {
+                await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
+            }
+
         } catch (e) {
-            log('Download strategy failed', e);
+            log('Download strategy failed.', e);
             this.mainBtn.innerHTML = "Error";
-            alert("Download failed. Please check the console or try again later.");
+            alert("Download failed. Please try again later.");
         } finally {
             this.resetButton();
+        }
+    },
+
+    /**
+     * Helper to execute the FicHub strategy.
+     * Includes detection for potential API failures/staleness.
+     */
+    runFicHubStrategy: async function (formatId: SupportedFormats, url: string, cb: CallableFunction) {
+        const log = Core.getLogger('story-downloader', 'runFicHubStrategy');
+        try {
+            switch (formatId) {
+                case SupportedFormats.EPUB: await FicHubDownloader.downloadAsEPUB(url, cb); break;
+                case SupportedFormats.MOBI: await FicHubDownloader.downloadAsMOBI(url, cb); break;
+                case SupportedFormats.PDF: await FicHubDownloader.downloadAsPDF(url, cb); break;
+                case SupportedFormats.HTML: await FicHubDownloader.downloadAsHTML(url, cb); break;
+                default: throw new Error(`Unsupported format: ${formatId}`);
+            }
+        } catch (e) {
+            log("FicHub Strategy failed or returned error.", e);
+
+            // 3. User Guidance on Stale/Failed FicHub
+            if (formatId !== SupportedFormats.EPUB) {
+                alert("FicHub is currently unreachable or stale for this format.\n\nPlease select 'EPUB' and choose the 'Native' option to generate a fresh copy directly.");
+                throw e; // Re-throw so parent UI shows "Error"
+            } else {
+                // If they were already trying EPUB via FicHub and it failed
+                if (confirm("FicHub download failed or is stale. Would you like to try the Native Downloader instead?\n\n(This will scrape the story directly from the page.)")) {
+                    // Try fallback. If this fails, it throws to parent catch block (correct behavior).
+                    await this.runNativeStrategy(SupportedFormats.EPUB, url, cb);
+
+                    // Do NOT throw 'e' here. If we reached this line, the fallback succeeded.
+                    // Returning here ensures the parent processDownload sees this as a success.
+                    return;
+                } else {
+                    // User declined fallback.
+                    throw e;
+                }
+            }
+        }
+    },
+
+    /**
+     * Helper to execute the Native strategy.
+     */
+    runNativeStrategy: async function (formatId: SupportedFormats, url: string, cb: CallableFunction) {
+        switch (formatId) {
+            case SupportedFormats.EPUB: await NativeDownloader.downloadAsEPUB(url, cb); break;
+            case SupportedFormats.MOBI: await NativeDownloader.downloadAsMOBI(url, cb); break;
+            case SupportedFormats.PDF: await NativeDownloader.downloadAsPDF(url, cb); break;
+            case SupportedFormats.HTML: await NativeDownloader.downloadAsHTML(url, cb); break;
+            default: throw new Error(`Unsupported format: ${formatId}`);
         }
     },
 
