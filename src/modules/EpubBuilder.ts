@@ -99,6 +99,9 @@ export const EpubBuilder = {
     },
 
     generateXHTML: function (title: string, bodyContent: string): string {
+        // Sanitize content to ensure valid XHTML (closing tags for <br>, <hr>, <img>)
+        const validContent = this.makeValidXHTML(bodyContent);
+
         return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -109,9 +112,25 @@ export const EpubBuilder = {
 <body>
     <h2>${this.escape(title)}</h2>
     <hr/>
-    ${bodyContent}
+    ${validContent}
 </body>
 </html>`;
+    },
+
+    /**
+     * Converts loose HTML string (e.g. <br>, <hr>) into strict XHTML string (e.g. <br/>, <hr/>).
+     * Necessary because FFN provides HTML4/5 but EPUB requires XML.
+     */
+    makeValidXHTML: function (html: string): string {
+        const parser = new DOMParser();
+        // Parse into a real DOM to let the browser handle malformed HTML
+        const doc = parser.parseFromString(html, 'text/html');
+        const serializer = new XMLSerializer();
+
+        // Serialize children individually to avoid wrapping them in a body tag
+        return Array.from(doc.body.childNodes)
+            .map(node => serializer.serializeToString(node))
+            .join('');
     },
 
     escape: function (str: string): string {
