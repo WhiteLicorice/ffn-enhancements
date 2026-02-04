@@ -69,7 +69,12 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
 
     // 1. Metadata Scraping (Header)
     const title = Core.getElement(Elements.STORY_TITLE)?.textContent || 'Unknown Title';
-    const author = Core.getElement(Elements.STORY_AUTHOR)?.textContent || 'Unknown Author';
+
+    // Capture the anchor element to get both text and href
+    const authorEl = Core.getElement(Elements.STORY_AUTHOR) as HTMLAnchorElement;
+    const author = authorEl?.textContent || 'Unknown Author';
+    const authorUrl = authorEl?.href;
+
     const summary = Core.getElement(Elements.STORY_SUMMARY)?.textContent || '';
 
     log(`Fetched partial metadata ${title}, ${author}, ${summary}.`);
@@ -155,9 +160,10 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
         id: storyId,
         title,
         author,
+        authorUrl,
         description: summary,
         source: 'FanFiction.net',
-        storyUrl: storyUrl, // Pass the processed URL
+        storyUrl: storyUrl,
         coverBlob: coverBlob
     }, chapters);
 }
