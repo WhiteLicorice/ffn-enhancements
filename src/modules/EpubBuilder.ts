@@ -37,26 +37,86 @@ export const EpubBuilder = {
             h1, h2, h3 { text-align: center; }
             p { text-indent: 1em; margin-top: 0; margin-bottom: 0.5em; }
             hr { border: 0; border-bottom: 1px solid #ccc; margin: 20px 0; }
+            ul.toc { list-style-type: none; padding: 0; }
+            ul.toc li { margin-bottom: 0.5em; }
+            .title-page { text-align: center; margin-top: 20%; }
+            .meta-info { margin-top: 2em; font-size: 0.9em; color: #555; }
         `;
         zip.file('OEBPS/style.css', css);
 
-        // 4. Content.opf (Manifest)
+        // 4. Title Page (New)
+        zip.file('OEBPS/title.xhtml', this.generateTitlePage(meta));
+
+        // 5. Table of Contents HTML (New)
+        zip.file('OEBPS/toc.xhtml', this.generateTOCPage(meta, chapters));
+
+        // 6. Content.opf (Manifest)
         zip.file('OEBPS/content.opf', this.generateOPF(meta, chapters));
 
-        // 5. TOC.ncx (Navigation)
+        // 7. TOC.ncx (Navigation)
         zip.file('OEBPS/toc.ncx', this.generateNCX(meta, chapters));
 
-        // 6. Chapter Files
+        // 8. Chapter Files
         chapters.forEach((chap) => {
             // Use the specific chapter number for the filename
             const filename = `OEBPS/chapter_${chap.number}.xhtml`;
             zip.file(filename, this.generateXHTML(chap.title, chap.content));
         });
 
-        // 7. Generate Blob and Download
+        // 9. Generate Blob and Download
         const blob = await zip.generateAsync({ type: 'blob' });
         saveAs(blob, `${meta.title} - ${meta.author}.epub`);
         log('Download triggered.');
+    },
+
+    /**
+     * Generates the Title Page XHTML.
+     */
+    generateTitlePage: function (meta: StoryMetadata): string {
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>${this.escape(meta.title)}</title>
+    <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+    <div class="title-page">
+        <h1>${this.escape(meta.title)}</h1>
+        <h2>by ${this.escape(meta.author)}</h2>
+        <div class="meta-info">
+            <p>${this.escape(meta.description)}</p>
+            <p>Source: ${this.escape(meta.source)}</p>
+            <p>ID: ${this.escape(meta.id)}</p>
+        </div>
+    </div>
+</body>
+</html>`;
+    },
+
+    /**
+     * Generates the visual Table of Contents XHTML page.
+     */
+    generateTOCPage: function (_meta: StoryMetadata, chapters: ChapterData[]): string {
+        const listItems = chapters.map(chap =>
+            `<li><a href="chapter_${chap.number}.xhtml">${this.escape(chap.title)}</a></li>`
+        ).join('\n');
+
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Table of Contents</title>
+    <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+    <h2>Table of Contents</h2>
+    <hr/>
+    <ul class="toc">
+        ${listItems}
+    </ul>
+</body>
+</html>`;
     },
 
     generateOPF: function (meta: StoryMetadata, chapters: ChapterData[]): string {
@@ -69,15 +129,25 @@ export const EpubBuilder = {
         <dc:language>en</dc:language>
         <dc:description>${this.escape(meta.description)}</dc:description>
         <dc:identifier id="BookId" opf:scheme="UUID">${uuid}</dc:identifier>
+        <meta name="cover" content="cover-image" />
     </metadata>
     <manifest>
         <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
         <item id="style" href="style.css" media-type="text/css"/>
+        <item id="titlepage" href="title.xhtml" media-type="application/xhtml+xml"/>
+        <item id="toc" href="toc.xhtml" media-type="application/xhtml+xml"/>
         ${chapters.map((chap) => `<item id="chap${chap.number}" href="chapter_${chap.number}.xhtml" media-type="application/xhtml+xml"/>`).join('\n')}
     </manifest>
     <spine toc="ncx">
+        <itemref idref="titlepage"/>
+        <itemref idref="toc"/>
         ${chapters.map((chap) => `<itemref idref="chap${chap.number}"/>`).join('\n')}
     </spine>
+    <guide>
+        <reference type="title-page" title="Title Page" href="title.xhtml"/>
+        <reference type="toc" title="Table of Contents" href="toc.xhtml"/>
+        <reference type="text" title="Start" href="chapter_1.xhtml"/>
+    </guide>
 </package>`;
     },
 
@@ -89,8 +159,16 @@ export const EpubBuilder = {
     </head>
     <docTitle><text>${this.escape(meta.title)}</text></docTitle>
     <navMap>
-        ${chapters.map((chap) => `
-        <navPoint id="navPoint-${chap.number}" playOrder="${chap.number}">
+        <navPoint id="navPoint-title" playOrder="0">
+            <navLabel><text>Title Page</text></navLabel>
+            <content src="title.xhtml"/>
+        </navPoint>
+        <navPoint id="navPoint-toc" playOrder="0">
+            <navLabel><text>Table of Contents</text></navLabel>
+            <content src="toc.xhtml"/>
+        </navPoint>
+        ${chapters.map((chap, i) => `
+        <navPoint id="navPoint-${chap.number}" playOrder="${i + 1}">
             <navLabel><text>${this.escape(chap.title)}</text></navLabel>
             <content src="chapter_${chap.number}.xhtml"/>
         </navPoint>`).join('')}
