@@ -42,6 +42,7 @@ export const EpubBuilder = {
             .title-page { text-align: center; margin-top: 20%; }
             .cover-img { max-width: 100%; height: auto; margin-bottom: 1em; display: block; margin-left: auto; margin-right: auto; }
             .meta-info { margin-top: 2em; font-size: 0.9em; color: #555; }
+            a { color: inherit; text-decoration: none; border-bottom: 1px dashed #555; } 
         `;
         zip.file('OEBPS/style.css', css);
 
@@ -108,11 +109,22 @@ export const EpubBuilder = {
     /**
      * Generates the Title Page XHTML.
      * Includes the cover image inline above the title.
+     * UPDATED: Links the author name and the Source label.
      */
     generateTitlePage: function (meta: StoryMetadata): string {
         const coverHtml = meta.coverBlob
             ? '<div class="cover"><img src="cover.jpg" alt="Cover Image" class="cover-img"/></div>'
             : '';
+
+        // Wrap author in <a> if url exists
+        const authorHtml = meta.authorUrl
+            ? `<a href="${this.escape(meta.authorUrl)}">${this.escape(meta.author)}</a>`
+            : this.escape(meta.author);
+
+        // Wrap source in <a> if storyUrl exists
+        const sourceHtml = meta.storyUrl
+            ? `<a href="${this.escape(meta.storyUrl)}">${this.escape(meta.source)}</a>`
+            : this.escape(meta.source);
 
         return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
@@ -125,10 +137,10 @@ export const EpubBuilder = {
     <div class="title-page">
         ${coverHtml}
         <h1>${this.escape(meta.title)}</h1>
-        <h2>by ${this.escape(meta.author)}</h2>
+        <h2>by ${authorHtml}</h2>
         <div class="meta-info">
             <p>${this.escape(meta.description)}</p>
-            <p>Source: ${this.escape(meta.source)}</p>
+            <p>Source: ${sourceHtml}</p>
             <p>ID: ${this.escape(meta.id)}</p>
         </div>
     </div>
@@ -164,25 +176,10 @@ export const EpubBuilder = {
     generateOPF: function (meta: StoryMetadata, chapters: ChapterData[]): string {
         const uuid = `urn:uuid:${meta.id}`;
 
-        // Add cover image to Manifest if present
-        const coverImageItem = meta.coverBlob
-            ? '<item id="cover-image" href="cover.jpg" media-type="image/jpeg"/>'
-            : '';
-
-        // Add cover PAGE to Manifest if present
-        const coverPageItem = meta.coverBlob
-            ? '<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>'
-            : '';
-
-        // Add cover Meta Tag
-        const coverMeta = meta.coverBlob
-            ? '<meta name="cover" content="cover-image" />'
-            : '';
-
-        // Add cover to Spine (First item!)
-        const coverSpine = meta.coverBlob
-            ? '<itemref idref="cover"/>'
-            : '';
+        const coverImageItem = meta.coverBlob ? '<item id="cover-image" href="cover.jpg" media-type="image/jpeg"/>' : '';
+        const coverPageItem = meta.coverBlob ? '<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>' : '';
+        const coverMeta = meta.coverBlob ? '<meta name="cover" content="cover-image" />' : '';
+        const coverSpine = meta.coverBlob ? '<itemref idref="cover"/>' : '';
 
         return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0">

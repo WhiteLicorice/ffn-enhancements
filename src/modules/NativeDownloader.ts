@@ -13,9 +13,21 @@ import { Elements } from '../enums/Elements';
 export const NativeDownloader: IFanficDownloader = {
 
     async downloadAsEPUB(storyIdOrUrl: string, onProgress?: CallableFunction): Promise<void> {
-        // Extract Story ID if a URL is passed
+        // Extract Story ID
         const storyId = storyIdOrUrl.match(/s\/(\d+)/)?.[1] || storyIdOrUrl;
-        await _runScraper(storyId, onProgress);
+
+        // Construct Canonical URL (Force Chapter 1)
+        // If the input was a URL, we try to preserve the slug but force /1/
+        // If it was just an ID, we construct a standard URL.
+        let storyUrl = `https://www.fanfiction.net/s/${storyId}/1/`;
+
+        if (storyIdOrUrl.includes('fanfiction.net')) {
+            // Regex: matches /s/ID/CHAPTER/ and replaces CHAPTER with 1
+            // This preserves the slug at the end if it exists.
+            storyUrl = storyIdOrUrl.replace(/\/s\/(\d+)\/\d+/, '/s/$1/1');
+        }
+
+        await _runScraper(storyId, storyUrl, onProgress);
     },
 
     async downloadAsHTML(_u: string, _onProgress?: CallableFunction): Promise<void> {
@@ -52,13 +64,15 @@ async function _fetchChapter(storyId: string, chapterNum: number): Promise<strin
  * The core scraping logic.
  * Orchestrates the fetching of metadata and all chapters.
  */
-async function _runScraper(storyId: string, onProgress?: CallableFunction): Promise<void> {
+async function _runScraper(storyId: string, storyUrl: string, onProgress?: CallableFunction): Promise<void> {
     const log = Core.getLogger('NativeDownloader', 'runScraper');
 
     // 1. Metadata Scraping (Header)
     const title = Core.getElement(Elements.STORY_TITLE)?.textContent || 'Unknown Title';
     const author = Core.getElement(Elements.STORY_AUTHOR)?.textContent || 'Unknown Author';
     const summary = Core.getElement(Elements.STORY_SUMMARY)?.textContent || '';
+
+    log(`Fetched partial metadata ${title}, ${author}, ${summary}.`);
 
     // 1b. Cover Art Scraping
     let coverBlob: Blob | undefined;
@@ -143,6 +157,7 @@ async function _runScraper(storyId: string, onProgress?: CallableFunction): Prom
         author,
         description: summary,
         source: 'FanFiction.net',
-        coverBlob: coverBlob // Pass the fetched blob to the builder
+        storyUrl: storyUrl, // Pass the processed URL
+        coverBlob: coverBlob
     }, chapters);
 }
