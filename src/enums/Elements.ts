@@ -51,6 +51,9 @@ export enum Elements {
     /** The summary text block in the header. */
     STORY_SUMMARY = 'STORY_SUMMARY',
 
+    /** The cover image element in the header. */
+    STORY_COVER = 'STORY_COVER',
+
     // =============================
     // DOC MANAGER (/docs/docs.php)
     // =============================

@@ -56,10 +56,25 @@ async function _runScraper(storyId: string, onProgress?: CallableFunction): Prom
     const log = Core.getLogger('NativeDownloader', 'runScraper');
 
     // 1. Metadata Scraping (Header)
-    // We use the Core Delegate to fetch these, ensuring selector changes are handled centrally.
     const title = Core.getElement(Elements.STORY_TITLE)?.textContent || 'Unknown Title';
     const author = Core.getElement(Elements.STORY_AUTHOR)?.textContent || 'Unknown Author';
     const summary = Core.getElement(Elements.STORY_SUMMARY)?.textContent || '';
+
+    // 1b. Cover Art Scraping
+    let coverBlob: Blob | undefined;
+    const coverImg = Core.getElement(Elements.STORY_COVER) as HTMLImageElement;
+    if (coverImg && coverImg.src) {
+        log(`Found cover image: ${coverImg.src}`);
+        try {
+            const imgResp = await fetch(coverImg.src);
+            if (imgResp.ok) {
+                coverBlob = await imgResp.blob();
+                log('Cover image fetched successfully.');
+            }
+        } catch (e) {
+            log('Failed to fetch cover image.', e);
+        }
+    }
 
     // 2. Determine Chapter Count
     const chapSelect = Core.getElement(Elements.CHAPTER_DROPDOWN) as HTMLSelectElement;
@@ -112,6 +127,7 @@ async function _runScraper(storyId: string, onProgress?: CallableFunction): Prom
         title,
         author,
         description: summary,
-        source: 'FanFiction.net'
+        source: 'FanFiction.net',
+        coverBlob: coverBlob // Pass the fetched blob to the builder
     }, chapters);
 }

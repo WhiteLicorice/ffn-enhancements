@@ -49,6 +49,10 @@ export const StoryDelegate: IDelegate = {
                 // Description is usually the div with xcontrast_txt class inside profile_top
                 return doc.querySelector('#profile_top > div.xcontrast_txt');
 
+            case Elements.STORY_COVER:
+                // FFN usually marks the cover image with the class 'cimage' inside the profile header
+                return doc.querySelector('#profile_top img.cimage');
+
             case Elements.FOLLOW_BUTTON_CONTAINER:
                 // The "Follow/Fav" buttons are usually generic buttons floated right inside the header.
                 // We target them to inject the Download button next to them.

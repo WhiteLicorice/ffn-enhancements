@@ -40,9 +40,15 @@ export const EpubBuilder = {
             ul.toc { list-style-type: none; padding: 0; }
             ul.toc li { margin-bottom: 0.5em; }
             .title-page { text-align: center; margin-top: 20%; }
+            .cover-img { max-width: 100%; height: auto; margin-bottom: 1em; display: block; margin-left: auto; margin-right: auto; }
             .meta-info { margin-top: 2em; font-size: 0.9em; color: #555; }
         `;
         zip.file('OEBPS/style.css', css);
+
+        // 3.5 Cover Image (If exists)
+        if (meta.coverBlob) {
+            zip.file('OEBPS/cover.jpg', meta.coverBlob);
+        }
 
         // 4. Title Page (New)
         zip.file('OEBPS/title.xhtml', this.generateTitlePage(meta));
@@ -73,6 +79,10 @@ export const EpubBuilder = {
      * Generates the Title Page XHTML.
      */
     generateTitlePage: function (meta: StoryMetadata): string {
+        const coverHtml = meta.coverBlob
+            ? '<div class="cover"><img src="cover.jpg" alt="Cover Image" class="cover-img"/></div>'
+            : '';
+
         return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -82,6 +92,7 @@ export const EpubBuilder = {
 </head>
 <body>
     <div class="title-page">
+        ${coverHtml}
         <h1>${this.escape(meta.title)}</h1>
         <h2>by ${this.escape(meta.author)}</h2>
         <div class="meta-info">
@@ -121,6 +132,17 @@ export const EpubBuilder = {
 
     generateOPF: function (meta: StoryMetadata, chapters: ChapterData[]): string {
         const uuid = `urn:uuid:${meta.id}`;
+
+        // Conditionally add the cover item to the manifest
+        const coverManifestItem = meta.coverBlob
+            ? '<item id="cover-image" href="cover.jpg" media-type="image/jpeg"/>'
+            : '';
+
+        // Ensure meta name="cover" points to a valid ID if it exists
+        const coverMeta = meta.coverBlob
+            ? '<meta name="cover" content="cover-image" />'
+            : '';
+
         return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
@@ -129,13 +151,14 @@ export const EpubBuilder = {
         <dc:language>en</dc:language>
         <dc:description>${this.escape(meta.description)}</dc:description>
         <dc:identifier id="BookId" opf:scheme="UUID">${uuid}</dc:identifier>
-        <meta name="cover" content="cover-image" />
+        ${coverMeta}
     </metadata>
     <manifest>
         <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
         <item id="style" href="style.css" media-type="text/css"/>
         <item id="titlepage" href="title.xhtml" media-type="application/xhtml+xml"/>
         <item id="toc" href="toc.xhtml" media-type="application/xhtml+xml"/>
+        ${coverManifestItem}
         ${chapters.map((chap) => `<item id="chap${chap.number}" href="chapter_${chap.number}.xhtml" media-type="application/xhtml+xml"/>`).join('\n')}
     </manifest>
     <spine toc="ncx">
