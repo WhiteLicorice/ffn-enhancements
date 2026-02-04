@@ -150,32 +150,32 @@ export const StoryDownloader = {
             }
         };
 
-        // DEBUG: Force Native Downloader for testing purposes
-        const FORCE_NATIVE_DEBUG = true;
-
         try {
-            if (FORCE_NATIVE_DEBUG) {
-                log('DEBUG: Forcing Native Download.');
-                await this.runNativeStrategy(formatId, storyUrl, progressCallback);
-            } else {
-                // Production Logic: Try FicHub first, then fallback
+            // 1. Interactive Choice for EPUB
+            if (formatId === SupportedFormats.EPUB) {
+                // Best UX: Explain the trade-off clearly using a confirmation dialog
+                // OK = FicHub (Fast), Cancel = Native (Slow/Better)
+                const userWantsFicHub = confirm(
+                    "Select Download Source:\n\n" +
+                    "[OK] - FicHub (Fast, plain formatting, and sometimes stale)\n" +
+                    "[Cancel] - Native (Slower, best formatting, always fresh)"
+                );
+
+                if (userWantsFicHub) {
+                    await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
+                } else {
+                    await this.runNativeStrategy(formatId, storyUrl, progressCallback);
+                }
+            }
+            // 2. Standard Behavior for other formats (FicHub Only)
+            else {
                 await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
             }
-        } catch (e) {
-            log('Primary download strategy failed.', e);
 
-            // If checking FicHub failed, offer Native Fallback
-            if (!FORCE_NATIVE_DEBUG && confirm("FicHub is unreachable or stale. Would you like to use the slower Native Downloader?")) {
-                try {
-                    await this.runNativeStrategy(formatId, storyUrl, progressCallback);
-                } catch (nativeErr) {
-                    log('Native fallback failed.', nativeErr);
-                    this.mainBtn.innerHTML = "Error";
-                    alert("Download failed. Please try again later.");
-                }
-            } else {
-                this.mainBtn.innerHTML = "Error";
-            }
+        } catch (e) {
+            log('Download strategy failed.', e);
+            this.mainBtn.innerHTML = "Error";
+            alert("Download failed. Please try again later.");
         } finally {
             this.resetButton();
         }
@@ -183,14 +183,30 @@ export const StoryDownloader = {
 
     /**
      * Helper to execute the FicHub strategy.
+     * Includes detection for potential API failures/staleness.
      */
     runFicHubStrategy: async function (formatId: SupportedFormats, url: string, cb: CallableFunction) {
-        switch (formatId) {
-            case SupportedFormats.EPUB: await FicHubDownloader.downloadAsEPUB(url, cb); break;
-            case SupportedFormats.MOBI: await FicHubDownloader.downloadAsMOBI(url, cb); break;
-            case SupportedFormats.PDF: await FicHubDownloader.downloadAsPDF(url, cb); break;
-            case SupportedFormats.HTML: await FicHubDownloader.downloadAsHTML(url, cb); break;
-            default: throw new Error(`Unsupported format: ${formatId}`);
+        const log = Core.getLogger('story-downloader', 'runFicHubStrategy');
+        try {
+            switch (formatId) {
+                case SupportedFormats.EPUB: await FicHubDownloader.downloadAsEPUB(url, cb); break;
+                case SupportedFormats.MOBI: await FicHubDownloader.downloadAsMOBI(url, cb); break;
+                case SupportedFormats.PDF: await FicHubDownloader.downloadAsPDF(url, cb); break;
+                case SupportedFormats.HTML: await FicHubDownloader.downloadAsHTML(url, cb); break;
+                default: throw new Error(`Unsupported format: ${formatId}`);
+            }
+        } catch (e) {
+            log("FicHub Strategy failed or returned error.", e);
+            // 3. User Guidance on Stale/Failed FicHub
+            if (formatId !== SupportedFormats.EPUB) {
+                alert("FicHub is currently unreachable or stale for this format.\n\nPlease select 'EPUB' and choose the 'Native' option to generate a fresh copy directly.");
+            } else {
+                // If they were already trying EPUB via FicHub and it failed
+                if (confirm("FicHub download failed. Would you like to try the Native Downloader instead?")) {
+                    await this.runNativeStrategy(SupportedFormats.EPUB, url, cb);
+                }
+            }
+            throw e; // Re-throw to trigger finally block in parent
         }
     },
 
