@@ -61,6 +61,11 @@ export const StoryDelegate: IDelegate = {
             case Elements.REVIEW_BOX:
                 return doc.querySelector('#review_review');
 
+            case Elements.STORY_META_BLOCK:
+                // This is the span with class 'xgray' and 'xcontrast_txt' usually found at the bottom of profile_top.
+                // It contains the "Rated: T - English - ..." text.
+                return doc.querySelector('#profile_top > span.xgray.xcontrast_txt');
+
             default:
                 return null;
         }

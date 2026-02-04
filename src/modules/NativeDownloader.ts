@@ -5,6 +5,7 @@ import { IFanficDownloader } from '../interfaces/IFanficDownloader';
 import { EpubBuilder } from './EpubBuilder';
 import { ChapterData } from '../interfaces/ChapterData';
 import { Elements } from '../enums/Elements';
+import { StoryMetadata } from '../interfaces/StoryMetadata';
 
 /**
  * Fallback strategy that scrapes the content directly from the browser.
@@ -20,7 +21,6 @@ export const NativeDownloader: IFanficDownloader = {
         // If the input was a URL, we try to preserve the slug but force /1/
         // If it was just an ID, we construct a standard URL.
         let storyUrl = `https://www.fanfiction.net/s/${storyId}/1/`;
-
         if (storyIdOrUrl.includes('fanfiction.net')) {
             // Regex: matches /s/ID/CHAPTER/ and replaces CHAPTER with 1
             // This preserves the slug at the end if it exists.
@@ -54,45 +54,34 @@ async function _fetchChapter(storyId: string, chapterNum: number, onProgress?: C
 
     let attempt = 0;
     const maxRetries = 5;
-    let backoffDelay = 5000; // Start with 5 seconds
+    let backoffDelay = 5000;
 
     while (attempt <= maxRetries) {
         const resp = await fetch(url);
 
-        // Success case
         if (resp.ok) {
             const text = await resp.text();
             const doc = new DOMParser().parseFromString(text, 'text/html');
-
-            // Use the Delegate with the 'doc' override to find elements in the parsed HTML
             const contentEl = Core.getElement(Elements.STORY_TEXT, doc);
             return contentEl?.innerHTML || "<p>Error: Content missing</p>";
         }
 
-        // Rate Limit case (429)
         if (resp.status === 429) {
             attempt++;
             if (attempt > maxRetries) {
-                log(`Max retries (${maxRetries}) exceeded for chapter ${chapterNum}.`);
+                log(`Max retries (${maxRetries}) exceeded.`);
                 throw new Error("Download aborted: Too many rate limit errors.");
             }
-
             const waitSeconds = backoffDelay / 1000;
             const msg = `Rate limit hit (429). Cooling down for ${waitSeconds}s...`;
             log(msg);
-
-            // Update UI so user knows why it's stuck
             if (onProgress) onProgress(msg);
-
-            // Wait and then double the delay for next time
             await new Promise(resolve => setTimeout(resolve, backoffDelay));
             backoffDelay *= 2;
         } else {
-            // Hard error (404, 500, etc)
             throw new Error(`Network error: ${resp.status}`);
         }
     }
-
     throw new Error("Unknown error in fetch loop.");
 }
 
@@ -103,19 +92,20 @@ async function _fetchChapter(storyId: string, chapterNum: number, onProgress?: C
 async function _runScraper(storyId: string, storyUrl: string, onProgress?: CallableFunction): Promise<void> {
     const log = Core.getLogger('NativeDownloader', 'runScraper');
 
-    // 1. Metadata Scraping (Header)
+    // 1. Metadata Scraping
     const title = Core.getElement(Elements.STORY_TITLE)?.textContent || 'Unknown Title';
-
-    // Capture the anchor element to get both text and href
     const authorEl = Core.getElement(Elements.STORY_AUTHOR) as HTMLAnchorElement;
     const author = authorEl?.textContent || 'Unknown Author';
     const authorUrl = authorEl?.href;
-
     const summary = Core.getElement(Elements.STORY_SUMMARY)?.textContent || '';
 
-    log(`Fetched partial metadata ${title}, ${author}, ${summary}.`);
+    // 1b. Extended Metadata Parsing
+    const metaBlock = Core.getElement(Elements.STORY_META_BLOCK);
+    const extendedMeta = _parseFFNMetadata(metaBlock?.textContent || '');
 
-    // 1b. Cover Art Scraping
+    log(`Fetched metadata for "${title}".`);
+
+    // 1c. Cover Art Scraping
     let coverBlob: Blob | undefined;
     const coverImg = Core.getElement(Elements.STORY_COVER) as HTMLImageElement;
     if (coverImg && coverImg.src) {
@@ -125,7 +115,6 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
 
         for (const res of resolutions) {
             try {
-                // If the current src contains /75/ or /150/, try to upgrade it
                 const targetUrl = baseUrl.replace(/\/75\/|\/150\/|\/180\//, res);
                 log(`Probing cover resolution: ${res}`);
 
@@ -158,7 +147,6 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
     if (chapSelect) {
         chapterList = Array.from(chapSelect.options).map(opt => ({ id: opt.value, name: opt.text }));
     } else {
-        // Single chapter story
         chapterList = [{ id: '1', name: title }];
     }
 
@@ -199,7 +187,8 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
     // 4. Build
     if (onProgress) onProgress("Bundling EPUB...");
 
-    await EpubBuilder.build({
+    // Merge basic and extended metadata
+    const finalMeta: StoryMetadata = {
         id: storyId,
         title,
         author,
@@ -207,6 +196,63 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
         description: summary,
         source: 'FanFiction.net',
         storyUrl: storyUrl,
-        coverBlob: coverBlob
-    }, chapters);
+        coverBlob: coverBlob,
+        ...extendedMeta // Spread the parsed details
+    };
+
+    await EpubBuilder.build(finalMeta, chapters);
+}
+
+/**
+ * Helper to parse the hyphen-separated metadata string from FFN.
+ * Example: "Rated: T - English - Parody/Romance - [Char A, Char B] - Words: 100 - ..."
+ */
+function _parseFFNMetadata(text: string): Partial<StoryMetadata> {
+    const meta: Partial<StoryMetadata> = {
+        status: 'In Progress' // Default
+    };
+
+    if (!text) return meta;
+
+    const parts = text.split(' - ').map(s => s.trim());
+
+    parts.forEach(part => {
+        if (part.startsWith('Rated:')) {
+            meta.rating = part.replace('Rated:', '').trim();
+        } else if (part.startsWith('Words:')) {
+            meta.words = part.replace('Words:', '').trim();
+        } else if (part.startsWith('Reviews:')) {
+            meta.reviews = part.replace('Reviews:', '').trim();
+        } else if (part.startsWith('Favs:')) {
+            meta.favs = part.replace('Favs:', '').trim();
+        } else if (part.startsWith('Follows:')) {
+            meta.follows = part.replace('Follows:', '').trim();
+        } else if (part.startsWith('Updated:')) {
+            meta.updated = part.replace('Updated:', '').trim();
+        } else if (part.startsWith('Published:')) {
+            meta.published = part.replace('Published:', '').trim();
+        } else if (part.startsWith('id:')) {
+            // ID is already handled, ignore
+        } else if (part === 'Complete') {
+            meta.status = 'Complete';
+        } else if (part.startsWith('[')) {
+            // Characters usually enclosed in brackets e.g. [Ash K., Dawn]
+            // If multiple brackets exist, FFN concatenates them.
+            meta.characters = part;
+        } else {
+            // Heuristic for Genre and Language
+            // Language is usually a single word like 'English', 'Spanish'
+            // Genre is usually 'Adventure/Romance' or 'General'
+            // This is inexact, but covers most cases.
+            if (['English', 'Spanish', 'French', 'German', 'Chinese', 'Japanese'].includes(part)) {
+                meta.language = part;
+            } else if (part.includes('/') || /^[A-Z][a-z]+$/.test(part)) {
+                // Likely Genre (e.g. Parody/Romance or just Drama)
+                // Avoid overriding language if already set
+                if (!meta.genre) meta.genre = part;
+            }
+        }
+    });
+
+    return meta;
 }

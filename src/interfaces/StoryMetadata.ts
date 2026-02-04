@@ -11,4 +11,16 @@ export interface StoryMetadata {
     storyUrl?: string;
     /** Optional blob data for the cover image */
     coverBlob?: Blob;
+
+    rating?: string;
+    language?: string;
+    genre?: string;
+    characters?: string;
+    words?: string;
+    reviews?: string;
+    favs?: string;
+    follows?: string;
+    updated?: string;
+    published?: string;
+    status?: string; // 'Complete' or 'In Progress'
 }

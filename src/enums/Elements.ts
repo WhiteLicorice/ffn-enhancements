@@ -54,6 +54,9 @@ export enum Elements {
     /** The cover image element in the header. */
     STORY_COVER = 'STORY_COVER',
 
+    /** The container holding the story stats (Rated, Words, Status, etc). */
+    STORY_META_BLOCK = 'STORY_META_BLOCK',
+
     // =============================
     // DOC MANAGER (/docs/docs.php)
     // =============================

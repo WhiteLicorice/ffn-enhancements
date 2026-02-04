@@ -39,23 +39,24 @@ export const EpubBuilder = {
             hr { border: 0; border-bottom: 1px solid #ccc; margin: 20px 0; }
             ul.toc { list-style-type: none; padding: 0; }
             ul.toc li { margin-bottom: 0.5em; }
-            .title-page { text-align: center; margin-top: 20%; }
-            .cover-img { max-width: 100%; height: auto; margin-bottom: 1em; display: block; margin-left: auto; margin-right: auto; }
-            .meta-info { margin-top: 2em; font-size: 0.9em; color: #555; }
+            .title-page { text-align: center; margin-top: 10%; }
+            .cover-img { max-width: 100%; height: auto; max-height: 500px; margin-bottom: 1em; display: block; margin-left: auto; margin-right: auto; }
+            .meta-info { margin-top: 2em; font-size: 0.9em; color: #555; text-align: center; }
+            .meta-table { margin: 1em auto; width: 80%; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding: 10px; font-size: 0.8em; text-align: left; }
+            .meta-row { margin-bottom: 5px; }
+            .label { font-weight: bold; margin-right: 5px; }
             a { color: inherit; text-decoration: none; border-bottom: 1px dashed #555; } 
         `;
         zip.file('OEBPS/style.css', css);
 
         // 3.5 Cover Image Handling
-        // If we have a cover, we create a dedicated Cover Page (cover.xhtml)
-        // This is the standard "Best Practice" for eBooks to look professional.
         if (meta.coverBlob) {
             zip.file('OEBPS/cover.jpg', meta.coverBlob);
             zip.file('OEBPS/cover.xhtml', this.generateCoverPage());
         }
 
         // 4. Title Page (Text + Little Cover)
-        zip.file('OEBPS/title.xhtml', this.generateTitlePage(meta));
+        zip.file('OEBPS/title.xhtml', this.generateTitlePage(meta, chapters.length));
 
         // 5. Table of Contents HTML
         zip.file('OEBPS/toc.xhtml', this.generateTOCPage(meta, chapters));
@@ -108,23 +109,24 @@ export const EpubBuilder = {
 
     /**
      * Generates the Title Page XHTML.
-     * Includes the cover image inline above the title.
-     * UPDATED: Links the author name and the Source label.
+     * Includes extended metadata if available.
      */
-    generateTitlePage: function (meta: StoryMetadata): string {
+    generateTitlePage: function (meta: StoryMetadata, chapterCount: number): string {
         const coverHtml = meta.coverBlob
             ? '<div class="cover"><img src="cover.jpg" alt="Cover Image" class="cover-img"/></div>'
             : '';
 
-        // Wrap author in <a> if url exists
         const authorHtml = meta.authorUrl
             ? `<a href="${this.escape(meta.authorUrl)}">${this.escape(meta.author)}</a>`
             : this.escape(meta.author);
 
-        // Wrap source in <a> if storyUrl exists
         const sourceHtml = meta.storyUrl
             ? `<a href="${this.escape(meta.storyUrl)}">${this.escape(meta.source)}</a>`
             : this.escape(meta.source);
+
+        // Helper to generate a metadata row if the value exists
+        const metaRow = (label: string, value?: string) =>
+            value ? `<div class="meta-row"><span class="label">${label}:</span> ${this.escape(value)}</div>` : '';
 
         return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
@@ -138,10 +140,27 @@ export const EpubBuilder = {
         ${coverHtml}
         <h1>${this.escape(meta.title)}</h1>
         <h2>by ${authorHtml}</h2>
+        
         <div class="meta-info">
             <p>${this.escape(meta.description)}</p>
-            <p>Source: ${sourceHtml}</p>
-            <p>ID: ${this.escape(meta.id)}</p>
+        </div>
+
+        <div class="meta-table">
+            ${metaRow('Source', sourceHtml)} // Pass HTML directly implies trusting sourceHtml construction
+            <div class="meta-row"><span class="label">Source:</span> ${sourceHtml}</div>
+            <div class="meta-row"><span class="label">ID:</span> ${this.escape(meta.id)}</div>
+            ${metaRow('Rated', meta.rating)}
+            ${metaRow('Genre', meta.genre)}
+            ${metaRow('Language', meta.language)}
+            ${metaRow('Status', meta.status)}
+            ${metaRow('Chapters', chapterCount.toString())}
+            ${metaRow('Words', meta.words)}
+            ${metaRow('Published', meta.published)}
+            ${metaRow('Updated', meta.updated)}
+            ${metaRow('Characters', meta.characters)}
+            ${metaRow('Reviews', meta.reviews)}
+            ${metaRow('Favs', meta.favs)}
+            ${metaRow('Follows', meta.follows)}
         </div>
     </div>
 </body>
@@ -181,13 +200,15 @@ export const EpubBuilder = {
         const coverMeta = meta.coverBlob ? '<meta name="cover" content="cover-image" />' : '';
         const coverSpine = meta.coverBlob ? '<itemref idref="cover"/>' : '';
 
+        // Add Extended metadata to OPF description or as separate tags
         return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
         <dc:title>${this.escape(meta.title)}</dc:title>
         <dc:creator opf:role="aut">${this.escape(meta.author)}</dc:creator>
-        <dc:language>en</dc:language>
+        <dc:language>${meta.language ? meta.language.substr(0, 2).toLowerCase() : 'en'}</dc:language>
         <dc:description>${this.escape(meta.description)}</dc:description>
+        <dc:subject>${this.escape(meta.genre)}</dc:subject>
         <dc:identifier id="BookId" opf:scheme="UUID">${uuid}</dc:identifier>
         ${coverMeta}
     </metadata>
@@ -293,7 +314,7 @@ export const EpubBuilder = {
             .join('');
     },
 
-    escape: function (str: string): string {
+    escape: function (str: string | undefined): string {
         return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 };
