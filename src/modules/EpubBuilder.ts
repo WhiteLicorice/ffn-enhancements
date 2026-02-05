@@ -50,9 +50,14 @@ export const EpubBuilder = {
         zip.file('OEBPS/style.css', css);
 
         // 3.5 Cover Image Handling
+        // We determine the mimetype dynamically, defaulting to jpeg if missing.
+        let coverMime = 'image/jpeg';
         if (meta.coverBlob) {
-            zip.file('OEBPS/cover.jpg', meta.coverBlob);
-            zip.file('OEBPS/cover.xhtml', this.generateCoverPage());
+            coverMime = meta.coverBlob.type || 'image/jpeg';
+            // Determine extension based on mime
+            const ext = coverMime.includes('png') ? 'png' : 'jpg';
+            zip.file(`OEBPS/cover.${ext}`, meta.coverBlob);
+            zip.file('OEBPS/cover.xhtml', this.generateCoverPage(ext));
         }
 
         // 4. Title Page (Text + Little Cover)
@@ -62,7 +67,7 @@ export const EpubBuilder = {
         zip.file('OEBPS/toc.xhtml', this.generateTOCPage(meta, chapters));
 
         // 6. Content.opf (Manifest)
-        zip.file('OEBPS/content.opf', this.generateOPF(meta, chapters));
+        zip.file('OEBPS/content.opf', this.generateOPF(meta, chapters, coverMime));
 
         // 7. TOC.ncx (Navigation)
         zip.file('OEBPS/toc.ncx', this.generateNCX(meta, chapters));
@@ -84,7 +89,7 @@ export const EpubBuilder = {
      * This technique forces the image to scale to fit ANY screen size perfectly
      * without scrollbars, though white bars (aspect ratio) are normal.
      */
-    generateCoverPage: function (): string {
+    generateCoverPage: function (ext: string = 'jpg'): string {
         return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
@@ -100,7 +105,7 @@ export const EpubBuilder = {
 <body>
     <div>
         <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="100%" height="100%" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid meet">
-            <image width="600" height="800" xlink:href="cover.jpg" />
+            <image width="600" height="800" xlink:href="cover.${ext}" />
         </svg>
     </div>
 </body>
@@ -112,8 +117,12 @@ export const EpubBuilder = {
      * Includes extended metadata if available.
      */
     generateTitlePage: function (meta: StoryMetadata, chapterCount: number): string {
+        // Assume jpg for internal display if blob exists, browser handles actual decoding
+        // If we really wanted to be strict we'd pass the extension here too, but HTML is forgiving.
+        const ext = (meta.coverBlob?.type.includes('png')) ? 'png' : 'jpg';
+
         const coverHtml = meta.coverBlob
-            ? '<div class="cover"><img src="cover.jpg" alt="Cover Image" class="cover-img"/></div>'
+            ? `<div class="cover"><img src="cover.${ext}" alt="Cover Image" class="cover-img"/></div>`
             : '';
 
         const authorHtml = meta.authorUrl
@@ -191,15 +200,28 @@ export const EpubBuilder = {
 </html>`;
     },
 
-    generateOPF: function (meta: StoryMetadata, chapters: ChapterData[]): string {
+    generateOPF: function (meta: StoryMetadata, chapters: ChapterData[], coverMime: string): string {
         const uuid = `urn:uuid:${meta.id}`;
+        const ext = coverMime.includes('png') ? 'png' : 'jpg';
 
-        const coverImageItem = meta.coverBlob ? '<item id="cover-image" href="cover.jpg" media-type="image/jpeg"/>' : '';
-        const coverPageItem = meta.coverBlob ? '<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>' : '';
-        const coverMeta = meta.coverBlob ? '<meta name="cover" content="cover-image" />' : '';
-        const coverSpine = meta.coverBlob ? '<itemref idref="cover"/>' : '';
+        // MAGIC ID: We give the image the ID 'cover'. 
+        // This is a common heuristic used by readers to find the thumbnail.
+        const coverImageItem = meta.coverBlob
+            ? `<item id="cover" href="cover.${ext}" media-type="${coverMime}"/>`
+            : '';
 
-        // Add Extended metadata to OPF description or as separate tags
+        // The XHTML wrapper gets a distinct ID to avoid collision
+        const coverPageItem = meta.coverBlob
+            ? '<item id="cover-page" href="cover.xhtml" media-type="application/xhtml+xml"/>'
+            : '';
+
+        // The meta tag MUST point to the ID of the IMAGE, not the xhtml page.
+        const coverMeta = meta.coverBlob
+            ? '<meta name="cover" content="cover" />'
+            : '';
+
+        const coverSpine = meta.coverBlob ? '<itemref idref="cover-page"/>' : '';
+
         return `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
