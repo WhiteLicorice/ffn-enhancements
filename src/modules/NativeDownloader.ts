@@ -5,8 +5,6 @@ import { IFanficDownloader } from '../interfaces/IFanficDownloader';
 import { EpubBuilder } from './EpubBuilder';
 import { ChapterData } from '../interfaces/ChapterData';
 import { Elements } from '../enums/Elements';
-import { checkFicHubFreshness } from './FicHubDownloader';
-import { FicHubStatus } from '../enums/FicHubStatus';
 import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
 
 /**
@@ -30,25 +28,13 @@ export const NativeDownloader: IFanficDownloader = {
         }
 
         // Initialize Local Serializer
+        // We still need this here because the scraper uses it to build the EPUB metadata
         const localMeta = new LocalMetadataSerializer(storyId, storyUrl);
 
-        // --- STALENESS CHECK ---
-        // Pass the serializer object directly
-        const isStale = await checkFicHubFreshness(storyUrl, localMeta);
+        // --- NO STALENESS CHECK HERE ---
+        // The decision to use Native vs FicHub is now handled by the StoryDownloader (UI layer).
+        // If we are here, the user has already confirmed they want to scrape.
 
-        if (isStale === FicHubStatus.FRESH) {
-            const proceed = confirm("FicHub has an up-to-date copy of this story. Native scraping is slower. Would you like to use the faster FicHub download instead?");
-            if (proceed) {
-                alert("Please click the standard 'Download EPUB' button for the fast version.");
-                return;
-            }
-        } else if (isStale === FicHubStatus.STALE) {
-            const proceedNative = confirm("FicHub's version is OUTDATED (Missing chapters or older date). Native scraping will get you the latest version but takes longer. Proceed with Native Scrape?");
-            if (!proceedNative) return;
-        }
-
-        // If we continue, we pass the localMeta serializer to the scraper
-        // to avoid re-parsing metadata we already have access to.
         await _runScraper(storyId, storyUrl, localMeta, onProgress);
     },
 

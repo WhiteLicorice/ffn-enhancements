@@ -2,9 +2,11 @@
 
 import { Core } from './Core';
 import { Elements } from '../enums/Elements';
-import { FicHubDownloader } from './FicHubDownloader';
+import { FicHubDownloader, checkFicHubFreshness } from './FicHubDownloader';
 import { NativeDownloader } from './NativeDownloader';
 import { SupportedFormats } from '../enums/SupportedFormats';
+import { FicHubStatus } from '../enums/FicHubStatus';
+import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
 
 /**
  * Module handling the UI integration for story downloads.
@@ -141,7 +143,14 @@ export const StoryDownloader = {
         this.isDownloading = true;
         this.mainBtn.innerHTML = "Working...";
 
-        const storyUrl = window.location.href.split('?')[0];
+        // Extract ID and construct URL for metadata checking
+        let storyUrl = window.location.href.split('?')[0];
+        const storyId = storyUrl.match(/s\/(\d+)/)?.[1] || storyUrl;
+
+        // Force Chapter 1 for canonical consistency
+        if (storyUrl.includes('fanfiction.net')) {
+            storyUrl = storyUrl.replace(/\/s\/(\d+)\/\d+/, '/s/$1/1');
+        }
 
         // Define the progress callback that updates the button text
         const progressCallback = (msg: string) => {
@@ -151,23 +160,46 @@ export const StoryDownloader = {
         };
 
         try {
-            // 1. Interactive Choice for EPUB
+            // 1. Logic for EPUB (Can support Native Fallback)
             if (formatId === SupportedFormats.EPUB) {
-                // Best UX: Explain the trade-off clearly using a confirmation dialog
-                // OK = FicHub (Fast), Cancel = Native (Slow/Better)
-                const userWantsFicHub = confirm(
-                    "Select Download Source:\n\n" +
-                    "[OK] - FicHub (Fast, plain formatting, and sometimes stale)\n" +
-                    "[Cancel] - Native (Slower, best formatting, always fresh)"
-                );
+                this.mainBtn.innerHTML = "Checking...";
 
-                if (userWantsFicHub) {
-                    await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
+                // Initialize Serializer just for the check
+                const localMeta = new LocalMetadataSerializer(storyId, storyUrl);
+
+                // Check API status before prompting the user
+                const status = await checkFicHubFreshness(storyUrl, localMeta);
+
+                if (status === FicHubStatus.STALE) {
+                    // CASE: STALE -> Recommend NATIVE
+                    const useNative = confirm(
+                        "FicHub's version is OUTDATED (Missing chapters or older date).\n\n" +
+                        "[OK] - Use Native Scraper (Get latest version, but slower)\n" +
+                        "[Cancel] - Use FicHub (Fast, but outdated)"
+                    );
+
+                    if (useNative) {
+                        await this.runNativeStrategy(formatId, storyUrl, progressCallback);
+                    } else {
+                        await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
+                    }
+
                 } else {
-                    await this.runNativeStrategy(formatId, storyUrl, progressCallback);
+                    // CASE: FRESH or ERROR (Default to FicHub) -> Recommend FICHUB
+                    const useFicHub = confirm(
+                        "Select Download Source:\n\n" +
+                        "[OK] - FicHub (Fast, simple formatting)\n" +
+                        "[Cancel] - Native (Slower, best formatting)"
+                    );
+
+                    if (useFicHub) {
+                        await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
+                    } else {
+                        await this.runNativeStrategy(formatId, storyUrl, progressCallback);
+                    }
                 }
             }
-            // 2. Standard Behavior for other formats (FicHub Only)
+            // 2. Logic for MOBI/PDF/HTML (FicHub Only)
             else {
                 await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
             }
@@ -224,7 +256,6 @@ export const StoryDownloader = {
      */
     runNativeStrategy: async function (formatId: SupportedFormats, url: string, cb: CallableFunction) {
         switch (formatId) {
-            // FIXME: API staleness isn't being caught properly.
             case SupportedFormats.EPUB: await NativeDownloader.downloadAsEPUB(url, cb); break;
             case SupportedFormats.MOBI: await NativeDownloader.downloadAsMOBI(url, cb); break;
             case SupportedFormats.PDF: await NativeDownloader.downloadAsPDF(url, cb); break;
