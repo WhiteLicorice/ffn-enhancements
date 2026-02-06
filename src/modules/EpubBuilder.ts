@@ -79,7 +79,13 @@ export const EpubBuilder = {
         });
 
         // 9. Generate Blob and Download
-        const blob = await zip.generateAsync({ type: 'blob' });
+        // Explicitly set mimeType to 'application/epub+zip' to prevent Android
+        // from appending '.zip' to the filename.
+        const blob = await zip.generateAsync({
+            type: 'blob',
+            mimeType: 'application/epub+zip'
+        });
+
         saveAs(blob, `${meta.title} - ${meta.author}.epub`);
         log('Download triggered.');
     },
