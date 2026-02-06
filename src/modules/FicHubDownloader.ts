@@ -5,8 +5,9 @@ import { GM_xmlhttpRequest } from '$';
 import { IFanficDownloader } from '../interfaces/IFanficDownloader';
 import { SupportedFormats } from '../enums/SupportedFormats';
 import { FicHubStatus } from '../enums/FicHubStatus';
-import { FicHubMetadataSerializer } from '../serializers/FicHubMetadataSerializer';
 import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
+import { FicHubMetadataSerializer } from '../serializers/FicHubMetadataSerializer';
+import { Globals } from '../enums/Globals';
 
 /**
  * Concrete implementation of the Downloader strategy using the FicHub API.
@@ -44,58 +45,81 @@ export const FicHubDownloader: IFanficDownloader = {
 };
 
 /**
- * Checks if the version on FicHub is stale compared to the local page statistics.
+ * Compares Local metadata against FicHub metadata to determine freshness.
+ * USES GM_xmlhttpRequest TO BYPASS CORS.
  * * @param storyUrl The canonical URL of the story.
- * @param localChapterCount The number of chapters detected on the current page.
- * @param localUpdatedDate The 'Updated' date detected on the current page.
+ * @param localMeta The serializer containing local page statistics.
  * @returns - FicHubStatus (whether the API returns STALE, FRESH, or ERROR)
  */
-export async function checkFicHubFreshness(
+export function checkFicHubFreshness(
     storyUrl: string,
     localMeta: LocalMetadataSerializer
 ): Promise<FicHubStatus> {
     const log = Core.getLogger('FicHubDownloader', 'checkFreshness');
 
-    try {
+    return new Promise((resolve) => {
         const apiUrl = `https://fichub.net/api/v0/meta?q=${encodeURIComponent(storyUrl)}`;
-        const resp = await fetch(apiUrl);
 
-        if (!resp.ok) return FicHubStatus.ERROR;
+        // We use GM_xmlhttpRequest instead of fetch to avoid CORS errors
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: apiUrl,
+            headers: { "User-Agent": Globals.USER_AGENT },
+            onload: (res) => {
+                if (res.status !== 200) {
+                    log(`API Error: ${res.status}`);
+                    resolve(FicHubStatus.ERROR);
+                    return;
+                }
 
-        const jsonData = await resp.json();
+                try {
+                    const jsonData = JSON.parse(res.responseText);
+                    const ficHubMeta = new FicHubMetadataSerializer(jsonData);
 
-        // Wrap response in Serializer
-        const ficHubMeta = new FicHubMetadataSerializer(jsonData);
+                    // Validation: If API data is missing essentials
+                    if (!ficHubMeta.getUpdatedDate() || !ficHubMeta.getChapterCount()) {
+                        resolve(FicHubStatus.ERROR);
+                        return;
+                    }
 
-        // Validation: If API data is missing essentials
-        if (!ficHubMeta.getUpdatedDate() || !ficHubMeta.getChapterCount()) return FicHubStatus.ERROR;
+                    const localCount = localMeta.getChapterCount();
+                    const ficHubCount = ficHubMeta.getChapterCount();
 
-        const localCount = localMeta.getChapterCount();
-        const ficHubCount = ficHubMeta.getChapterCount();
+                    const localDate = localMeta.getUpdatedDate();
+                    const ficHubDate = ficHubMeta.getUpdatedDate();
 
-        const localDate = localMeta.getUpdatedDate();
-        const ficHubDate = ficHubMeta.getUpdatedDate();
+                    log(`Local: ${localCount} ch / ${localDate.toISOString()} | FicHub: ${ficHubCount} ch / ${ficHubDate.toISOString()}`);
 
-        log(`Local: ${localCount} ch / ${localDate.toISOString()} | FicHub: ${ficHubCount} ch / ${ficHubDate.toISOString()}`);
+                    // Priority 1: Chapter Mismatch
+                    // If Local chapter count does not match the chapter count on FicHub, FicHub is stale.
+                    if (localCount != ficHubCount) {
+                        log(`FicHub Stale: Mismatch local: ${localCount} vs fichub: ${ficHubCount} chapters.`);
+                        resolve(FicHubStatus.STALE);
+                        return;
+                    }
 
-        // Priority 1: Chapter Mismatch
-        if (localCount != ficHubCount) {
-            log(`FicHub Stale: Mismatch local: ${localCount} vs fichub: ${ficHubCount}`);
-            return FicHubStatus.STALE;
-        }
+                    // Priority 2: Timestamp (Allow 1 minute margin for timezone/sync jitter)
+                    // Only valid if chapter counts match.
+                    if (localCount === ficHubCount) {
+                        const isDateStale = localDate.getTime() > (ficHubDate.getTime() + 60000) ? FicHubStatus.STALE : FicHubStatus.FRESH;
+                        log(`Is Date Stale? ${isDateStale}`);
+                        resolve(isDateStale);
+                        return;
+                    }
 
-        // Priority 2: Timestamp (Allow 1 minute margin)
-        if (localCount === ficHubCount) {
-            const isDateStale = localDate.getTime() > (ficHubDate.getTime() + 60000) ? FicHubStatus.STALE : FicHubStatus.FRESH;
-            log(`Is Date Stale? ${isDateStale}`);
-            return isDateStale;
-        }
+                    resolve(FicHubStatus.FRESH);
 
-        return FicHubStatus.FRESH;
-    } catch (e) {
-        log("Freshness check failed.", e);
-        return FicHubStatus.ERROR;
-    }
+                } catch (e) {
+                    log("Freshness check failed during parsing.", e);
+                    resolve(FicHubStatus.ERROR);
+                }
+            },
+            onerror: (err) => {
+                log("Freshness check network error.", err);
+                resolve(FicHubStatus.ERROR);
+            }
+        });
+    });
 }
 
 /**
@@ -118,7 +142,7 @@ function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgre
         GM_xmlhttpRequest({
             method: "GET",
             url: apiUrl,
-            headers: { "User-Agent": "FFN-Enhancements" },
+            headers: { "User-Agent": Globals.USER_AGENT },
             onload: (res: { status: number; responseText: string }) => {
                 log(`Response received. Status: ${res.status}`);
 

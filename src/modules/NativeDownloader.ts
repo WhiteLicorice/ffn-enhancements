@@ -116,7 +116,7 @@ async function _runScraper(
 ): Promise<void> {
     const log = Core.getLogger('NativeDownloader', 'runScraper');
     log(`Fetching from ${storyUrl}`);
-    
+
     // 1. Metadata Scraping (Delegated to Serializer)
     const finalMeta = await localMetaSerializer.serialize();
     log(`Fetched metadata for "${finalMeta.title}".`);
