@@ -156,6 +156,9 @@ export const StoryDownloader = {
             }
         };
 
+        // Track if we should skip the 3s timeout (e.g., user cancelled)
+        let resetImmediately = false;
+
         try {
             // --- CASE A: EPUB (Dual Strategy Support) ---
             if (formatId === SupportedFormats.EPUB) {
@@ -183,7 +186,8 @@ export const StoryDownloader = {
                 if (proceed) {
                     await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
                 } else {
-                    this.resetButton();
+                    // User Cancelled: Reset button immediately (don't wait 3s)
+                    resetImmediately = true;
                     return;
                 }
             }
@@ -193,7 +197,7 @@ export const StoryDownloader = {
             this.mainBtn.innerHTML = "Error";
             alert("Download failed. Please try again later.");
         } finally {
-            this.resetButton();
+            this.resetButton(resetImmediately);
         }
     },
 
@@ -246,14 +250,21 @@ export const StoryDownloader = {
     /**
      * Resets the main download button state after a delay.
      * Re-enables the button and clears the downloading flag.
+     * @param immediate - If true, resets without the 3s delay.
      */
-    resetButton: function () {
-        setTimeout(() => {
+    resetButton: function (immediate?: boolean) {
+        const reset = () => {
             if (this.mainBtn) {
                 this.mainBtn.innerHTML = "Download &#9662;";
                 this.mainBtn.disabled = false;
             }
             this.isDownloading = false;
-        }, 3000);
+        };
+
+        if (immediate) {
+            reset();
+        } else {
+            setTimeout(reset, 3000);
+        }
     }
 };
