@@ -55,21 +55,24 @@ export const StoryDownloader = {
         // Prevent duplicate injection
         if (document.getElementById('ffe-download-modal')) return;
 
+        // NOTE: We removed 'data-dismiss="modal"' to handle closing manually in closeModal().
+        // This allows us to shift focus BEFORE hiding, preventing the aria-hidden error.
+        // We also use class="btn" instead of "btn-primary" to match site native styles.
         const modalHtml = `
             <div class="modal fade hide" id="ffe-download-modal" tabindex="-1" role="dialog" aria-hidden="true" style="display: none;">
                 <div class="modal-header">
-                    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-                    <h3 id="ffe-modal-title">Select Download Method</h3>
+                    <button type="button" class="close" id="ffe-modal-close-x" aria-hidden="true">×</button>
+                    <h3 id="ffe-modal-title" style="font-family: inherit;">Select Download Method</h3>
                 </div>
-                <div class="modal-body" style="text-align: center; min-height: 150px;">
+                <div class="modal-body" style="text-align: center; min-height: 150px; font-family: Verdana, Arial, sans-serif;">
                     <p style="margin-bottom: 20px;">Choose a source for your file:</p>
                     
                     <div style="display: flex; justify-content: center; gap: 20px; margin-bottom: 20px;">
-                        <button id="ffe-btn-native" class="btn btn-primary icon-book" style="width: 140px; padding: 10px;">
+                        <button id="ffe-btn-native" class="btn icon-book" style="width: 140px; padding: 10px;">
                             Native<br><span style="font-size: 0.8em; font-weight: normal;">(Browser)</span>
                         </button>
 
-                        <button id="ffe-btn-fichub" class="btn btn-primary icon-cloud-download" style="width: 140px; padding: 10px;">
+                        <button id="ffe-btn-fichub" class="btn icon-cloud-download" style="width: 140px; padding: 10px;">
                             FicHub<br><span style="font-size: 0.8em; font-weight: normal;">(Archive)</span>
                         </button>
                     </div>
@@ -79,13 +82,19 @@ export const StoryDownloader = {
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <span class="btn pull-left" data-dismiss="modal">Close</span>
+                    <span class="btn pull-left" id="ffe-modal-close-btn">Close</span>
                 </div>
             </div>
         `;
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.modal = document.getElementById('ffe-download-modal');
+
+        // Bind manual close handlers to ensure focus shifts correctly
+        const closeX = document.getElementById('ffe-modal-close-x');
+        const closeBtn = document.getElementById('ffe-modal-close-btn');
+        if (closeX) closeX.onclick = () => this.closeModal();
+        if (closeBtn) closeBtn.onclick = () => this.closeModal();
 
         // Bind hover effects for UX descriptions
         const nativeBtn = document.getElementById('ffe-btn-native');
@@ -282,28 +291,34 @@ export const StoryDownloader = {
     },
 
     closeModal: function () {
-        // Shift focus away from modal elements to prevent aria-hidden conflicts
+        // Shift focus away from the modal elements IMMEDIATELY.
+        // We move focus to the main button before the modal is hidden.
+        // This prevents the "Blocked aria-hidden" error where an element inside 
+        // the hidden modal retains focus.
         if (this.mainBtn) {
             this.mainBtn.focus();
         } else {
             document.body.focus();
         }
 
-        try {
-            const jq = (window as any).$ || (window as any).jQuery || (window as any).unsafeWindow?.$ || (window as any).unsafeWindow?.jQuery;
+        // Delay the actual hiding slightly to allow the focus shift to register in the browser
+        setTimeout(() => {
+            try {
+                const jq = (window as any).$ || (window as any).jQuery || (window as any).unsafeWindow?.$ || (window as any).unsafeWindow?.jQuery;
 
-            if (jq) {
-                jq("#ffe-download-modal").modal('hide');
-            } else {
-                // Fallback: Manually mimic Bootstrap 2 'Hide' state
-                const m = document.getElementById('ffe-download-modal');
-                if (m) {
-                    m.classList.remove('in');
-                    m.classList.add('hide');
-                    m.style.display = 'none';
+                if (jq) {
+                    jq("#ffe-download-modal").modal('hide');
+                } else {
+                    // Fallback: Manually mimic Bootstrap 2 'Hide' state
+                    const m = document.getElementById('ffe-download-modal');
+                    if (m) {
+                        m.classList.remove('in');
+                        m.classList.add('hide');
+                        m.style.display = 'none';
+                    }
                 }
-            }
-        } catch (e) { /* ignore */ }
+            } catch (e) { /* ignore */ }
+        }, 10);
     },
 
     /**
