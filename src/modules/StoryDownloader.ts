@@ -282,6 +282,13 @@ export const StoryDownloader = {
     },
 
     closeModal: function () {
+        // Shift focus away from modal elements to prevent aria-hidden conflicts
+        if (this.mainBtn) {
+            this.mainBtn.focus();
+        } else {
+            document.body.focus();
+        }
+
         try {
             const jq = (window as any).$ || (window as any).jQuery || (window as any).unsafeWindow?.$ || (window as any).unsafeWindow?.jQuery;
 
