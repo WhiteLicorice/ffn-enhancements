@@ -18,6 +18,7 @@ export const StoryReader = {
             log('Initializing UX Enhancements...');
             this.enableSelectableText();
             this.enableKeyboardNav();
+            this.fixCoverArtModal();
         });
     },
 
@@ -47,6 +48,132 @@ export const StoryReader = {
         } else {
             log('Story text container not found.');
         }
+    },
+
+    /**
+     * Fixes a native FFN bug where the cover art modal fails to display the image.
+     * Manually handles the backdrop, image source swapping, and centering to 
+     * ensure it works even when FFN's native jQuery plugins fail.
+     */
+    fixCoverArtModal: function () {
+        const log = Core.getLogger('story-reader', 'fixCoverArtModal');
+
+        // Find the specific span trigger and the modal container
+        const trigger = document.querySelector('#profile_top span[onclick*="img_large"]');
+        const modal = document.getElementById('img_large');
+
+        if (!trigger || !modal) {
+            log('Cover art trigger or modal not found. Skipping fix.');
+            return;
+        }
+
+        // Re-parent the modal to the body to prevent overflow clipping
+        if (modal.parentNode !== document.body) {
+            document.body.appendChild(modal);
+        }
+
+        /**
+         * Cleans the modal of all FFN transition classes and forces visibility.
+         */
+        const applyVisibleStyles = (show: boolean) => {
+            if (show) {
+                modal.classList.remove('hide', 'fade');
+                // We use 'transparent' background and 0 padding to remove the white border.
+                // We use 'fit-content' and 'margin: 0' to ensure the translate transform centers it perfectly.
+                modal.style.cssText = `
+                    display: block !important;
+                    position: fixed !important;
+                    top: 50% !important;
+                    left: 50% !important;
+                    transform: translate(-50%, -50%) !important;
+                    z-index: 10000 !important;
+                    opacity: 1 !important;
+                    visibility: visible !important;
+                    background: transparent !important;
+                    padding: 0 !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    width: fit-content !important; 
+                    height: auto !important;
+                    margin: 0 !important;
+                    overflow: visible !important;
+                `;
+
+                // Ensure the inner body and image are also forced visible
+                const modalBody = modal.querySelector('.modal-body') as HTMLElement;
+                if (modalBody) {
+                    modalBody.style.cssText = 'display: block !important; padding: 0 !important; overflow: visible !important; background: transparent !important; max-height: none !important;';
+                }
+            } else {
+                modal.style.display = 'none';
+            }
+        };
+
+        // Initialize hidden state
+        applyVisibleStyles(false);
+
+        // Replace the buggy inline onclick with a robust manual handler
+        (trigger as HTMLElement).onclick = (e: MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            log('Triggering manual cover art modal.');
+
+            // 1. Swap image to the high-res variant and force it to be visible
+            const img = modal.querySelector('img') as HTMLImageElement | null;
+            if (img) {
+                const originalSrc = img.getAttribute('data-original');
+                if (originalSrc) {
+                    img.src = originalSrc;
+                    img.className = 'cimage'; // Strips 'lazy'
+                    // Apply styles directly to the image for proper sizing and a nice shadow (instead of the container having the shadow)
+                    img.style.cssText = `
+                        display: block !important; 
+                        opacity: 1 !important; 
+                        visibility: visible !important; 
+                        max-width: 90vw; 
+                        max-height: 90vh; 
+                        margin: 0 auto !important;
+                        box-shadow: 0 0 20px rgba(0,0,0,0.8); 
+                        border-radius: 4px;
+                    `;
+                    log('Image source updated.');
+                }
+            }
+
+            // 2. Handle Backdrop
+            let backdrop = document.querySelector('.ffe-modal-backdrop') as HTMLElement;
+            if (!backdrop) {
+                backdrop = document.createElement('div');
+                backdrop.className = 'ffe-modal-backdrop';
+                backdrop.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100vw;
+                    height: 100vh;
+                    background: rgba(0, 0, 0, 0.8);
+                    z-index: 9999;
+                `;
+                document.body.appendChild(backdrop);
+            }
+            backdrop.style.display = 'block';
+
+            // 3. Show the Modal
+            applyVisibleStyles(true);
+
+            // 4. Close logic
+            const closeModal = () => {
+                applyVisibleStyles(false);
+                backdrop.style.display = 'none';
+                backdrop.removeEventListener('click', closeModal);
+            };
+
+            backdrop.addEventListener('click', closeModal);
+
+            // Allow clicking the image itself or modal to close as well (common UX)
+            modal.onclick = closeModal;
+        };
     },
 
     /**
