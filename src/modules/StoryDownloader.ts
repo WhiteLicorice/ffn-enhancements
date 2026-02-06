@@ -55,13 +55,10 @@ export const StoryDownloader = {
         // Prevent duplicate injection
         if (document.getElementById('ffe-download-modal')) return;
 
-        // NOTE: We removed 'data-dismiss="modal"' to handle closing manually in closeModal().
-        // This allows us to shift focus BEFORE hiding, preventing the aria-hidden error.
-        // We also use class="btn" instead of "btn-primary" to match site native styles.
         const modalHtml = `
-            <div class="modal fade hide" id="ffe-download-modal" tabindex="-1" role="dialog" aria-hidden="true" style="display: none;">
+            <div class="modal fade hide" id="ffe-download-modal" style="display: none;">
                 <div class="modal-header">
-                    <button type="button" class="close" id="ffe-modal-close-x" aria-hidden="true">×</button>
+                    <button type="button" class="close" id="ffe-modal-close-x">×</button>
                     <h3 id="ffe-modal-title" style="font-family: inherit;">Select Download Method</h3>
                 </div>
                 <div class="modal-body" style="text-align: center; min-height: 150px; font-family: Verdana, Arial, sans-serif;">
@@ -90,7 +87,7 @@ export const StoryDownloader = {
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.modal = document.getElementById('ffe-download-modal');
 
-        // Bind manual close handlers to ensure focus shifts correctly
+        // Bind manual close handlers
         const closeX = document.getElementById('ffe-modal-close-x');
         const closeBtn = document.getElementById('ffe-modal-close-btn');
         if (closeX) closeX.onclick = () => this.closeModal();
@@ -128,7 +125,6 @@ export const StoryDownloader = {
     injectDropdown: function (parentGroup: HTMLElement) {
         const log = Core.getLogger('story-downloader', 'injectDropdown');
 
-        // Clean up previous event listeners to prevent stacking/leaks
         if (this.abortController) {
             this.abortController.abort();
         }
@@ -154,7 +150,6 @@ export const StoryDownloader = {
         `;
         this.dropdown = menu;
 
-        // Map labels to internal IDs used in processDownload switch
         const formats = [
             { label: 'EPUB 🔥', id: SupportedFormats.EPUB },
             { label: 'MOBI', id: SupportedFormats.MOBI },
@@ -191,7 +186,6 @@ export const StoryDownloader = {
             parentGroup.appendChild(container);
         }
 
-        // Attach listener with the AbortSignal to ensure cleanup
         document.addEventListener('click', (e) => {
             if (container && !container.contains(e.target as Node)) this.toggleDropdown(false);
         }, { signal: this.abortController.signal });
@@ -207,30 +201,27 @@ export const StoryDownloader = {
 
     /**
      * Opens the selection modal for the user to choose the download strategy.
-     * Replaces previous confirm() logic.
      * @param formatId - The requested format.
      */
     openDownloadModal: function (formatId: SupportedFormats) {
         const log = Core.getLogger('story-downloader', 'openDownloadModal');
 
-        // Ensure modal exists
         if (!document.getElementById('ffe-download-modal')) {
             this.injectModal();
         }
 
+        const m = document.getElementById('ffe-download-modal');
         const nativeBtn = document.getElementById('ffe-btn-native') as HTMLButtonElement;
         const fichubBtn = document.getElementById('ffe-btn-fichub') as HTMLButtonElement;
         const title = document.getElementById('ffe-modal-title');
 
-        if (!nativeBtn || !fichubBtn) {
+        if (!m || !nativeBtn || !fichubBtn) {
             log('Error: Modal elements not found.');
             return;
         }
 
-        // Configure UI based on Format
         if (title) title.innerText = `Download ${formatId.toUpperCase()}`;
 
-        // Remove old listeners to prevent stacking (cloning the node is the cleanest way without external refs)
         const replaceElement = (el: HTMLElement) => {
             const newEl = el.cloneNode(true) as HTMLElement;
             el.parentNode?.replaceChild(newEl, el);
@@ -240,7 +231,6 @@ export const StoryDownloader = {
         const freshNativeBtn = replaceElement(nativeBtn) as HTMLButtonElement;
         const freshFichubBtn = replaceElement(fichubBtn) as HTMLButtonElement;
 
-        // Re-bind hover logic after cloning (since we wiped listeners)
         const descText = document.getElementById('ffe-desc-text');
         if (descText) {
             const bindHover = (btn: HTMLElement, text: string) => {
@@ -251,7 +241,6 @@ export const StoryDownloader = {
             bindHover(freshFichubBtn, "<strong>FicHub:</strong> Downloads from the FicHub archive. Very fast, but the file might be slightly older (cached).");
         }
 
-        // Logic for EPUB (Dual Options)
         if (formatId === SupportedFormats.EPUB) {
             freshNativeBtn.style.display = 'inline-block';
             freshNativeBtn.onclick = () => {
@@ -259,72 +248,58 @@ export const StoryDownloader = {
                 this.processDownload(formatId, 'native');
             };
         } else {
-            // Non-EPUB formats only support FicHub currently
             freshNativeBtn.style.display = 'none';
         }
 
-        // Logic for FicHub (All formats)
         freshFichubBtn.onclick = () => {
             this.closeModal();
             this.processDownload(formatId, 'fichub');
         };
 
-        // Try to trigger Bootstrap modal using Page jQuery (via unsafeWindow if available)
-        // OR fallback to manual CSS toggling if we are in a strict sandbox.
         try {
             const jq = (window as any).$ || (window as any).jQuery || (window as any).unsafeWindow?.$ || (window as any).unsafeWindow?.jQuery;
 
             if (jq) {
                 jq("#ffe-download-modal").modal('show');
             } else {
-                // Fallback: Manually mimic Bootstrap 2 'Show' state
-                const m = document.getElementById('ffe-download-modal');
-                if (m) {
-                    m.classList.remove('hide');
-                    m.classList.add('in');
-                    m.style.display = 'block';
-                }
+                m.classList.remove('hide');
+                m.classList.add('in');
+                m.style.display = 'block';
             }
         } catch (e) {
             log('Failed to trigger modal.', e);
         }
     },
 
+    /**
+     * Closes the modal and shifts focus back to the trigger button.
+     */
     closeModal: function () {
-        // Shift focus away from the modal elements IMMEDIATELY.
-        // We move focus to the main button before the modal is hidden.
-        // This prevents the "Blocked aria-hidden" error where an element inside 
-        // the hidden modal retains focus.
+        const m = document.getElementById('ffe-download-modal');
+        if (!m) return;
+
+        // Shift focus back to the page trigger immediately to avoid focus-loss issues
         if (this.mainBtn) {
             this.mainBtn.focus();
         } else {
             document.body.focus();
         }
 
-        // Delay the actual hiding slightly to allow the focus shift to register in the browser
-        setTimeout(() => {
-            try {
-                const jq = (window as any).$ || (window as any).jQuery || (window as any).unsafeWindow?.$ || (window as any).unsafeWindow?.jQuery;
+        try {
+            const jq = (window as any).$ || (window as any).jQuery || (window as any).unsafeWindow?.$ || (window as any).unsafeWindow?.jQuery;
 
-                if (jq) {
-                    jq("#ffe-download-modal").modal('hide');
-                } else {
-                    // Fallback: Manually mimic Bootstrap 2 'Hide' state
-                    const m = document.getElementById('ffe-download-modal');
-                    if (m) {
-                        m.classList.remove('in');
-                        m.classList.add('hide');
-                        m.style.display = 'none';
-                    }
-                }
-            } catch (e) { /* ignore */ }
-        }, 10);
+            if (jq) {
+                jq("#ffe-download-modal").modal('hide');
+            } else {
+                m.classList.remove('in');
+                m.classList.add('hide');
+                m.style.display = 'none';
+            }
+        } catch (e) { /* ignore */ }
     },
 
     /**
      * Executes the download task based on the user's selection from the Modal.
-     * @param formatId - The internal ID of the format.
-     * @param strategy - 'native' or 'fichub'.
      */
     processDownload: async function (formatId: SupportedFormats, strategy: 'native' | 'fichub') {
         const log = Core.getLogger('story-downloader', 'processDownload');
@@ -334,15 +309,12 @@ export const StoryDownloader = {
         this.isDownloading = true;
         this.mainBtn.innerHTML = "Processing...";
 
-        // Extract ID and construct URL for metadata checking
         let storyUrl = window.location.href.split('?')[0];
 
-        // Force Chapter 1 for canonical consistency
         if (storyUrl.includes('fanfiction.net')) {
             storyUrl = storyUrl.replace(/\/s\/(\d+)\/\d+/, '/s/$1/1');
         }
 
-        // Define the progress callback that updates the button text
         const progressCallback = (msg: string) => {
             if (this.mainBtn) {
                 this.mainBtn.innerText = msg;
@@ -366,7 +338,6 @@ export const StoryDownloader = {
 
     /**
      * Helper to execute the FicHub strategy.
-     * Includes detection for potential API failures/staleness.
      */
     runFicHubStrategy: async function (formatId: SupportedFormats, url: string, cb: CallableFunction) {
         const log = Core.getLogger('story-downloader', 'runFicHubStrategy');
@@ -381,12 +352,10 @@ export const StoryDownloader = {
         } catch (e) {
             log("FicHub Strategy failed or returned error.", e);
 
-            // User Guidance on Failed FicHub
             if (formatId !== SupportedFormats.EPUB) {
                 alert("FicHub is currently unreachable for this format.\n\nPlease select 'EPUB' and choose the 'Native' option to generate a fresh copy directly.");
                 throw e;
             } else {
-                // If they were already trying EPUB via FicHub and it failed
                 if (confirm("FicHub download failed. Would you like to try the Native Downloader instead?\n\n(This will scrape the story directly from the page.)")) {
                     await this.runNativeStrategy(SupportedFormats.EPUB, url, cb);
                     return;
@@ -412,7 +381,6 @@ export const StoryDownloader = {
 
     /**
      * Resets the main download button state after a delay.
-     * Re-enables the button and clears the downloading flag.
      * @param immediate - If true, resets without the 3s delay.
      */
     resetButton: function (immediate?: boolean) {
