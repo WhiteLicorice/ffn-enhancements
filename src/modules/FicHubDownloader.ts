@@ -60,7 +60,6 @@ export function checkFicHubFreshness(
     return new Promise((resolve) => {
         const apiUrl = `https://fichub.net/api/v0/meta?q=${encodeURIComponent(storyUrl)}`;
 
-        // We use GM_xmlhttpRequest instead of fetch to avoid CORS errors
         GM_xmlhttpRequest({
             method: "GET",
             url: apiUrl,
@@ -76,7 +75,6 @@ export function checkFicHubFreshness(
                     const jsonData = JSON.parse(res.responseText);
                     const ficHubMeta = new FicHubMetadataSerializer(jsonData);
 
-                    // Validation: If API data is missing essentials
                     if (!ficHubMeta.getUpdatedDate() || !ficHubMeta.getChapterCount()) {
                         resolve(FicHubStatus.ERROR);
                         return;
@@ -90,20 +88,27 @@ export function checkFicHubFreshness(
 
                     log(`Local: ${localCount} ch / ${localDate.toISOString()} | FicHub: ${ficHubCount} ch / ${ficHubDate.toISOString()}`);
 
-                    // Priority 1: Chapter Mismatch
-                    // If Local chapter count does not match the chapter count on FicHub, FicHub is stale.
-                    if (localCount != ficHubCount) {
-                        log(`FicHub Stale: Mismatch local: ${localCount} vs fichub: ${ficHubCount} chapters.`);
+                    /**
+                     * FRESHNESS LOGIC REVISION:
+                     * The Local Page is the Source of Truth.
+                     */
+
+                    // 1. Chapter Count is the most reliable indicator.
+                    // If FicHub has different chapters than the page we are on, it is definitely stale.
+                    if (ficHubCount != localCount) {
+                        log(`FicHub Stale: Missing chapters (Hub: ${ficHubCount} vs Page: ${localCount})`);
                         resolve(FicHubStatus.STALE);
                         return;
                     }
 
-                    // Priority 2: Timestamp (Allow 1 minute margin for timezone/sync jitter)
-                    // Only valid if chapter counts match.
-                    if (localCount === ficHubCount) {
-                        const isDateStale = localDate.getTime() > (ficHubDate.getTime() + 60000) ? FicHubStatus.STALE : FicHubStatus.FRESH;
-                        log(`Is Date Stale? ${isDateStale}`);
-                        resolve(isDateStale);
+                    // 2. Date Check (Typos/Content updates without chapter changes)
+                    // We use a 24-hour margin (86,400,000 ms) because site timestamps vs Hub scrapers
+                    // are rarely in sync and often suffer from 8-12 hour timezone offsets.
+                    // Only report stale if the Page is more than a full day newer than the Hub cache.
+                    const ONE_DAY = 86400000;
+                    if (localDate.getTime() > (ficHubDate.getTime() + ONE_DAY)) {
+                        log(`FicHub Stale: Content on page is significantly newer (>24h) than Hub cache.`);
+                        resolve(FicHubStatus.STALE);
                         return;
                     }
 
@@ -155,7 +160,6 @@ function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgre
 
                 try {
                     const data = JSON.parse(res.responseText);
-                    // FicHub API can return the URL in 'urls[format]' or '[format]_url'
                     const rel = data.urls?.[format] || data[format + '_url'];
 
                     if (rel) {
@@ -164,7 +168,6 @@ function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgre
 
                         if (onProgress) onProgress("Downloading...");
 
-                        // Trigger the browser download
                         window.location.href = dlUrl;
                         resolve();
                     } else {
