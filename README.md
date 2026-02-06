@@ -35,7 +35,7 @@ Once you have the extension installed, [Click This Button](https://github.com/Wh
 * [x] Allow slow, but fresh exporting of stories because FicHub's API may be stale for a while.
 * [x] Integrate native dark theme (gave up: may I suggest using the mature [Dark Reader](https://darkreader.org/) instead?).
 * [ ] Make story text more large-screen friendly? Expand it so the borders at the sides are gone.
-* [ ] Fix FFN's bug where clicking on a story's picture doesn't do anything and just darkens the screen lmao.
+* [x] Fix FFN's bug where clicking on a story's picture doesn't do anything and just darkens the screen lmao.
 * [x] Allow pasting of Markdown into the Doc Editor and Doc Manager's story boxes. It is automatically converted into Docx format.
 
 *Feel free to open issues and make suggestions!*
