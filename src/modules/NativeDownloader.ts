@@ -6,6 +6,8 @@ import { EpubBuilder } from './EpubBuilder';
 import { ChapterData } from '../interfaces/ChapterData';
 import { Elements } from '../enums/Elements';
 import { StoryMetadata } from '../interfaces/StoryMetadata';
+import { checkFicHubFreshness } from './FicHubDownloader';
+import { FicHubStatus } from '../enums/FicHubStatus';
 
 /**
  * Fallback strategy that scrapes the content directly from the browser.
@@ -27,6 +29,26 @@ export const NativeDownloader: IFanficDownloader = {
             storyUrl = storyIdOrUrl.replace(/\/s\/(\d+)\/\d+/, '/s/$1/1');
         }
 
+        // --- STALENESS CHECK ---
+        // 1. Gather Local Stats
+        const localStats = _getLocalStats();
+
+        // 2. Compare with FicHub
+        if (localStats) {
+            const isStale = await checkFicHubFreshness(storyUrl, localStats.chapters, localStats.date);
+
+            if (isStale === FicHubStatus.FRESH) {
+                const proceed = confirm("FicHub has an up-to-date copy of this story. Native scraping is slower. Would you like to use the faster FicHub download instead?");
+                if (proceed) {
+                    alert("Please click the standard 'Download EPUB' button for the fast version.");
+                    return;
+                }
+            } else if (isStale === FicHubStatus.STALE) {
+                const proceedNative = confirm("FicHub's version is OUTDATED (Missing chapters or older date). Native scraping will get you the latest version but takes longer. Proceed with Native Scrape?");
+                if (!proceedNative) return;
+            }
+        }
+
         await _runScraper(storyId, storyUrl, onProgress);
     },
 
@@ -42,6 +64,29 @@ export const NativeDownloader: IFanficDownloader = {
         alert("Native PDF generation is not yet supported. Please use EPUB.");
     },
 };
+
+/**
+ * Helper to extract the updated date and chapter count from the current DOM.
+ */
+function _getLocalStats(): { chapters: number, date: Date } | null {
+    const metaBlock = Core.getElement(Elements.STORY_META_BLOCK);
+    const chapSelect = Core.getElement(Elements.CHAPTER_DROPDOWN) as HTMLSelectElement;
+
+    if (!metaBlock) return null;
+
+    // Chapters
+    const chapters = chapSelect ? chapSelect.options.length : 1;
+
+    // Date
+    const timeNodes = metaBlock.querySelectorAll('[data-xutime]');
+    if (timeNodes.length === 0) return null;
+
+    // The first data-xutime is usually 'Updated', or 'Published' if never updated.
+    const unix = parseInt(timeNodes[0].getAttribute('data-xutime') || '0', 10);
+    const date = new Date(unix * 1000);
+
+    return { chapters, date };
+}
 
 /**
  * Fetches and parses a single chapter.
@@ -139,7 +184,7 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
                 if (imgResp.ok) {
                     coverBlob = await imgResp.blob();
                     log(`Successfully fetched ${res} resolution.`);
-                    break; // Exit loop on success
+                    break;
                 }
             } catch (e) {
                 log(`Failed to fetch resolution ${res}, trying next...`);
@@ -204,7 +249,6 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
     // 4. Build
     if (onProgress) onProgress("Bundling EPUB...");
 
-    // Merge basic and extended metadata
     const finalMeta: StoryMetadata = {
         id: storyId,
         title,
@@ -214,7 +258,7 @@ async function _runScraper(storyId: string, storyUrl: string, onProgress?: Calla
         source: 'FanFiction.net',
         storyUrl: storyUrl,
         coverBlob: coverBlob,
-        ...extendedMeta // Spread the parsed details
+        ...extendedMeta
     };
 
     await EpubBuilder.build(finalMeta, chapters);
@@ -262,8 +306,6 @@ function _parseFFNMetadata(text: string): Partial<StoryMetadata> {
             meta.updated = part.replace('Updated:', '').trim();
         } else if (part.startsWith('Published:')) {
             meta.published = part.replace('Published:', '').trim();
-        } else if (part.startsWith('id:')) {
-            // ID is already handled, ignore
         } else if (part === 'Complete') {
             meta.status = 'Complete';
         } else if (part.startsWith('[')) {

@@ -224,6 +224,7 @@ export const StoryDownloader = {
      */
     runNativeStrategy: async function (formatId: SupportedFormats, url: string, cb: CallableFunction) {
         switch (formatId) {
+            // FIXME: API staleness isn't being caught properly.
             case SupportedFormats.EPUB: await NativeDownloader.downloadAsEPUB(url, cb); break;
             case SupportedFormats.MOBI: await NativeDownloader.downloadAsMOBI(url, cb); break;
             case SupportedFormats.PDF: await NativeDownloader.downloadAsPDF(url, cb); break;

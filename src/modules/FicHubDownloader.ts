@@ -4,6 +4,7 @@ import { Core } from './Core';
 import { GM_xmlhttpRequest } from '$';
 import { IFanficDownloader } from '../interfaces/IFanficDownloader';
 import { SupportedFormats } from '../enums/SupportedFormats';
+import { FicHubStatus } from '../enums/FicHubStatus';
 
 /**
  * Concrete implementation of the Downloader strategy using the FicHub API.
@@ -39,6 +40,58 @@ export const FicHubDownloader: IFanficDownloader = {
         return _processApiRequest(storyUrl, SupportedFormats.HTML, onProgress);
     },
 };
+
+/**
+ * Checks if the version on FicHub is stale compared to the local page statistics.
+ * * @param storyUrl The canonical URL of the story.
+ * @param localChapterCount The number of chapters detected on the current page.
+ * @param localUpdatedDate The 'Updated' date detected on the current page.
+ * @returns - FicHubStatus (whether the API returns STALE, FRESH, or ERROR)
+ */
+export async function checkFicHubFreshness(
+    storyUrl: string,
+    localChapterCount: number,
+    localUpdatedDate: Date
+): Promise<FicHubStatus> {
+    const log = Core.getLogger('FicHubDownloader', 'checkFreshness');
+
+    try {
+        const apiUrl = `https://fichub.net/api/v0/meta?q=${encodeURIComponent(storyUrl)}`;
+        const resp = await fetch(apiUrl);
+
+        if (!resp.ok) return FicHubStatus.ERROR;
+
+        const ficHubData = await resp.json();
+
+        // If API doesn't return essential data, assume we can't trust it
+        if (!ficHubData.updated || !ficHubData.chapters) return FicHubStatus.ERROR;
+
+        const ficHubDate = new Date(ficHubData.updated);
+        const ficHubChapterCount = ficHubData.chapters;
+
+        log(`Local: ${localChapterCount} ch / ${localUpdatedDate.toISOString()} | FicHub: ${ficHubChapterCount} ch / ${ficHubDate.toISOString()}`);
+
+        // Priority 1: Chapter Mismatch
+        // If Local chapter count does not match the chapter count on FicHub, FicHub is stale.
+        if (localChapterCount != ficHubChapterCount) {
+            log(`FicHub Stale: Mismatch local: ${localChapterCount} vs fichub: ${ficHubChapterCount} chapters.`);
+            return FicHubStatus.STALE;
+        }
+
+        // Priority 2: Timestamp (Allow 1 minute margin for timezone/sync jitter)
+        // Only valid if chapter counts match.
+        if (localChapterCount === ficHubChapterCount) {
+            const isDateStale =  localUpdatedDate.getTime() > (ficHubDate.getTime() + 60000) ? FicHubStatus.STALE : FicHubStatus.FRESH;
+            log(`Is Date Stale? ${isDateStale}`);
+            return isDateStale;
+        }
+
+        return FicHubStatus.FRESH;
+    } catch (e) {
+        log("Freshness check failed.", e);
+        return FicHubStatus.ERROR;
+    }
+}
 
 /**
  * Internal helper to handle the shared logic of calling the FicHub API.
