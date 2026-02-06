@@ -78,6 +78,8 @@ export const StoryReader = {
         const applyVisibleStyles = (show: boolean) => {
             if (show) {
                 modal.classList.remove('hide', 'fade');
+                // We use 'transparent' background and 0 padding to remove the white border.
+                // We use 'fit-content' and 'margin: 0' to ensure the translate transform centers it perfectly.
                 modal.style.cssText = `
                     display: block !important;
                     position: fixed !important;
@@ -87,18 +89,20 @@ export const StoryReader = {
                     z-index: 10000 !important;
                     opacity: 1 !important;
                     visibility: visible !important;
-                    background: white !important;
-                    padding: 10px !important;
-                    border-radius: 4px !important;
-                    box-shadow: 0 5px 15px rgba(0,0,0,0.5) !important;
-                    width: auto !important;
+                    background: transparent !important;
+                    padding: 0 !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    width: fit-content !important; 
                     height: auto !important;
+                    margin: 0 !important;
+                    overflow: visible !important;
                 `;
 
                 // Ensure the inner body and image are also forced visible
                 const modalBody = modal.querySelector('.modal-body') as HTMLElement;
                 if (modalBody) {
-                    modalBody.style.cssText = 'display: block !important; padding: 0 !important; overflow: visible !important;';
+                    modalBody.style.cssText = 'display: block !important; padding: 0 !important; overflow: visible !important; background: transparent !important; max-height: none !important;';
                 }
             } else {
                 modal.style.display = 'none';
@@ -122,7 +126,17 @@ export const StoryReader = {
                 if (originalSrc) {
                     img.src = originalSrc;
                     img.className = 'cimage'; // Strips 'lazy'
-                    img.style.cssText = 'display: block !important; opacity: 1 !important; visibility: visible !important; max-width: 90vw; max-height: 90vh;';
+                    // Apply styles directly to the image for proper sizing and a nice shadow (instead of the container having the shadow)
+                    img.style.cssText = `
+                        display: block !important; 
+                        opacity: 1 !important; 
+                        visibility: visible !important; 
+                        max-width: 90vw; 
+                        max-height: 90vh; 
+                        margin: 0 auto !important;
+                        box-shadow: 0 0 20px rgba(0,0,0,0.8); 
+                        border-radius: 4px;
+                    `;
                     log('Image source updated.');
                 }
             }
