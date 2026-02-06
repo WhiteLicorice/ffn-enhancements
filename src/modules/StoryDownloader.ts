@@ -2,11 +2,9 @@
 
 import { Core } from './Core';
 import { Elements } from '../enums/Elements';
-import { FicHubDownloader, checkFicHubFreshness } from './FicHubDownloader';
+import { FicHubDownloader } from './FicHubDownloader';
 import { NativeDownloader } from './NativeDownloader';
 import { SupportedFormats } from '../enums/SupportedFormats';
-import { FicHubStatus } from '../enums/FicHubStatus';
-import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
 
 /**
  * Module handling the UI integration for story downloads.
@@ -141,11 +139,10 @@ export const StoryDownloader = {
         if (!this.mainBtn) return;
         this.mainBtn.disabled = true;
         this.isDownloading = true;
-        this.mainBtn.innerHTML = "Checking...";
+        this.mainBtn.innerHTML = "Processing...";
 
         // Extract ID and construct URL for metadata checking
         let storyUrl = window.location.href.split('?')[0];
-        const storyId = storyUrl.match(/s\/(\d+)/)?.[1] || storyUrl;
 
         // Force Chapter 1 for canonical consistency
         if (storyUrl.includes('fanfiction.net')) {
@@ -160,64 +157,34 @@ export const StoryDownloader = {
         };
 
         try {
-            // 1. Always Check Freshness First (applies to ALL formats)
-            const localMeta = new LocalMetadataSerializer(storyId, storyUrl);
-            const status = await checkFicHubFreshness(storyUrl, localMeta);
-            log(`FicHub Status: ${status}`);
-
-            // 2. Branch Logic based on Format and Freshness
-
-            // --- CASE A: EPUB (Always Prompt) ---
+            // --- CASE A: EPUB (Dual Strategy Support) ---
             if (formatId === SupportedFormats.EPUB) {
-                if (status === FicHubStatus.STALE) {
-                    // STALE: Warn and offer Native
-                    const useNative = confirm(
-                        "FicHub's version is OUTDATED (Missing chapters or older date).\n\n" +
-                        "[OK] - Use Native Scraper (Get latest version, but slower)\n" +
-                        "[Cancel] - Use FicHub (Fast, but outdated)"
-                    );
-                    if (useNative) {
-                        await this.runNativeStrategy(formatId, storyUrl, progressCallback);
-                    } else {
-                        await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
-                    }
+                const useNative = confirm(
+                    "Select EPUB Download Strategy:\n\n" +
+                    "[OK] - Native (Slower, but guaranteed fresh from this page)\n" +
+                    "[Cancel] - FicHub (Faster, but uses external cache, which may be stale)"
+                );
+
+                if (useNative) {
+                    await this.runNativeStrategy(formatId, storyUrl, progressCallback);
                 } else {
-                    // FRESH/ERROR: Offer Choice
-                    const useFicHub = confirm(
-                        "Select Download Source:\n\n" +
-                        "[OK] - FicHub (Fast, simple formatting)\n" +
-                        "[Cancel] - Native (Slower, best formatting)"
-                    );
-                    if (useFicHub) {
-                        await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
-                    } else {
-                        await this.runNativeStrategy(formatId, storyUrl, progressCallback);
-                    }
+                    await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
                 }
             }
 
-            // --- CASE B: MOBI, PDF, HTML (Conditional Prompt) ---
+            // --- CASE B: MOBI, PDF, HTML (FicHub Only) ---
             else {
-                if (status === FicHubStatus.STALE) {
-                    // STALE: Warn user. 
-                    // Note: Native scraper does NOT support these formats, so we can't offer fallback.
-                    const proceed = confirm(
-                        `FicHub's version of this story is OUTDATED.\n` +
-                        `The generated ${formatId.toUpperCase()} will likely miss recent chapters.\n\n` +
-                        `Proceed anyway?\n\n` +
-                        `(You may select EPUB and click CANCEL to download the most recent version)`
-                    );
+                const proceed = confirm(
+                    `FicHub provides ${formatId.toUpperCase()} files via an external cache.\n` +
+                    `If the story was updated very recently, the file might be stale.\n\n` +
+                    `Proceed with download?`
+                );
 
-                    if (proceed) {
-                        await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
-                    } else {
-                        // User Cancelled
-                        this.resetButton();
-                        return;
-                    }
-                } else {
-                    // FRESH or ERROR: Just download (Default behavior)
+                if (proceed) {
                     await this.runFicHubStrategy(formatId, storyUrl, progressCallback);
+                } else {
+                    this.resetButton();
+                    return;
                 }
             }
 
@@ -247,21 +214,16 @@ export const StoryDownloader = {
         } catch (e) {
             log("FicHub Strategy failed or returned error.", e);
 
-            // 3. User Guidance on Stale/Failed FicHub
+            // User Guidance on Failed FicHub
             if (formatId !== SupportedFormats.EPUB) {
-                alert("FicHub is currently unreachable or stale for this format.\n\nPlease select 'EPUB' and choose the 'Native' option to generate a fresh copy directly.");
-                throw e; // Re-throw so parent UI shows "Error"
+                alert("FicHub is currently unreachable for this format.\n\nPlease select 'EPUB' and choose the 'Native' option to generate a fresh copy directly.");
+                throw e;
             } else {
                 // If they were already trying EPUB via FicHub and it failed
-                if (confirm("FicHub download failed or is stale. Would you like to try the Native Downloader instead?\n\n(This will scrape the story directly from the page.)")) {
-                    // Try fallback. If this fails, it throws to parent catch block (correct behavior).
+                if (confirm("FicHub download failed. Would you like to try the Native Downloader instead?\n\n(This will scrape the story directly from the page.)")) {
                     await this.runNativeStrategy(SupportedFormats.EPUB, url, cb);
-
-                    // Do NOT throw 'e' here. If we reached this line, the fallback succeeded.
-                    // Returning here ensures the parent processDownload sees this as a success.
                     return;
                 } else {
-                    // User declined fallback.
                     throw e;
                 }
             }
