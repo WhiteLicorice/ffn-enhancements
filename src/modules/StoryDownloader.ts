@@ -81,7 +81,7 @@ export const StoryDownloader = {
 
         // Map labels to internal IDs used in processDownload switch
         const formats = [
-            { label: 'EPUB', id: SupportedFormats.EPUB },
+            { label: 'EPUB 🔥', id: SupportedFormats.EPUB },
             { label: 'MOBI', id: SupportedFormats.MOBI },
             { label: 'PDF', id: SupportedFormats.PDF },
             { label: 'HTML', id: SupportedFormats.HTML }
@@ -203,8 +203,9 @@ export const StoryDownloader = {
                     // Note: Native scraper does NOT support these formats, so we can't offer fallback.
                     const proceed = confirm(
                         `FicHub's version of this story is OUTDATED.\n` +
-                        `The generated ${formatId} will likely miss recent chapters.\n\n` +
-                        `Proceed anyway?`
+                        `The generated ${formatId.toUpperCase()} will likely miss recent chapters.\n\n` +
+                        `Proceed anyway?\n\n` +
+                        `(You may select EPUB and click CANCEL to download the most recent version)`
                     );
 
                     if (proceed) {
