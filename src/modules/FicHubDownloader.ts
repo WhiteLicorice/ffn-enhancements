@@ -8,6 +8,7 @@ import { FicHubStatus } from '../enums/FicHubStatus';
 import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
 import { FicHubMetadataSerializer } from '../serializers/FicHubMetadataSerializer';
 import { Globals } from '../enums/Globals';
+import JSZip from 'jszip';
 
 /**
  * Concrete implementation of the Downloader strategy using the FicHub API.
@@ -17,9 +18,52 @@ export const FicHubDownloader: IFanficDownloader = {
 
     /**
      * Downloads the story as an EPUB (E-book) file.
+     * INJECTS LOCAL COVER ART into the FicHub EPUB before saving.
      */
-    downloadAsEPUB: function (storyUrl: string, onProgress?: CallableFunction): Promise<void> {
-        return _processApiRequest(storyUrl, SupportedFormats.EPUB, onProgress);
+    downloadAsEPUB: async function (storyUrl: string, onProgress?: CallableFunction): Promise<void> {
+        const log = Core.getLogger('FicHubDownloader', 'downloadAsEPUB');
+
+        try {
+            // 1. Get the download URL from FicHub API
+            const dlUrl = await _getFicHubDownloadUrl(storyUrl, SupportedFormats.EPUB, onProgress);
+
+            if (onProgress) onProgress("Fetching EPUB Data...");
+
+            // 2. Download the EPUB blob directly
+            const epubBlob = await _fetchBlob(dlUrl);
+
+            // 3. Serialize Local Metadata to get the Cover Blob
+            if (onProgress) onProgress("Scraping Local Cover...");
+
+            // Extract ID from URL for the serializer (Basic regex for FFN)
+            const storyId = storyUrl.match(/\/s\/(\d+)/)?.[1] || "0";
+            const serializer = new LocalMetadataSerializer(storyId, storyUrl);
+            const metadata = await serializer.serialize();
+
+            let finalBlob = epubBlob;
+            const filename = `${metadata.title} - ${metadata.author}.epub`;
+
+            // 4. Inject Cover if available
+            if (metadata.coverBlob) {
+                if (onProgress) onProgress("Injecting Cover...");
+                try {
+                    finalBlob = await _injectCoverIntoEpub(epubBlob, metadata.coverBlob);
+                    log("Cover injected successfully.");
+                } catch (e) {
+                    log("Failed to inject cover. Saving original.", e);
+                }
+            } else {
+                log("No local cover found. Saving original.");
+            }
+
+            // 5. Save the file
+            if (onProgress) onProgress("Saving...");
+            _saveBlob(finalBlob, _sanitizeFilename(filename));
+
+        } catch (e) {
+            log("EPUB Download Failed", e);
+            alert("Download failed. Check console for details.");
+        }
     },
 
     /**
@@ -128,20 +172,33 @@ export function checkFicHubFreshness(
 }
 
 /**
- * Internal helper to handle the shared logic of calling the FicHub API.
- * @param storyUrl - The full URL of the story.
- * @param format - The internal format string used by the API (epub, mobi, pdf, html).
- * @param onProgress - Optional callback to report initial status.
+ * Standard processing for formats that do not require post-processing (HTML, PDF, MOBI).
+ * Simply redirects the browser to the file.
  */
 function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgress?: CallableFunction): Promise<void> {
     const log = Core.getLogger('FicHubDownloader', 'processApiRequest');
+
+    return _getFicHubDownloadUrl(storyUrl, format, onProgress)
+        .then(dlUrl => {
+            log(`Redirecting to: ${dlUrl}`);
+            if (onProgress) onProgress("Downloading...");
+            window.location.href = dlUrl;
+        })
+        .catch(err => {
+            log('Download flow failed', err);
+            throw err;
+        });
+}
+
+/**
+ * Contacts the FicHub API to generate the file and retrieve the download URL.
+ */
+function _getFicHubDownloadUrl(storyUrl: string, format: SupportedFormats, onProgress?: CallableFunction): Promise<string> {
+    const log = Core.getLogger('FicHubDownloader', 'getDownloadUrl');
     const apiUrl = `https://fichub.net/api/v0/epub?q=${encodeURIComponent(storyUrl)}`;
 
-    log(`Initiating download for ${format}. API: ${apiUrl}`);
-
-    if (onProgress) {
-        onProgress("Requesting...");
-    }
+    log(`Initiating API request for ${format}: ${apiUrl}`);
+    if (onProgress) onProgress("Requesting...");
 
     return new Promise((resolve, reject) => {
         GM_xmlhttpRequest({
@@ -149,8 +206,6 @@ function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgre
             url: apiUrl,
             headers: { "User-Agent": Globals.USER_AGENT },
             onload: (res: { status: number; responseText: string }) => {
-                log(`Response received. Status: ${res.status}`);
-
                 if (res.status === 429) {
                     log("Fichub Server Busy (429).");
                     alert("Fichub Server Busy. Please try again later.");
@@ -163,27 +218,151 @@ function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgre
                     const rel = data.urls?.[format] || data[format + '_url'];
 
                     if (rel) {
-                        const dlUrl = "https://fichub.net" + rel;
-                        log(`Download URL found: ${dlUrl}`);
-
-                        if (onProgress) onProgress("Downloading...");
-
-                        window.location.href = dlUrl;
-                        resolve();
+                        resolve("https://fichub.net" + rel);
                     } else {
                         log(`Format '${format}' not found in API response.`, data);
                         alert(`FicHub could not generate a ${format} file for this story.`);
                         reject(new Error("Format not found"));
                     }
                 } catch (e) {
-                    log('JSON Parsing Error', e);
                     reject(e);
                 }
             },
-            onerror: (err) => {
-                log('Network/GM_xmlhttpRequest Error', err);
-                reject(err);
-            }
+            onerror: (err) => reject(err)
         });
     });
+}
+
+/**
+ * Fetches the actual file content as a Blob.
+ */
+function _fetchBlob(url: string): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: url,
+            responseType: "blob",
+            onload: (res) => {
+                if (res.status === 200) resolve(res.response);
+                else reject(new Error(`Download failed: ${res.status}`));
+            },
+            onerror: reject
+        });
+    });
+}
+
+/**
+ * Injects the cover image into the EPUB structure using JSZip.
+ * Supports "Naked" EPUBs (FicHub default) by creating the necessary XML structure.
+ * Only injects the thumbnail; does not create a cover page.
+ */
+async function _injectCoverIntoEpub(epubBlob: Blob, coverBlob: Blob): Promise<Blob> {
+    const log = Core.getLogger('FicHubDownloader', 'injectCover');
+    const zip = await JSZip.loadAsync(epubBlob);
+
+    // 1. Find the OPF file location from container.xml
+    const containerFile = zip.file("META-INF/container.xml");
+    if (!containerFile) throw new Error("Invalid EPUB: Missing container.xml");
+
+    const container = await containerFile.async("text");
+    const opfPathMatch = container.match(/full-path="([^"]+)"/);
+    if (!opfPathMatch) throw new Error("Invalid EPUB: Cannot find OPF path");
+
+    const opfPath = opfPathMatch[1];
+    const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/'));
+
+    // 2. Parse OPF
+    const opfFile = zip.file(opfPath);
+    if (!opfFile) throw new Error(`Invalid EPUB: Missing OPF file at ${opfPath}`);
+
+    const opfContent = await opfFile.async("text");
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(opfContent, "application/xml");
+
+    const opfNamespace = "http://www.idpf.org/2007/opf";
+
+    // 3. Determine if a cover already exists
+    let coverMeta = doc.querySelector('meta[name="cover"]');
+
+    if (coverMeta) {
+        // --- SCENARIO A: Cover Exists (Replace it) ---
+        log("Existing cover metadata found. Replacing file.");
+        const coverId = coverMeta.getAttribute("content");
+        if (coverId) {
+            const item = doc.getElementById(coverId) || doc.querySelector(`item[id="${coverId}"]`);
+            if (item) {
+                const href = item.getAttribute("href");
+                if (href) {
+                    const fullPath = opfDir ? `${opfDir}/${href}` : href;
+                    zip.file(fullPath, coverBlob);
+                    // Return early, job done (metadata is already correct)
+                    return await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
+                }
+            }
+        }
+    }
+
+    // --- SCENARIO B: No Cover (Create Metadata & Inject Image) ---
+    log("No existing cover found. Injecting image and metadata.");
+
+    // Constants for new items
+    const COVER_IMAGE_ID = "cover-image";
+    const COVER_IMG_FILENAME = "images/cover.jpg";
+
+    // A. Add the Image File to Zip
+    // If opf is in "EPUB/", file goes to "EPUB/images/cover.jpg"
+    const fullImgPath = opfDir ? `${opfDir}/${COVER_IMG_FILENAME}` : COVER_IMG_FILENAME;
+    zip.file(fullImgPath, coverBlob);
+
+    // B. Modify OPF: Metadata
+    const metadata = doc.getElementsByTagNameNS(opfNamespace, "metadata")[0];
+    if (metadata) {
+        const metaEl = doc.createElementNS(opfNamespace, "meta");
+        metaEl.setAttribute("name", "cover");
+        metaEl.setAttribute("content", COVER_IMAGE_ID);
+        metadata.appendChild(metaEl);
+    }
+
+    // C. Modify OPF: Manifest
+    const manifest = doc.getElementsByTagNameNS(opfNamespace, "manifest")[0];
+    if (manifest) {
+        // Item: Image
+        const itemImg = doc.createElementNS(opfNamespace, "item");
+        itemImg.setAttribute("id", COVER_IMAGE_ID);
+        itemImg.setAttribute("href", COVER_IMG_FILENAME);
+        itemImg.setAttribute("media-type", "image/jpeg");
+        // Add "cover-image" property for EPUB 3 compliance
+        itemImg.setAttribute("properties", "cover-image");
+        manifest.appendChild(itemImg);
+    }
+
+    // Note: We deliberately do not add a cover page to the spine or guide,
+    // to preserve the original reading order of the FicHub file.
+
+    // 4. Save modified OPF back to zip
+    const serializer = new XMLSerializer();
+    const newOpfContent = serializer.serializeToString(doc);
+    zip.file(opfPath, newOpfContent);
+
+    return await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
+}
+
+/**
+ * Triggers a browser download for the Blob.
+ */
+function _saveBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 100);
+}
+
+function _sanitizeFilename(name: string): string {
+    return name.replace(/[<>:"/\\|?*]/g, "").trim();
 }
