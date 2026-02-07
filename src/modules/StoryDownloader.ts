@@ -74,8 +74,15 @@ export const StoryDownloader = {
                         </button>
                     </div>
 
-                    <div class="alert alert-info" style="text-align: left; margin: 0 20px; font-size: 0.9em; min-height: 40px; display: flex; align-items: center;">
-                        <span id="ffe-desc-text">Hover over an option to see details.</span>
+                    <div class="alert alert-info" style="text-align: left; margin: 0 20px; font-size: 0.9em; padding: 10px 15px;">
+                        <ul style="margin: 0; padding-left: 20px; list-style-type: disc;">
+                            <li style="margin-bottom: 5px;">
+                                <strong>Native:</strong> Generates the file directly from this page. Guaranteed to be the latest version, but takes longer.
+                            </li>
+                            <li>
+                                <strong>FicHub:</strong> Downloads from the FicHub archive. Very fast, but the file might be slightly older (cached).
+                            </li>
+                        </ul>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -92,29 +99,6 @@ export const StoryDownloader = {
         const closeBtn = document.getElementById('ffe-modal-close-btn');
         if (closeX) closeX.onclick = () => this.closeModal();
         if (closeBtn) closeBtn.onclick = () => this.closeModal();
-
-        // Bind hover effects for UX descriptions
-        const nativeBtn = document.getElementById('ffe-btn-native');
-        const fichubBtn = document.getElementById('ffe-btn-fichub');
-        const descText = document.getElementById('ffe-desc-text');
-
-        if (nativeBtn && descText) {
-            nativeBtn.addEventListener('mouseenter', () => {
-                descText.innerHTML = "<strong>Native:</strong> Generates the file directly from this page. Guaranteed to be the latest version, but takes longer.";
-            });
-            nativeBtn.addEventListener('mouseleave', () => {
-                descText.innerHTML = "Hover over an option to see details.";
-            });
-        }
-
-        if (fichubBtn && descText) {
-            fichubBtn.addEventListener('mouseenter', () => {
-                descText.innerHTML = "<strong>FicHub:</strong> Downloads from the FicHub archive. Very fast, but the file might be slightly older (cached).";
-            });
-            fichubBtn.addEventListener('mouseleave', () => {
-                descText.innerHTML = "Hover over an option to see details.";
-            });
-        }
     },
 
     /**
@@ -230,16 +214,6 @@ export const StoryDownloader = {
 
         const freshNativeBtn = replaceElement(nativeBtn) as HTMLButtonElement;
         const freshFichubBtn = replaceElement(fichubBtn) as HTMLButtonElement;
-
-        const descText = document.getElementById('ffe-desc-text');
-        if (descText) {
-            const bindHover = (btn: HTMLElement, text: string) => {
-                btn.addEventListener('mouseenter', () => descText.innerHTML = text);
-                btn.addEventListener('mouseleave', () => descText.innerHTML = "Hover over an option to see details.");
-            };
-            bindHover(freshNativeBtn, "<strong>Native:</strong> Generates the file directly from this page. Guaranteed to be the latest version, but takes longer.");
-            bindHover(freshFichubBtn, "<strong>FicHub:</strong> Downloads from the FicHub archive. Very fast, but the file might be slightly older (cached).");
-        }
 
         if (formatId === SupportedFormats.EPUB) {
             freshNativeBtn.style.display = 'inline-block';
