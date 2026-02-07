@@ -28,7 +28,7 @@ Once you have the extension installed, [Click This Button](https://github.com/Wh
 
 ## Roadmap by Features
 
-* [x] Download documents as Markdown in both Doc Manager and Doc Editor.
+* [x] Download documents as Markdown in both Doc Manager and Doc Editor. Bulk export allowed.
 * [x] Make text selectable while reading.
 * [x] Bind arrow keys or WASD keys to chapter navigation.
 * [x] Integrate Ao3's export to EPUB/PDF/HTML/MOBI feature (AZW3 is prioprietary and out of scope).
@@ -38,6 +38,7 @@ Once you have the extension installed, [Click This Button](https://github.com/Wh
 * [x] Fix FFN's bug where clicking on a story's picture doesn't do anything and just darkens the screen lmao.
 * [x] Allow pasting of Markdown into the Doc Editor and Doc Manager's story boxes. It is automatically converted into Docx format.
 * [ ] Allow bulk refresh of author documents in Doc Manager (This feature is harder than it seems, relative to bulk export to MD: I have given up for now, but feel free to open a PR).
+* [x] Inject the story's cover art into EPUBs (from Native and FicHub) as its thumbnail.
 
 *Feel free to open issues and make suggestions!*
 
