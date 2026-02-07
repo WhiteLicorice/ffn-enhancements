@@ -91,4 +91,10 @@ export enum Elements {
 
     /** The editor i-frame that EDITOR_TEXT_AREA uses. */
     EDITOR_TEXT_AREA_IFRAME = 'EDITOR_TEXT_AREA_IFRAME',
+
+    /** The Save button within the document form. */
+    SAVE_BUTTON = 'SAVE_BUTTON',
+
+    /** The doc form that contains the story text and every other element. */
+    DOC_FORM = 'DOC_FORM'
 }

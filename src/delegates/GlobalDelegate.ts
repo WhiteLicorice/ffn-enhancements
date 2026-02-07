@@ -17,7 +17,7 @@ export const GlobalDelegate: IDelegate = {
      * @param doc - A document override if the delegate is supposed to be fetching from another window.
      * @returns The DOM element corresponding to the key, or null if not found.
      */
-    getElement(key: Elements, doc:Document=document): HTMLElement | null {
+    getElement(key: Elements, doc: Document = document): HTMLElement | null {
         switch (key) {
             case Elements.MAIN_CONTENT_WRAPPER:
                 // FFN usually uses #content_wrapper_inner, but sometimes just #content_wrapper
@@ -28,6 +28,10 @@ export const GlobalDelegate: IDelegate = {
                 return doc.querySelector("textarea[name='bio']") as HTMLElement;
             case Elements.EDITOR_TEXT_AREA_IFRAME:
                 return doc.querySelector("#bio_ifr") as HTMLElement;
+            case Elements.SAVE_BUTTON:
+                return doc.querySelector("form[name='docform'] button[type='submit']") as HTMLElement;
+            case Elements.DOC_FORM:
+                return doc.querySelector("form[name='docform']") as HTMLFormElement
             default:
                 return null;
         }

@@ -143,7 +143,7 @@ export const Core = {
             els = this.activeDelegate.getElements(key, doc);
         }
 
-        // 2. Try Global (only if page specific returned nothing)
+        // 2. Try Global
         if (els.length === 0) {
             els = GlobalDelegate.getElements(key, doc);
         }
@@ -167,11 +167,17 @@ export const Core = {
         const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc);
 
         if (!contentElement) {
-            log(`Selectors failed for "${title}"`);
+            log(`Selectors failed to find content for "${title}".`);
             return null;
         }
 
         const rawValue = (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
+
+        if (!rawValue || rawValue.trim().length === 0) {
+            log(`Scouting Report: Found the textarea for "${title}", but it is EMPTY.`);
+            return null;
+        }
+
         return this.turndownService.turndown(rawValue);
     },
 

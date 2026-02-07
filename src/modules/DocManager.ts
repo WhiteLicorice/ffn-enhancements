@@ -121,8 +121,8 @@ export const DocManager = {
     },
 
     /**
-     * Injects a new "Export" column into the document management table.
-     * Adds an "Export" button to each row for individual downloading.
+     * Injects new "Export" and "Refresh" columns into the document management table.
+     * Adds an "Export" button and a "Refresh" button to each row.
      */
     injectTableColumn: function () {
         const log = Core.getLogger('doc-manager', 'injectTableColumn');
@@ -136,12 +136,21 @@ export const DocManager = {
         const headerRow = Core.getElement(Elements.DOC_TABLE_HEAD_ROW);
 
         if (headerRow) {
-            const th = document.createElement('th');
-            th.className = 'thead';
-            th.innerText = 'Export';
-            th.align = 'center';
-            th.width = '5%';
-            headerRow.appendChild(th);
+            // 1. Export Header
+            const thExport = document.createElement('th');
+            thExport.className = 'thead';
+            thExport.innerText = 'Export';
+            thExport.align = 'center';
+            thExport.width = '5%';
+            headerRow.appendChild(thExport);
+
+            // 2. Refresh Header
+            const thRefresh = document.createElement('th');
+            thRefresh.className = 'thead';
+            thRefresh.innerText = 'Refresh';
+            thRefresh.align = 'center';
+            thRefresh.width = '5%';
+            headerRow.appendChild(thRefresh);
         }
 
         const rows = Core.getElements(Elements.DOC_TABLE_BODY_ROWS);
@@ -158,27 +167,46 @@ export const DocManager = {
             if (!match) return;
             const docId = match[1];
 
-            const td = document.createElement('td');
-            td.align = 'center';
-            td.vAlign = 'top';
-            td.width = '5%';
-
             const title = (row as HTMLTableRowElement).cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
 
-            const link = document.createElement('a');
-            link.innerText = "Export";
-            link.href = "#";
-            link.style.textDecoration = "none";
-            link.style.whiteSpace = "nowrap";
-            link.onclick = (e) => {
+            // --- 1. Export Column ---
+            const tdExport = document.createElement('td');
+            tdExport.align = 'center';
+            tdExport.vAlign = 'top';
+            tdExport.width = '5%';
+
+            const exportLink = document.createElement('a');
+            exportLink.innerText = "Export";
+            exportLink.href = "#";
+            exportLink.style.textDecoration = "none";
+            exportLink.style.whiteSpace = "nowrap";
+            exportLink.onclick = (e) => {
                 e.preventDefault();
                 this.runSingleExport(e.target as HTMLElement, docId, title);
             };
-            td.appendChild(link);
-            row.appendChild(td);
+            tdExport.appendChild(exportLink);
+            row.appendChild(tdExport);
+
+            // --- 2. Refresh Column ---
+            const tdRefresh = document.createElement('td');
+            tdRefresh.align = 'center';
+            tdRefresh.vAlign = 'top';
+            tdRefresh.width = '5%';
+
+            const refreshLink = document.createElement('a');
+            refreshLink.innerText = "Refresh";
+            refreshLink.href = "#";
+            refreshLink.style.textDecoration = "none";
+            refreshLink.style.whiteSpace = "nowrap";
+            refreshLink.onclick = (e) => {
+                e.preventDefault();
+                this.runSingleRefresh(e.target as HTMLElement, docId, title);
+            };
+            tdRefresh.appendChild(refreshLink);
+            row.appendChild(tdRefresh);
         });
 
-        log('Column injected.');
+        log('Columns injected.');
     },
 
     /**
@@ -210,7 +238,96 @@ export const DocManager = {
         } else {
             btnElement.innerText = "Err";
             log("Failed to fetch document content.");
+            setTimeout(() => {
+                btnElement.innerText = originalText;
+                btnElement.style.color = "";
+                btnElement.style.cursor = "pointer";
+            }, 2000);
         }
+    },
+
+    /**
+     * Handles the refreshing of a document's timestamp (Keep Alive) by simulating a Save action.
+     * Uses URLSearchParams to ensure the POST body is encoded correctly for FFN's PHP backend.
+     */
+    runSingleRefresh: async function (btnElement: HTMLElement, docId: string, title: string) {
+        const log = Core.getLogger('doc-manager', 'runSingleRefresh');
+        const originalText = btnElement.innerText;
+
+        btnElement.innerText = "...";
+        btnElement.style.color = "gray";
+        btnElement.style.cursor = "wait";
+
+        log(`Refreshing doc: ${title} (${docId})`);
+
+        try {
+            // 1. Fetch the edit page
+            const editUrl = `https://www.fanfiction.net/docs/edit.php?docid=${docId}`;
+            const response = await fetch(editUrl);
+            if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+
+            // 2. Get the form.
+            const html = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+            const form = Core.getElement(Elements.DOC_FORM, doc) as HTMLFormElement;
+
+            if (!form) {
+                log("CRITICAL ERROR: Form not found.");
+                btnElement.innerText = "Empty";
+                return;
+            }
+
+            // 3. Prepare the POST body using URLSearchParams
+            // This forces 'application/x-www-form-urlencoded' which FFN requires.
+            const params = new URLSearchParams();
+            const formData = new FormData(form);
+
+            // Transfer all existing form fields (hidden IDs, session tokens if any)
+            formData.forEach((value, key) => {
+                params.append(key, value as string);
+            });
+
+            // Specific Validation for Content
+            const textArea = form.querySelector('textarea[name="bio"]');
+            const content = textArea ? textArea.textContent : "";
+
+            if (!content || content.trim().length === 0) {
+                log("CRITICAL ERROR: Content is empty. Aborting to prevent accidental wipe.");
+                btnElement.innerText = "Empty";
+                return;
+            }
+
+            // Ensure content is in the params (DOMParser doesn't always put textarea text into FormData)
+            params.set('content', content);
+            // Crucial: The backend looks for the 'submit' key to trigger the save logic
+            params.set('submit', 'Save Changes');
+
+            // 4. Submit back to the edit page
+            log(`Submitting update for ${docId}...`);
+            const postResponse = await fetch(editUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params
+            });
+
+            if (postResponse.ok) {
+                btnElement.innerText = "Refreshed";
+                log(`Successfully refreshed ${title}.`);
+            } else {
+                throw new Error(`POST failed: ${postResponse.status}`);
+            }
+
+        } catch (error) {
+            btnElement.innerText = "Err";
+            log(`Failed to refresh ${title}.`, error);
+        }
+
+        setTimeout(() => {
+            btnElement.innerText = originalText;
+            btnElement.style.color = "";
+            btnElement.style.cursor = "pointer";
+        }, 2000);
     },
 
     /**
