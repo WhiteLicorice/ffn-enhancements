@@ -37,6 +37,7 @@ Once you have the extension installed, [Click This Button](https://github.com/Wh
 * [ ] Make story text more large-screen friendly? Expand it so the borders at the sides are gone (Interest in this feature has waned, but feel free to implement it and open a PR).
 * [x] Fix FFN's bug where clicking on a story's picture doesn't do anything and just darkens the screen lmao.
 * [x] Allow pasting of Markdown into the Doc Editor and Doc Manager's story boxes. It is automatically converted into Docx format.
+* [ ] Allow bulk refresh of author documents in Doc Manager (This feature is harder than it seems, relative to bulk export to MD: I have given up for now, but feel free to open a PR).
 
 *Feel free to open issues and make suggestions!*
 
