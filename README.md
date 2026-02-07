@@ -39,6 +39,7 @@ Once you have the extension installed, [Click This Button](https://github.com/Wh
 * [x] Allow pasting of Markdown into the Doc Editor and Doc Manager's story boxes. It is automatically converted into Docx format.
 * [ ] Allow bulk refresh of author documents in Doc Manager (This feature is harder than it seems, relative to bulk export to MD: I have given up for now, but feel free to open a PR).
 * [x] Inject the story's cover art into EPUBs (from Native and FicHub) as its thumbnail.
+* [ ] Get rid of the letterboxed borders at the side of the page (requires a `LayoutManager` of some sort).
 
 *Feel free to open issues and make suggestions!*
 
