@@ -23,10 +23,11 @@ const path = window.location.pathname;
 Core.log('router', 'main', `Here at https://www.fanfiction.net${path}`, path);
 
 /**
- * Register the appropriate Delegate (Page Object) based on the path.
- * This ensures Core.getElement() uses the correct selectors for the current page.
+ * Bootstraps the Core system.
+ * 1. Sets the Delegate based on the path (Core.setDelegate).
+ * 2. Initializes the LayoutManager (injects global CSS overrides).
  */
-Core.setDelegate(path);
+Core.startup(path);
 
 // NOTE: The path includes the "/" and omits "https://www.fanfiction.net".
 // If in doubt, check your browser.

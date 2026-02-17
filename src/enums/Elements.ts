@@ -17,6 +17,11 @@ export enum Elements {
     /** The "Follow/Fav" button or container often found in headers. */
     FOLLOW_BUTTON_CONTAINER = 'FOLLOW_BUTTON_CONTAINER',
 
+    /** * The outer content wrapper that often contains fixed width styles (e.g., width: 1250px). 
+     * Targeted to remove letterboxing/borders.
+     */
+    PAGE_CONTENT_WRAPPER = 'PAGE_CONTENT_WRAPPER',
+
     /** The main content wrapper for the page (often #content_wrapper_inner). */
     MAIN_CONTENT_WRAPPER = 'MAIN_CONTENT_WRAPPER',
 
@@ -26,6 +31,9 @@ export enum Elements {
 
     /** The container holding the actual story content text. */
     STORY_TEXT = 'STORY_TEXT',
+
+    /** The button/icon that toggles text justification/margins (to be removed in Fluid Mode). */
+    STORY_WIDTH_CONTROL = 'STORY_WIDTH_CONTROL',
 
     /** The container usually found at top/bottom allowing chapter selection. */
     CHAPTER_NAV_CONTAINER = 'CHAPTER_NAV_CONTAINER',

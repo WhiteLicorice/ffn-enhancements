@@ -7,6 +7,7 @@ import { IDelegate } from '../delegates/IDelegate';
 import { DocManagerDelegate } from '../delegates/DocManagerDelegate';
 import { DocEditorDelegate } from '../delegates/DocEditorDelegate';
 import { GlobalDelegate } from '../delegates/GlobalDelegate';
+import { LayoutManager } from './LayoutManager';
 
 /**
  * Shared utility engine providing logging, DOM readiness, content parsing,
@@ -23,6 +24,12 @@ export const Core = {
         'hr': '---',
         'bulletListMarker': '-',
     }),  // modern-ish presets used by Markor and the like
+
+    /**
+     * The LayoutManager instance responsible for Fluid Mode (removing borders).
+     * Accessed via Core.layoutManager.toggleFluidMode().
+     */
+    layoutManager: new LayoutManager(),
 
     /**
      * The currently active Delegate strategy (Story vs Doc vs Global).
@@ -66,6 +73,24 @@ export const Core = {
         } else {
             callback();
         }
+    },
+
+    /**
+     * Main Bootstrapper.
+     * Detects the current page, sets the delegate, and initializes layout managers.
+     * Call this from your main entry point (e.g., index.ts).
+     */
+    startup: function (path: string) {
+        const log = this.getLogger(this.MODULE_NAME, 'startup');
+
+        // 1. Determine which page we are on
+        this.setDelegate(path);
+
+        // 2. Initialize Layout Manager (injects base CSS)
+        // This makes sure the fluid styles are ready to be toggled
+        this.layoutManager.init();
+
+        log('Core System initialized and ready.');
     },
 
     // ==========================================
