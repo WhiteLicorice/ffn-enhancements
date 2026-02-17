@@ -2,6 +2,7 @@
 
 import { Elements } from '../enums/Elements';
 import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
+import { Core } from './Core';
 
 /**
  * LayoutManager
@@ -39,13 +40,55 @@ export class LayoutManager {
     public init(): void {
         console.log('LayoutManager: Starting init sequence...');
 
-        // In the future, we will check StorageManager here to restore preference.
-        // For now, we default to true (Fluid/AO3-style Layout).
-        this.setFluidMode(this.isFluid);
-
-        // FFN lacks a viewport meta tag, which breaks zooming/reflow on many devices.
-        // We inject it permanently to modernize the page behavior.
+        // 1. Inject CSS & Meta immediately.
+        // We do this BEFORE DomReady to ensure styles are parsed as the body renders.
+        this.injectFluidStyles();
         this.injectViewportMeta();
+
+        // 2. Wait for DOM to handle Body classes and Element manipulation
+        Core.onDomReady(() => {
+            // Apply the class to the body now that it exists
+            this.setFluidMode(this.isFluid);
+
+            // 3. Handle the Removal of the Width Control Button (Anti-FOUC)
+            // We use the same Observer pattern as DocEditor to catch it instantly.
+            this.initWidthControlObserver();
+        });
+    }
+
+    /**
+     * Sets up a MutationObserver to catch the FFN width control button
+     * as soon as it is injected into the DOM, preventing layout jumps.
+     */
+    private initWidthControlObserver(): void {
+        const log = Core.getLogger('LayoutManager', 'initWidthControlObserver');
+
+        // 1. Fast Path: Check if it's already there
+        const existingControl = this.delegate.getElement(Elements.STORY_WIDTH_CONTROL);
+        if (existingControl) {
+            log('Width Control found immediately. Removing.');
+            existingControl.remove();
+            return;
+        }
+
+        // 2. Observer Strategy: Wait for injection
+        log('Setting up MutationObserver for Width Control...');
+        const observer = new MutationObserver((_mutations, obs) => {
+            const widthControl = this.delegate.getElement(Elements.STORY_WIDTH_CONTROL);
+            if (widthControl) {
+                log('Width Control detected via Observer. Removing.');
+                widthControl.remove();
+                obs.disconnect(); // Stop observing once job is done
+            }
+        });
+
+        // Observe the body subtree
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        // 3. Safety Timeout: Stop observing after 10s if it never loads
+        setTimeout(() => {
+            observer.disconnect();
+        }, 10000);
     }
 
     /**
@@ -91,10 +134,10 @@ export class LayoutManager {
     private setFluidMode(enable: boolean): void {
         const body = document.body;
 
-        // Ensure styles exist before we try to use them
+        // Ensure styles exist before we try to use them (Just in case called outside init)
         this.injectFluidStyles();
 
-        // Remove the manual width control element if it exists
+        // Attempt to remove control if it exists right now
         this.removeWidthControl();
 
         if (enable) {
