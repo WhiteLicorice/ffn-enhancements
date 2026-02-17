@@ -77,7 +77,7 @@ export const StoryDownloader = {
                     <div class="alert alert-info" style="text-align: left; margin: 0 20px; font-size: 0.9em; padding: 10px 15px;">
                         <ul style="margin: 0; padding-left: 20px; list-style-type: disc;">
                             <li style="margin-bottom: 5px;">
-                                <strong>Native:</strong> Generates the file directly from this page. Guaranteed to be the latest version, but takes longer.
+                                <strong>Native:</strong> Generates the file directly from this page. Guaranteed to be the latest version, and has all the fancy cover art and thumnbnails, but takes longer.
                             </li>
                             <li>
                                 <strong>FicHub:</strong> Downloads from the FicHub archive. Very fast, but the file might be slightly older (cached).
