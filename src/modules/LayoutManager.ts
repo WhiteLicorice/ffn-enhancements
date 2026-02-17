@@ -6,45 +6,47 @@ import { Core } from './Core';
 
 /**
  * LayoutManager
- * Orchestrates the layout adjustments for the application.
- * * ANTI-FOUC STRATEGY:
- * 1. We inject styles immediately into the <head>.
- * 2. We apply the state class to <html> (document.documentElement), NOT <body>.
- * The <html> element is available instantly at document-start, whereas <body>
- * is not. This ensures the first paint already includes our overrides.
- * 3. We hide the native width control via CSS immediately, then remove it via
- * JS later for DOM cleanliness.
+ * * Orchestrates the layout adjustments for the application.
+ * * ANTI-FOUC STRATEGY (v3):
+ * 1. Immediate Execution: We do not wait for DOMContentLoaded.
+ * 2. Headless Injection: We inject styles into document.documentElement (<html>) 
+ * because document.head likely doesn't exist yet at document-start.
+ * 3. The "Curtain": We use CSS to hide the content immediately if it doesn't match
+ * our fluid state, ensuring the user never sees the "snap".
  */
 export class LayoutManager {
 
     private readonly STYLE_TAG_ID = 'fichub-layout-styles';
-
-    // We apply this to the HTML tag, not the BODY tag
     private readonly FLUID_CLASS = 'fichub-fluid-mode';
-
     private delegate = LayoutManagerDelegate;
     private isFluid: boolean = true;
 
     constructor() {
-        console.log('LayoutManager: Initialized.');
+        // OPTIONAL: You can even trigger init here if your Core doesn't instantiate 
+        // LayoutManager until it's actually needed. 
+        // this.init(); 
     }
 
+    /**
+     * Initializes the Layout Manager.
+     * MUST BE CALLED IMMEDIATELY (Synchronously) in your main entry point.
+     * Do NOT wrap this in onDomReady.
+     */
     public init(): void {
-        console.log('LayoutManager: Starting init sequence...');
+        console.log('LayoutManager: Init (Synchronous Phase)');
 
-        // 1. Inject CSS immediately (Synchronous)
+        // 1. Inject CSS immediately into <HTML> (Safety fallback if Head is missing)
         this.injectFluidStyles();
-        this.injectViewportMeta();
 
-        // 2. Apply Class to HTML tag immediately (Synchronous)
-        // This is the key to fixing FOUC. documentElement exists 
-        // even if body hasn't parsed yet.
+        // 2. Apply the Class immediately to <HTML>
+        // This ensures the CSS selector matches before the <body> is parsed.
         this.setFluidMode(this.isFluid);
 
-        // 3. Start Cleanup Observer
-        // This removes the specific element from the DOM tree entirely
-        // after it loads, but our CSS handles the visual hiding.
-        this.initCleanupObserver();
+        // 3. Inject Meta (Optional, less critical for FOUC)
+        this.injectViewportMeta();
+
+        // 4. Set up cleanup (removes the button from DOM later)
+        this.initCleanup();
     }
 
     /**
@@ -52,92 +54,55 @@ export class LayoutManager {
      */
     public toggleFluidMode(): boolean {
         this.isFluid = !this.isFluid;
-        console.log(`LayoutManager: Toggling Fluid Mode to ${this.isFluid}`);
         this.setFluidMode(this.isFluid);
         return this.isFluid;
     }
 
     /**
-     * Applies the class to document.documentElement (<html>).
+     * Applies the class to document.documentElement.
      */
     private setFluidMode(enable: boolean): void {
         const root = document.documentElement;
-
         if (enable) {
-            if (!root.classList.contains(this.FLUID_CLASS)) {
-                root.classList.add(this.FLUID_CLASS);
-                console.log('LayoutManager: Fluid mode enabled (Class added to HTML).');
-            }
+            root.classList.add(this.FLUID_CLASS);
         } else {
-            if (root.classList.contains(this.FLUID_CLASS)) {
-                root.classList.remove(this.FLUID_CLASS);
-                console.log('LayoutManager: Fluid mode disabled (Class removed from HTML).');
-            }
+            root.classList.remove(this.FLUID_CLASS);
         }
     }
 
     /**
-     * Observer to remove the native width control element from the DOM.
-     * Note: Visuals are handled by CSS display:none, this is just for DOM hygiene.
+     * Injects the necessary CSS.
+     * CRITICAL CHANGE: Appends to documentElement if head is missing.
      */
-    private initCleanupObserver(): void {
-        const observer = new MutationObserver((_mutations, _obs) => {
-            const widthControl = this.delegate.getElement(Elements.STORY_WIDTH_CONTROL);
-            if (widthControl) {
-                widthControl.remove();
-                // We don't disconnect immediately because FFN sometimes moves things 
-                // around during load, but we can debounce or verify.
-                // For safety, we'll let it run until DomReady.
-            }
-        });
-
-        observer.observe(document.documentElement, { childList: true, subtree: true });
-
-        // Stop observing once the page is definitely settled
-        Core.onDomReady(() => {
-            // Final check
-            const widthControl = this.delegate.getElement(Elements.STORY_WIDTH_CONTROL);
-            if (widthControl) widthControl.remove();
-
-            setTimeout(() => observer.disconnect(), 2000);
-        });
-    }
-
-    private injectViewportMeta(): void {
-        // Only inject if not present
-        if (!document.querySelector('meta[name="viewport"]')) {
-            const meta = document.createElement('meta');
-            meta.name = 'viewport';
-            meta.content = 'width=device-width, initial-scale=1.0';
-            // Use prepend to ensure it's processed early
-            if (document.head) document.head.prepend(meta);
-        }
-    }
-
     private injectFluidStyles(): void {
         if (document.getElementById(this.STYLE_TAG_ID)) return;
 
-        // Note the selectors: html.class body ...
         const css = `
             /* --- Fichub Fluid Mode Overrides --- */
 
-            /* 1. HIDE THE NATIVE CONTROL IMMEDIATELY 
-               Replace 'span.icon-align-justify' with the actual selector 
-               from Elements.STORY_WIDTH_CONTROL if possible, or a known CSS selector.
-               This prevents the button from flashing on screen.
+            /* 1. THE "CURTAIN" (Anti-FOUC)
+               Hide the width control immediately.
+               We use display:none !important to ensure it never renders 
+               even for a single frame.
             */
-            html.${this.FLUID_CLASS} span.icon-align-justify,
+            html.${this.FLUID_CLASS} .icon-align-justify,
+            html.${this.FLUID_CLASS} [onclick*="set_width"],
             html.${this.FLUID_CLASS} .story-width-control-target { 
                 display: none !important; 
+                opacity: 0 !important;
+                visibility: hidden !important;
             }
 
-            /* 2. ROOT & WRAPPER overrides */
+            /* 2. ROOT & WRAPPER Overrides */
             html.${this.FLUID_CLASS} body {
                 min-width: 0 !important;
                 width: 100% !important;
                 overflow-x: hidden !important;
             }
 
+            /* Force the wrapper to be 100% immediately. 
+               The browser paints this BEFORE calculating the inner content.
+            */
             html.${this.FLUID_CLASS} body #content_wrapper {
                 width: 100% !important;
                 max-width: 100% !important;
@@ -150,7 +115,7 @@ export class LayoutManager {
                 padding: 0 15px !important;
             }
 
-            /* 3. STORY TEXT overrides */
+            /* 3. STORY TEXT Overrides */
             html.${this.FLUID_CLASS} body .storytext,
             html.${this.FLUID_CLASS} body #storytext, 
             html.${this.FLUID_CLASS} body #storytextp {
@@ -163,21 +128,15 @@ export class LayoutManager {
                 margin: 0 !important;
             }
 
-            /* 4. MENUS & NAVIGATION */
+            /* 4. NAVIGATION Overrides */
             html.${this.FLUID_CLASS} body .menulink,
-            html.${this.FLUID_CLASS} body #zmenu {
-                width: 100% !important;
-                max-width: 100% !important;
-                padding-left: 15px !important;
-                padding-right: 15px !important;
-                box-sizing: border-box !important;
-            }
-            
+            html.${this.FLUID_CLASS} body #zmenu,
             html.${this.FLUID_CLASS} body #zmenu table {
                 width: 100% !important;
                 max-width: 100% !important;
+                box-sizing: border-box !important;
             }
-
+            
             html.${this.FLUID_CLASS} body .z-top-container,
             html.${this.FLUID_CLASS} body .maxwidth {
                 max-width: 100% !important;
@@ -189,13 +148,11 @@ export class LayoutManager {
             html.${this.FLUID_CLASS} body #review table td[width="10"] {
                 display: none !important;
             }
-
             html.${this.FLUID_CLASS} body #review table td {
                 display: block !important;
                 width: 100% !important;
                 text-align: center !important;
             }
-
             html.${this.FLUID_CLASS} body #review table td > div {
                 margin: 0 auto !important;
                 text-align: left !important;
@@ -206,9 +163,33 @@ export class LayoutManager {
         style.id = this.STYLE_TAG_ID;
         style.textContent = css;
 
-        // Append to head if exists, otherwise docElement (extremely early exec case)
+        // CRITICAL: If Head doesn't exist (document-start), inject into HTML (root).
+        // This guarantees the CSS is present before Body is parsed.
         (document.head || document.documentElement).appendChild(style);
 
-        console.log('LayoutManager: Fluid styles injected.');
+        console.log('LayoutManager: Fluid styles injected (Headless Mode safe).');
+    }
+
+    /**
+     * Uses onDomReady just to clean up the DOM tree.
+     * Visuals are already handled by CSS.
+     */
+    private initCleanup(): void {
+        Core.onDomReady(() => {
+            // Remove the element cleanly once DOM is settled
+            const widthControl = this.delegate.getElement(Elements.STORY_WIDTH_CONTROL);
+            if (widthControl) widthControl.remove();
+        });
+    }
+
+    private injectViewportMeta(): void {
+        Core.onDomReady(() => {
+            if (!document.querySelector('meta[name="viewport"]')) {
+                const meta = document.createElement('meta');
+                meta.name = 'viewport';
+                meta.content = 'width=device-width, initial-scale=1.0';
+                document.head.appendChild(meta);
+            }
+        });
     }
 }
