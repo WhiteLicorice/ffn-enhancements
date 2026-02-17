@@ -41,54 +41,76 @@ export class LayoutManager {
         console.log('LayoutManager: Starting init sequence...');
 
         // 1. Inject CSS & Meta immediately.
-        // We do this BEFORE DomReady to ensure styles are parsed as the body renders.
+        // This ensures the CSS rules are available the moment the elements appear.
         this.injectFluidStyles();
         this.injectViewportMeta();
 
-        // 2. Wait for DOM to handle Body classes and Element manipulation
-        Core.onDomReady(() => {
-            // Apply the class to the body now that it exists
+        // 2. Immediate State Application
+        // If body already exists (script loaded late), apply immediately.
+        if (document.body) {
             this.setFluidMode(this.isFluid);
+            this.removeWidthControl();
+        }
 
-            // 3. Handle the Removal of the Width Control Button (Anti-FOUC)
-            // We use the same Observer pattern as DocEditor to catch it instantly.
-            this.initWidthControlObserver();
-        });
+        // 3. Start Anti-FOUC Observer
+        // We do NOT wait for onDomReady. We watch the root <html> element immediately
+        // to catch the creation of <body> and the injection of the width control.
+        this.initAntiFoucObserver();
     }
 
     /**
-     * Sets up a MutationObserver to catch the FFN width control button
-     * as soon as it is injected into the DOM, preventing layout jumps.
+     * Sets up a MutationObserver on document.documentElement.
+     * This allows us to intercept specific nodes (Body, WidthControl) before they render.
      */
-    private initWidthControlObserver(): void {
-        const log = Core.getLogger('LayoutManager', 'initWidthControlObserver');
+    private initAntiFoucObserver(): void {
+        const log = Core.getLogger('LayoutManager', 'initAntiFoucObserver');
 
-        // 1. Fast Path: Check if it's already there
-        const existingControl = this.delegate.getElement(Elements.STORY_WIDTH_CONTROL);
-        if (existingControl) {
-            log('Width Control found immediately. Removing.');
-            existingControl.remove();
-            return;
-        }
+        const observer = new MutationObserver((mutations) => {
+            // Check if we need to apply the body class
+            // This catches the exact moment <body> is created during page parse
+            if (this.isFluid && document.body && !document.body.classList.contains(this.FLUID_CLASS)) {
+                document.body.classList.add(this.FLUID_CLASS);
+            }
 
-        // 2. Observer Strategy: Wait for injection
-        log('Setting up MutationObserver for Width Control...');
-        const observer = new MutationObserver((_mutations, obs) => {
-            const widthControl = this.delegate.getElement(Elements.STORY_WIDTH_CONTROL);
-            if (widthControl) {
-                log('Width Control detected via Observer. Removing.');
-                widthControl.remove();
-                obs.disconnect(); // Stop observing once job is done
+            // Check added nodes for the Width Control element
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    if (node instanceof HTMLElement) {
+                        // Check if the node itself is the target
+                        if (node.classList.contains('icon-align-justify')) {
+                            node.remove();
+                            log('Width Control removed (Direct Mutation).');
+                        }
+                        // Check if the node contains the target (e.g., a container div was added)
+                        else if (node.querySelector) {
+                            const child = node.querySelector('.icon-align-justify');
+                            if (child) {
+                                child.remove();
+                                log('Width Control removed (Child Mutation).');
+                            }
+                        }
+                    }
+                }
             }
         });
 
-        // Observe the body subtree
-        observer.observe(document.body, { childList: true, subtree: true });
+        // Observe the entire document structure starting from HTML
+        observer.observe(document.documentElement, {
+            childList: true,
+            subtree: true
+        });
 
-        // 3. Safety Timeout: Stop observing after 10s if it never loads
-        setTimeout(() => {
-            observer.disconnect();
-        }, 10000);
+        // Cleanup: Once the page is fully loaded and settled, we can stop observing
+        // to save performance, as FFN rarely re-injects these static elements.
+        Core.onDomReady(() => {
+            // One final sweep just in case
+            this.removeWidthControl();
+
+            // Disconnect after a short buffer
+            setTimeout(() => {
+                observer.disconnect();
+            }, 2000);
+        });
     }
 
     /**
@@ -132,22 +154,23 @@ export class LayoutManager {
      * * @param enable - True to enable fluid mode, False to revert to default.
      */
     private setFluidMode(enable: boolean): void {
-        const body = document.body;
+        // Guard against calling this before body exists (though Observer handles that case)
+        if (!document.body) return;
 
-        // Ensure styles exist before we try to use them (Just in case called outside init)
+        // Ensure styles exist before we try to use them
         this.injectFluidStyles();
 
-        // Attempt to remove control if it exists right now
+        // Remove the manual width control element if it exists
         this.removeWidthControl();
 
         if (enable) {
-            if (!body.classList.contains(this.FLUID_CLASS)) {
-                body.classList.add(this.FLUID_CLASS);
+            if (!document.body.classList.contains(this.FLUID_CLASS)) {
+                document.body.classList.add(this.FLUID_CLASS);
                 console.log('LayoutManager: Fluid mode enabled (Classes added).');
             }
         } else {
-            if (body.classList.contains(this.FLUID_CLASS)) {
-                body.classList.remove(this.FLUID_CLASS);
+            if (document.body.classList.contains(this.FLUID_CLASS)) {
+                document.body.classList.remove(this.FLUID_CLASS);
                 console.log('LayoutManager: Fluid mode disabled (Classes removed).');
             }
         }
