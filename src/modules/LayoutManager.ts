@@ -42,6 +42,10 @@ export class LayoutManager {
         // In the future, we will check StorageManager here to restore preference.
         // For now, we default to true (Fluid/AO3-style Layout).
         this.setFluidMode(this.isFluid);
+
+        // FFN lacks a viewport meta tag, which breaks zooming/reflow on many devices.
+        // We inject it permanently to modernize the page behavior.
+        this.injectViewportMeta();
     }
 
     /**
@@ -119,6 +123,21 @@ export class LayoutManager {
     }
 
     /**
+     * Injects a standard Viewport Meta tag.
+     * FFN is missing this, which causes browsers to assume a fixed desktop width
+     * (usually ~980px) regardless of zoom level or device width.
+     */
+    private injectViewportMeta(): void {
+        if (!document.querySelector('meta[name="viewport"]')) {
+            const meta = document.createElement('meta');
+            meta.name = 'viewport';
+            meta.content = 'width=device-width, initial-scale=1.0';
+            document.head.appendChild(meta);
+            console.log('LayoutManager: Injected missing Viewport Meta tag.');
+        }
+    }
+
+    /**
      * Injects the necessary CSS to override FFN's fixed width settings.
      * This needs to be aggressive (!important) because FFN uses inline styles
      * and document.write() scripts to set widths.
@@ -130,6 +149,16 @@ export class LayoutManager {
 
         const css = `
             /* --- Fichub Fluid Mode Overrides --- */
+
+            /* 0. ROOT LEVEL FIXES
+               FFN puts a min-width on body (approx 1000px). 
+               This kills text wrapping when zooming in (as viewport shrinks below 1000px).
+            */
+            body.${this.FLUID_CLASS} {
+                min-width: 0 !important;
+                width: 100% !important;
+                overflow-x: hidden !important; /* Prevent horizontal scroll triggers */
+            }
 
             /* 1. Override the main wrapper width.
                FFN usually sets this to 1000px-1250px via inline style.
