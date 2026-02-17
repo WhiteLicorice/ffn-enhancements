@@ -5,6 +5,7 @@ import { DocManager } from './modules/DocManager';
 import { DocEditor } from './modules/DocEditor';
 import { StoryReader } from './modules/StoryReader';
 import { StoryDownloader } from './modules/StoryDownloader';
+import { LayoutManager } from './modules/LayoutManager';
 
 /**
  * The Entry Point / Router.
@@ -31,6 +32,9 @@ Core.startup(path);
 
 // NOTE: The path includes the "/" and omits "https://www.fanfiction.net".
 // If in doubt, check your browser.
+
+// Initialize the LayoutManager sitewide
+LayoutManager.init()
 
 if (path === "/docs/docs.php") {
     /**

@@ -7,14 +7,14 @@ import { IDelegate } from '../delegates/IDelegate';
 import { DocManagerDelegate } from '../delegates/DocManagerDelegate';
 import { DocEditorDelegate } from '../delegates/DocEditorDelegate';
 import { GlobalDelegate } from '../delegates/GlobalDelegate';
-import { LayoutManager } from './LayoutManager';
+import { FFNLogger } from './FFNLogger';
 
 /**
  * Shared utility engine providing logging, DOM readiness, content parsing,
  * and the central Broker for the Delegate (Page Object) system.
  */
 export const Core = {
-    MODULE_NAME: 'core',
+    MODULE_NAME: 'Core',
 
     /**
      * Instance of TurndownService configured for converting HTML to Markdown.
@@ -26,40 +26,30 @@ export const Core = {
     }),  // modern-ish presets used by Markor and the like
 
     /**
-     * The LayoutManager instance responsible for Fluid Mode (removing borders).
-     * Accessed via Core.layoutManager.toggleFluidMode().
-     */
-    layoutManager: new LayoutManager(),
-
-    /**
      * The currently active Delegate strategy (Story vs Doc vs Global).
      */
     activeDelegate: null as IDelegate | null,
 
     /**
      * Centralized logging function with standardized formatting.
-     * @param page_name - The context/module name (e.g., 'doc-manager').
+     * @param pageName - The context/module name (e.g., 'doc-manager').
      * @param funcName - The specific function generating the log.
      * @param msg - The message to log.
      * @param data - Optional data object to log alongside the message.
      */
-    log: function (page_name: string, funcName: string, msg: string, data?: any) {
-        const prefix = `(ffn-enhancements) ${page_name} ${funcName}:`;
-        if (data !== undefined) console.log(`${prefix} ${msg}`, data);
-        else console.log(`${prefix} ${msg}`);
+    log: function (pageName: string, funcName: string, msg: string, data?: any) {
+        FFNLogger.log(pageName, funcName, msg, data);
     },
 
     /**
      * Logger Factory: Returns a bound logging function for a specific context.
      * This prevents manual repetition of page and function names in every log call.
-     * @param page_name - The context/module name.
+     * @param pageName - The context/module name.
      * @param funcName - The specific function name.
      * @returns A function that accepts (msg, data).
      */
-    getLogger: function (page_name: string, funcName: string) {
-        return (msg: string, data?: any) => {
-            this.log(page_name, funcName, msg, data);
-        };
+    getLogger: function (pageName: string, funcName: string) {
+        return FFNLogger.getLogger(pageName, funcName);
     },
 
     /**
@@ -82,14 +72,7 @@ export const Core = {
      */
     startup: function (path: string) {
         const log = this.getLogger(this.MODULE_NAME, 'startup');
-
-        // 1. Determine which page we are on
         this.setDelegate(path);
-
-        // 2. Initialize Layout Manager (injects base CSS)
-        // This makes sure the fluid styles are ready to be toggled
-        this.layoutManager.init();
-
         log('Core System initialized and ready.');
     },
 
