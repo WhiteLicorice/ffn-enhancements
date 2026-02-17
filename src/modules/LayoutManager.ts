@@ -2,6 +2,7 @@
 
 import { Elements } from '../enums/Elements';
 import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
+import { FFNLogger } from './FFNLogger';
 
 /**
  * LayoutManager
@@ -9,51 +10,43 @@ import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
  * Controls the "Fluid Mode" (Full Width) feature which removes
  * the fixed-width borders on FFN stories to emulate an AO3-style reading experience.
  */
-export class LayoutManager {
+export const LayoutManager = {
 
     /**
      * The ID used for the injected style tag to prevent duplicates.
      */
-    private readonly STYLE_TAG_ID = 'fichub-layout-styles';
+    STYLE_TAG_ID: 'fichub-layout-styles',
 
     /**
      * The class name applied to the body when Fluid Mode is active.
      */
-    private readonly FLUID_CLASS = 'fichub-fluid-mode';
+    FLUID_CLASS: 'fichub-fluid-mode',
 
     /**
      * The Delegate used for DOM retrieval (if specific elements are needed).
      */
-    private delegate = LayoutManagerDelegate;
+    delegate: LayoutManagerDelegate,
 
     /**
      * Internal state tracking for Fluid Mode.
      * Defaults to true (Enabled).
      */
-    private isFluid: boolean = true;
+    isFluid: true,
 
     /**
-     * Initializes the Layout Manager.
-     */
-    constructor() {
-        this.log('constructor', 'Initialized.');
-    }
-
-    /**
-     * Internal helper to format logs consistently with Core.log.
-     * Note: We duplicate the formatting here to avoid a circular dependency with Core.
-     * * @param funcName - The name of the function calling the log.
+     * Internal helper to format logs consistently via the shared Logger.
+     * @param funcName - The name of the function calling the log.
      * @param msg - The message to log.
      */
-    private log(funcName: string, msg: string): void {
-        console.log(`(ffn-enhancements) LayoutManager ${funcName}: ${msg}`);
-    }
+    log: function (funcName: string, msg: string): void {
+        FFNLogger.log('LayoutManager', funcName, msg);
+    },
 
     /**
      * Starts the layout adjustment sequence.
      * Typically called by the Core on page load.
      */
-    public init(): void {
+    init: function () {
         this.log('init', 'Starting init sequence...');
 
         // In the future, we will check StorageManager here to restore preference.
@@ -63,13 +56,13 @@ export class LayoutManager {
         // FFN lacks a viewport meta tag, which breaks zooming/reflow on many devices.
         // We inject it permanently to modernize the page behavior.
         this.injectViewportMeta();
-    }
+    },
 
     /**
      * Toggles the Full Width / Fluid Layout mode.
      * * @returns The new state of the layout (true = Fluid, false = Fixed).
      */
-    public toggleFluidMode(): boolean {
+    toggleFluidMode: function (): boolean {
         this.isFluid = !this.isFluid;
 
         this.log('toggleFluidMode', `Toggling Fluid Mode to ${this.isFluid}`);
@@ -79,35 +72,35 @@ export class LayoutManager {
         // TODO: Save this preference to StorageManager
 
         return this.isFluid;
-    }
+    },
 
     /**
      * Explicitly enables Fluid Mode.
      * Does nothing if already enabled.
      */
-    public enableFluidMode(): void {
+    enableFluidMode: function (): void {
         if (!this.isFluid) {
             this.isFluid = true;
             this.setFluidMode(true);
         }
-    }
+    },
 
     /**
      * Explicitly disables Fluid Mode (reverts to default FFN).
      * Does nothing if already disabled.
      */
-    public disableFluidMode(): void {
+    disableFluidMode: function (): void {
         if (this.isFluid) {
             this.isFluid = false;
             this.setFluidMode(false);
         }
-    }
+    },
 
     /**
      * Toggles the fluid mode class on the document body and ensures styles are injected.
      * * @param enable - True to enable fluid mode, False to revert to default.
      */
-    private setFluidMode(enable: boolean): void {
+    setFluidMode: function (enable: boolean): void {
         const body = document.body;
 
         // Ensure CSS styles exist before we try to use them
@@ -127,26 +120,26 @@ export class LayoutManager {
                 this.log('setFluidMode', 'Fluid mode disabled (Classes removed).');
             }
         }
-    }
+    },
 
     /**
      * Removes the native FFN width toggle button/icon from the DOM.
      * We remove this because Fluid Mode supercedes manual margin controls.
      */
-    private removeWidthControl(): void {
+    removeWidthControl: function (): void {
         const widthControl = this.delegate.getElement(Elements.STORY_WIDTH_CONTROL);
         if (widthControl) {
             widthControl.remove();
             this.log('removeWidthControl', 'Native width control element removed.');
         }
-    }
+    },
 
     /**
      * Injects a standard Viewport Meta tag.
      * FFN is missing this, which causes browsers to assume a fixed desktop width
      * (usually ~980px) regardless of zoom level or device width.
      */
-    private injectViewportMeta(): void {
+    injectViewportMeta: function (): void {
         if (!document.querySelector('meta[name="viewport"]')) {
             const meta = document.createElement('meta');
             meta.name = 'viewport';
@@ -154,14 +147,14 @@ export class LayoutManager {
             document.head.appendChild(meta);
             this.log('injectViewportMeta', 'Injected missing Viewport Meta tag.');
         }
-    }
+    },
 
     /**
      * Injects the necessary CSS to override FFN's fixed width settings.
      * This needs to be aggressive (!important) because FFN uses inline styles
      * and document.write() scripts to set widths.
      */
-    private injectFluidStyles(): void {
+    injectFluidStyles: function (): void {
         if (document.getElementById(this.STYLE_TAG_ID)) {
             return; // Styles already injected
         }
@@ -298,4 +291,4 @@ export class LayoutManager {
 
         this.log('injectFluidStyles', 'Fluid styles injected into head.');
     }
-}
+};
