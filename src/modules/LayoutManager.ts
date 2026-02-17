@@ -1,6 +1,7 @@
 // modules/LayoutManager.ts
 
-//import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
+import { Elements } from '../enums/Elements';
+import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
 
 /**
  * LayoutManager
@@ -23,7 +24,7 @@ export class LayoutManager {
     /**
      * The Delegate used for DOM retrieval (if specific elements are needed).
      */
-    //private delegate = LayoutManagerDelegate;
+    private delegate = LayoutManagerDelegate;
 
     private isFluid: boolean = true;
 
@@ -89,6 +90,9 @@ export class LayoutManager {
         // Ensure styles exist before we try to use them
         this.injectFluidStyles();
 
+        // Remove the manual width control element if it exists
+        this.removeWidthControl();
+
         if (enable) {
             if (!body.classList.contains(this.FLUID_CLASS)) {
                 body.classList.add(this.FLUID_CLASS);
@@ -99,6 +103,18 @@ export class LayoutManager {
                 body.classList.remove(this.FLUID_CLASS);
                 console.log('LayoutManager: Fluid mode disabled (Classes removed).');
             }
+        }
+    }
+
+    /**
+     * Removes the native FFN width toggle button/icon from the DOM.
+     * We remove this because Fluid Mode supercedes manual margin controls.
+     */
+    private removeWidthControl(): void {
+        const widthControl = this.delegate.getElement(Elements.STORY_WIDTH_CONTROL);
+        if (widthControl) {
+            widthControl.remove();
+            console.log('LayoutManager: Native width control element removed.');
         }
     }
 

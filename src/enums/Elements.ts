@@ -32,6 +32,9 @@ export enum Elements {
     /** The container holding the actual story content text. */
     STORY_TEXT = 'STORY_TEXT',
 
+    /** The button/icon that toggles text justification/margins (to be removed in Fluid Mode). */
+    STORY_WIDTH_CONTROL = 'STORY_WIDTH_CONTROL',
+
     /** The container usually found at top/bottom allowing chapter selection. */
     CHAPTER_NAV_CONTAINER = 'CHAPTER_NAV_CONTAINER',
 

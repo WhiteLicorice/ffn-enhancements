@@ -1,5 +1,6 @@
 // modules/LayoutManagerDelegate.ts
 
+import { Elements } from '../enums/Elements';
 import { BaseDelegate } from './BaseDelegate';
 import { IDelegate } from './IDelegate';
 
@@ -13,7 +14,17 @@ import { IDelegate } from './IDelegate';
 export const LayoutManagerDelegate: IDelegate = {
     ...BaseDelegate,
 
-    // Currently relies on BaseDelegate defaults (returns null/empty).
-    // If we need to fetch specific elements for layout logic later,
-    // we implement getElement() here.
+    /**
+     * Retrieves layout-specific elements.
+     * @param key - The Element Enum.
+     * @param doc - The document context.
+     */
+    getElement(key: Elements, doc: Document = document): HTMLElement | null {
+        switch (key) {
+            case Elements.STORY_WIDTH_CONTROL:
+                return doc.querySelector('.icon-align-justify') as HTMLElement;
+            default:
+                return null;
+        }
+    }
 };
