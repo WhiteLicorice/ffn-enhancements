@@ -7,7 +7,7 @@ import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
  * LayoutManager
  * * Orchestrates the layout adjustments for the application.
  * Controls the "Fluid Mode" (Full Width) feature which removes
- * the fixed-width borders on FFN stories.
+ * the fixed-width borders on FFN stories to emulate an AO3-style reading experience.
  */
 export class LayoutManager {
 
@@ -26,18 +26,35 @@ export class LayoutManager {
      */
     private delegate = LayoutManagerDelegate;
 
+    /**
+     * Internal state tracking for Fluid Mode.
+     * Defaults to true (Enabled).
+     */
     private isFluid: boolean = true;
-
-    constructor() {
-        console.log('LayoutManager: Initialized.');
-    }
 
     /**
      * Initializes the Layout Manager.
+     */
+    constructor() {
+        this.log('constructor', 'Initialized.');
+    }
+
+    /**
+     * Internal helper to format logs consistently with Core.log.
+     * Note: We duplicate the formatting here to avoid a circular dependency with Core.
+     * * @param funcName - The name of the function calling the log.
+     * @param msg - The message to log.
+     */
+    private log(funcName: string, msg: string): void {
+        console.log(`(ffn-enhancements) LayoutManager ${funcName}: ${msg}`);
+    }
+
+    /**
+     * Starts the layout adjustment sequence.
      * Typically called by the Core on page load.
      */
     public init(): void {
-        console.log('LayoutManager: Starting init sequence...');
+        this.log('init', 'Starting init sequence...');
 
         // In the future, we will check StorageManager here to restore preference.
         // For now, we default to true (Fluid/AO3-style Layout).
@@ -55,7 +72,7 @@ export class LayoutManager {
     public toggleFluidMode(): boolean {
         this.isFluid = !this.isFluid;
 
-        console.log(`LayoutManager: Toggling Fluid Mode to ${this.isFluid}`);
+        this.log('toggleFluidMode', `Toggling Fluid Mode to ${this.isFluid}`);
 
         this.setFluidMode(this.isFluid);
 
@@ -66,6 +83,7 @@ export class LayoutManager {
 
     /**
      * Explicitly enables Fluid Mode.
+     * Does nothing if already enabled.
      */
     public enableFluidMode(): void {
         if (!this.isFluid) {
@@ -76,6 +94,7 @@ export class LayoutManager {
 
     /**
      * Explicitly disables Fluid Mode (reverts to default FFN).
+     * Does nothing if already disabled.
      */
     public disableFluidMode(): void {
         if (this.isFluid) {
@@ -85,27 +104,27 @@ export class LayoutManager {
     }
 
     /**
-     * Toggles the fluid mode class on the document body.
+     * Toggles the fluid mode class on the document body and ensures styles are injected.
      * * @param enable - True to enable fluid mode, False to revert to default.
      */
     private setFluidMode(enable: boolean): void {
         const body = document.body;
 
-        // Ensure styles exist before we try to use them
+        // Ensure CSS styles exist before we try to use them
         this.injectFluidStyles();
 
-        // Remove the manual width control element if it exists
+        // Remove the manual width control element if it exists (conflicts with our CSS)
         this.removeWidthControl();
 
         if (enable) {
             if (!body.classList.contains(this.FLUID_CLASS)) {
                 body.classList.add(this.FLUID_CLASS);
-                console.log('LayoutManager: Fluid mode enabled (Classes added).');
+                this.log('setFluidMode', 'Fluid mode enabled (Classes added).');
             }
         } else {
             if (body.classList.contains(this.FLUID_CLASS)) {
                 body.classList.remove(this.FLUID_CLASS);
-                console.log('LayoutManager: Fluid mode disabled (Classes removed).');
+                this.log('setFluidMode', 'Fluid mode disabled (Classes removed).');
             }
         }
     }
@@ -118,7 +137,7 @@ export class LayoutManager {
         const widthControl = this.delegate.getElement(Elements.STORY_WIDTH_CONTROL);
         if (widthControl) {
             widthControl.remove();
-            console.log('LayoutManager: Native width control element removed.');
+            this.log('removeWidthControl', 'Native width control element removed.');
         }
     }
 
@@ -133,7 +152,7 @@ export class LayoutManager {
             meta.name = 'viewport';
             meta.content = 'width=device-width, initial-scale=1.0';
             document.head.appendChild(meta);
-            console.log('LayoutManager: Injected missing Viewport Meta tag.');
+            this.log('injectViewportMeta', 'Injected missing Viewport Meta tag.');
         }
     }
 
@@ -277,6 +296,6 @@ export class LayoutManager {
         style.textContent = css;
         document.head.appendChild(style);
 
-        console.log('LayoutManager: Fluid styles injected into head.');
+        this.log('injectFluidStyles', 'Fluid styles injected into head.');
     }
 }
