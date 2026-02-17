@@ -41,6 +41,7 @@ export class LayoutManager {
     /**
      * Initializes the Layout Manager.
      * This should be called immediately at script startup.
+     * CRITICAL: Ensure your UserScript header has @run-at document-start
      */
     public init(): void {
         console.log('LayoutManager: Starting init sequence...');
@@ -49,7 +50,6 @@ export class LayoutManager {
         this.injectCloakStyles();
 
         // 2. Perform Layout Operations (While hidden)
-        // We inject the meta tag and styles now so they are ready before the first paint.
         this.injectViewportMeta();
         this.injectFluidStyles();
 
@@ -57,11 +57,11 @@ export class LayoutManager {
         this.setFluidMode(this.isFluid);
 
         // 3. Lift the Cloak (Reveal the UI)
-        // We use requestAnimationFrame to ensure the browser has registered 
-        // the layout changes in the render queue before we make the page visible.
-        requestAnimationFrame(() => {
+        // We wait 500ms explicitly to ensure the browser has finished 
+        // "painting" the new fluid layout behind the invisible curtain.
+        setTimeout(() => {
             this.liftCloak();
-        });
+        }, 500);
     }
 
     /**
@@ -69,14 +69,22 @@ export class LayoutManager {
      */
     private injectCloakStyles(): void {
         const css = `
+            /* State 1: Hidden
+               We use opacity: 0 to hide, and pointer-events: none to prevent clicking.
+               NOTE: We DO NOT use visibility: hidden, as it breaks CSS transitions.
+            */
             html.${this.CLOAK_CLASS} {
                 opacity: 0 !important;
-                visibility: hidden !important;
+                pointer-events: none !important;
             }
+
+            /* State 2: Visible (Default)
+               When the class is removed, the browser transitions to these values.
+            */
             html {
-                transition: opacity 0.2s ease-in;
                 opacity: 1;
-                visibility: visible;
+                /* Transition lasts 2 seconds for a slow, smooth fade-in */
+                transition: opacity 2.0s ease-in-out !important;
             }
         `;
 
@@ -90,17 +98,26 @@ export class LayoutManager {
         // Apply class immediately to root
         document.documentElement.classList.add(this.CLOAK_CLASS);
 
-        // Safety Valve: Force reveal after 1.5s in case of script error/hang
-        setTimeout(() => this.liftCloak(), 1500);
+        // Safety Valve: Force reveal after 3.0s in case of execution hang
+        setTimeout(() => this.liftCloak(), 3000);
     }
 
     /**
      * Removes the cloak class, allowing the page to fade in.
      */
     private liftCloak(): void {
-        if (document.documentElement.classList.contains(this.CLOAK_CLASS)) {
-            document.documentElement.classList.remove(this.CLOAK_CLASS);
-            console.log('LayoutManager: Cloak lifted. Page revealed.');
+        const root = document.documentElement;
+
+        if (root.classList.contains(this.CLOAK_CLASS)) {
+
+            // MAGIC TRICK: Force a browser Reflow/Repaint.
+            // By reading the offsetHeight, we force the browser to calculate 
+            // the page structure *before* we start the transition. 
+            // This prevents the "snap" effect.
+            void document.body?.offsetHeight;
+
+            root.classList.remove(this.CLOAK_CLASS);
+            console.log('LayoutManager: Cloak lifted. Fading in...');
         }
     }
 
@@ -141,13 +158,9 @@ export class LayoutManager {
      * @param enable - True to enable fluid mode, False to revert to default.
      */
     private setFluidMode(enable: boolean): void {
-        // We can attempt to grab body, but if it doesn't exist yet (document-start),
-        // we might need to rely on the CSS injection being present when body arrives.
-        // However, for FOUC prevention, we usually run this when body is available or 
-        // observe it. Since we are cloaking, we can simply try now.
         const body = document.body;
 
-        // Ensure styles exist
+        // Ensure styles exist before we try to use them
         this.injectFluidStyles();
 
         // Remove the manual width control element if it exists
@@ -182,19 +195,19 @@ export class LayoutManager {
 
     /**
      * Injects a standard Viewport Meta tag.
-     * FFN is missing this, which causes browsers to assume a fixed desktop width.
+     * FFN is missing this, which causes browsers to assume a fixed desktop width
+     * (usually ~980px) regardless of zoom level or device width.
      */
     private injectViewportMeta(): void {
-        // Check if exists to avoid duplicates
         if (!document.querySelector('meta[name="viewport"]')) {
             const meta = document.createElement('meta');
             meta.name = 'viewport';
             meta.content = 'width=device-width, initial-scale=1.0';
+
             // Use prepend to ensure it applies as early as possible
             if (document.head) {
                 document.head.prepend(meta);
             } else {
-                // Fallback for extremely early execution
                 const head = document.getElementsByTagName('head')[0];
                 if (head) head.prepend(meta);
             }
@@ -204,7 +217,8 @@ export class LayoutManager {
 
     /**
      * Injects the necessary CSS to override FFN's fixed width settings.
-     * This needs to be aggressive (!important) because FFN uses inline styles.
+     * This needs to be aggressive (!important) because FFN uses inline styles
+     * and document.write() scripts to set widths.
      */
     private injectFluidStyles(): void {
         if (document.getElementById(this.STYLE_TAG_ID)) {
@@ -214,14 +228,19 @@ export class LayoutManager {
         const css = `
             /* --- ffn-enhancements Fluid Mode Overrides --- */
 
-            /* 0. ROOT LEVEL FIXES */
+            /* 0. ROOT LEVEL FIXES
+               FFN puts a min-width on body (approx 1000px). 
+               This kills text wrapping when zooming in (as viewport shrinks below 1000px).
+            */
             body.${this.FLUID_CLASS} {
                 min-width: 0 !important;
                 width: 100% !important;
-                overflow-x: hidden !important;
+                overflow-x: hidden !important; /* Prevent horizontal scroll triggers */
             }
 
-            /* 1. Override the main wrapper width */
+            /* 1. Override the main wrapper width.
+               FFN usually sets this to 1000px-1250px via inline style.
+            */
             body.${this.FLUID_CLASS} #content_wrapper {
                 width: 100% !important;
                 max-width: 100% !important;
@@ -232,14 +251,22 @@ export class LayoutManager {
                 padding: 0 !important;
             }
 
-            /* 2. Override the inner wrapper padding */
+            /* 2. Override the inner wrapper padding.
+               Gives the text a little breathing room from the edge of the screen.
+            */
             body.${this.FLUID_CLASS} #content_wrapper_inner {
                 padding: 0 15px !important;
                 box-sizing: border-box !important;
                 min-width: 0 !important;
             }
 
-            /* 3. Override the Story Text container */
+            /* 3. Override the Story Text container.
+               FFN injects ".storytext { width: 75% ... }" via JS.
+               We force this to fill the available space.
+               1. Changed width from 100% to auto to prevent overflow at high zoom.
+               2. Reset text-align to override 'align=center' attribute on parent.
+               3. Added float: none to prevent side-stacking issues.
+            */
             body.${this.FLUID_CLASS} .storytext,
             body.${this.FLUID_CLASS} #storytext, 
             body.${this.FLUID_CLASS} #storytextp {
@@ -256,7 +283,10 @@ export class LayoutManager {
                 margin: 0 !important;
             }
 
-            /* 4. Fix Top Navigation and Menu Bars */
+            /* 4. Fix Top Navigation and Menu Bars.
+               FFN uses .maxwidth and inline styles (width: 975px) on #top .menulink and #zmenu.
+               We need to force them to 100% width and add padding so content touches the edges comfortably.
+            */
             body.${this.FLUID_CLASS} .menulink {
                 width: 100% !important;
                 max-width: 100% !important;
@@ -273,39 +303,50 @@ export class LayoutManager {
                 box-sizing: border-box !important;
             }
 
+            /* The internal table for the menu also needs to expand */
             body.${this.FLUID_CLASS} #zmenu table {
                 width: 100% !important;
                 max-width: 100% !important;
             }
 
-            /* 5. Generic .maxwidth override */
+            /* 5. Generic .maxwidth override.
+               FFN uses this helper class to center content. We disable it for fluid mode.
+            */
             body.${this.FLUID_CLASS} .maxwidth {
                 width: 100% !important;
                 max-width: 100% !important;
             }
 
-            /* 6. Ensure Top Navigation Container expands */
+            /*
+               6. Ensure Top Navigation Container expands.
+            */
             body.${this.FLUID_CLASS} .z-top-container {
                 max-width: 100% !important;
                 width: 100% !important;
                 min-width: 0 !important;
             }
 
-            /* 7. Fix Review Section centering */
+            /* 7. Fix Review Section centering.
+               FFN uses a table layout with a huge left spacer (width=336) to position the review box.
+               We remove this spacer and center the actual review container.
+            */
+            /* Hide the spacer cells */
             body.${this.FLUID_CLASS} #review table td[width="336"],
             body.${this.FLUID_CLASS} #review table td[width="10"] {
                 display: none !important;
             }
 
+            /* Make the content cell behave like a block and full width */
             body.${this.FLUID_CLASS} #review table td {
                 display: block !important;
                 width: 100% !important;
-                text-align: center !important;
+                text-align: center !important; /* Helps center inline-block children */
             }
 
+            /* Target the inner div that holds the inputs. It has a max-width inline style. */
             body.${this.FLUID_CLASS} #review table td > div {
-                margin: 0 auto !important;
-                text-align: left !important;
+                margin: 0 auto !important; /* Centers the block element */
+                text-align: left !important; /* Reset text alignment for the form content */
             }
         `;
 
@@ -317,6 +358,6 @@ export class LayoutManager {
         // to ensure styles are registered before Body parsing begins.
         (document.head || document.documentElement).appendChild(style);
 
-        console.log('LayoutManager: Fluid styles injected.');
+        console.log('LayoutManager: Fluid styles injected into head.');
     }
 }
