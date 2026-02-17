@@ -17,6 +17,11 @@ export enum Elements {
     /** The "Follow/Fav" button or container often found in headers. */
     FOLLOW_BUTTON_CONTAINER = 'FOLLOW_BUTTON_CONTAINER',
 
+    /** * The outer content wrapper that often contains fixed width styles (e.g., width: 1250px). 
+     * Targeted to remove letterboxing/borders.
+     */
+    PAGE_CONTENT_WRAPPER = 'PAGE_CONTENT_WRAPPER',
+
     /** The main content wrapper for the page (often #content_wrapper_inner). */
     MAIN_CONTENT_WRAPPER = 'MAIN_CONTENT_WRAPPER',
 
