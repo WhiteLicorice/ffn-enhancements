@@ -1,6 +1,6 @@
 # ffn-enhancements
 
-A suite of modern enhancements to FFN's old-school interface, for both readers and writers. Inspired by ao3-enhancements.
+A suite of modern enhancements to FFN's old-school interface, for both readers and writers. Inspired by [ao3-enhancements](https://github.com/jsmnbom/ao3-enhancements).
 
 ## Installation
 
