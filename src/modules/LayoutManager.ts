@@ -247,6 +247,29 @@ export class LayoutManager {
                 width: 100% !important;
                 min-width: 0 !important;
             }
+
+            /* 7. Fix Review Section centering.
+               FFN uses a table layout with a huge left spacer (width=336) to position the review box.
+               We remove this spacer and center the actual review container.
+            */
+            /* Hide the spacer cells */
+            body.${this.FLUID_CLASS} #review table td[width="336"],
+            body.${this.FLUID_CLASS} #review table td[width="10"] {
+                display: none !important;
+            }
+
+            /* Make the content cell behave like a block and full width */
+            body.${this.FLUID_CLASS} #review table td {
+                display: block !important;
+                width: 100% !important;
+                text-align: center !important; /* Helps center inline-block children */
+            }
+
+            /* Target the inner div that holds the inputs. It has a max-width inline style. */
+            body.${this.FLUID_CLASS} #review table td > div {
+                margin: 0 auto !important; /* Centers the block element */
+                text-align: left !important; /* Reset text alignment for the form content */
+            }
         `;
 
         const style = document.createElement('style');
