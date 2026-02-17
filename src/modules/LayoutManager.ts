@@ -205,8 +205,42 @@ export class LayoutManager {
                 margin: 0 !important;
             }
 
+            /* 4. Fix Top Navigation and Menu Bars.
+               FFN uses .maxwidth and inline styles (width: 975px) on #top .menulink and #zmenu.
+               We need to force them to 100% width and add padding so content touches the edges comfortably.
+            */
+            body.${this.FLUID_CLASS} .menulink {
+                width: 100% !important;
+                max-width: 100% !important;
+                padding-left: 15px !important;
+                padding-right: 15px !important;
+                box-sizing: border-box !important;
+            }
+
+            body.${this.FLUID_CLASS} #zmenu {
+                width: 100% !important;
+                max-width: 100% !important;
+                padding-left: 15px !important;
+                padding-right: 15px !important;
+                box-sizing: border-box !important;
+            }
+
+            /* The internal table for the menu also needs to expand */
+            body.${this.FLUID_CLASS} #zmenu table {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+
+            /* 5. Generic .maxwidth override.
+               FFN uses this helper class to center content. We disable it for fluid mode.
+            */
+            body.${this.FLUID_CLASS} .maxwidth {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+
             /*
-               4. Ensure Top Navigation expands.
+               6. Ensure Top Navigation Container expands.
             */
             body.${this.FLUID_CLASS} .z-top-container {
                 max-width: 100% !important;
