@@ -133,7 +133,6 @@ export class LayoutManager {
 
             /* 1. Override the main wrapper width.
                FFN usually sets this to 1000px-1250px via inline style.
-               Added min-width: 0 and box-sizing to prevent overflow at high zoom levels (>200%).
             */
             body.${this.FLUID_CLASS} #content_wrapper {
                 width: 100% !important;
@@ -157,14 +156,21 @@ export class LayoutManager {
             /* 3. Override the Story Text container.
                FFN injects ".storytext { width: 75% ... }" via JS.
                We force this to fill the available space.
-               FIX: Added min-width: 0 to ensure text wraps correctly at high zoom.
+               1. Changed width from 100% to auto to prevent overflow at high zoom.
+               2. Reset text-align to override 'align=center' attribute on parent.
+               3. Added float: none to prevent side-stacking issues.
             */
             body.${this.FLUID_CLASS} .storytext,
             body.${this.FLUID_CLASS} #storytext, 
             body.${this.FLUID_CLASS} #storytextp {
-                width: 100% !important;
+                width: auto !important;
                 max-width: 100% !important;
                 min-width: 0 !important;
+                
+                float: none !important;
+                display: block !important;
+                text-align: left !important;
+                
                 box-sizing: border-box !important;
                 padding: 0 !important;
                 margin: 0 !important;
