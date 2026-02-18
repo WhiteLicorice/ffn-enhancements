@@ -81,6 +81,9 @@ export enum Elements {
     /** The "Document Manager" label or title node, often used as an injection anchor. */
     DOC_MANAGER_LABEL = 'DOC_MANAGER_LABEL',
 
+    /** The "Submit" button used for saving docs (appears as Save on the page) */
+    SAVE_BUTTON = 'SAVE_BUTTON',
+
     // =============================
     // DOC EDITOR (/docs/edit.php)
     // =============================

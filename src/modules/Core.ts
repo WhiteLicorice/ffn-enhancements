@@ -227,5 +227,394 @@ export const Core = {
             log(`Error processing ${title}`, err);
         }
         return null;
-    }
+    },
+
+    /**
+     * Refreshes a document by opening it in a new window and clicking Save.
+     * This lets FFN handle preserving the content - we just trigger the save action.
+     * 
+     * **SAFETY GUARDRAIL**: First checks if the document has content before proceeding.
+     * If the document is empty, we abort to prevent accidental data loss.
+     * 
+     * @param docId - The internal FFN Document ID.
+     * @param title - The title of the document (for logging).
+     * @param attempt - (Internal) Current retry attempt number.
+     * @returns A promise resolving to true on success, false on failure.
+     */
+    refreshPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<boolean> {
+        const log = this.getLogger(this.MODULE_NAME, 'refreshPrivateDoc');
+        const MAX_RETRIES = 3;
+
+        try {
+            log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId}, Attempt: ${attempt}/${MAX_RETRIES})`);
+            
+            // ============================================================
+            // SAFETY GUARDRAIL: Check if document has content
+            // ============================================================
+            log(`[REFRESH] Verifying document has content...`);
+            
+            const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
+            if (!response.ok) {
+                log(`[REFRESH ERROR] Failed to fetch document for verification: ${response.status}`);
+                return false;
+            }
+            
+            const text = await response.text();
+            const doc = new DOMParser().parseFromString(text, 'text/html');
+            const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc);
+            
+            if (!contentElement) {
+                log(`[REFRESH ERROR] Could not find content textarea for "${title}"`);
+                return false;
+            }
+            
+            const rawValue = (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
+            const trimmedContent = rawValue.trim();
+            
+            // If content is empty or just whitespace, abort to prevent data loss
+            if (!trimmedContent || trimmedContent.length === 0) {
+                log(`[REFRESH BLOCKED] Document "${title}" appears to be empty. Aborting refresh to prevent data loss.`);
+                console.warn(`⚠️ REFRESH BLOCKED: Document "${title}" (DocID: ${docId}) has no content. Skipping to prevent accidental deletion.`);
+                return false;
+            }
+            
+            log(`[REFRESH] Content verified (${trimmedContent.length} chars). Proceeding with refresh...`);
+            
+            // ============================================================
+            // Proceed with refresh
+            // ============================================================
+            log(`[REFRESH] Opening document in new window...`);
+            
+            const saveSuccess = await new Promise<boolean>((resolve) => {
+                // Open the edit page in a new window (hidden from user view)
+                // Using minimal size and off-screen positioning to keep it invisible
+                const win = window.open(
+                    `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
+                    `_ffn_refresh_${docId}`,
+                    'width=1,height=1,left=100000,top=100000,toolbar=no,menubar=no,scrollbars=no,resizable=no,location=no,status=no'
+                );
+                
+                if (!win) {
+                    log(`[REFRESH ERROR] Failed to open window (pop-up blocker?)`);
+                    console.error(`REFRESH FAILED: Could not open window for document ${docId}. Check pop-up blocker.`);
+                    resolve(false);
+                    return;
+                }
+                
+                log(`[REFRESH] Window opened, waiting for page load...`);
+                
+                // Helper function to wait for the save button to appear in the DOM
+                const waitForSaveButton = (maxAttempts: number = 50): Promise<HTMLElement | null> => {
+                    return new Promise((resolveBtn) => {
+                        let attempts = 0;
+                        const checkForButton = setInterval(() => {
+                            attempts++;
+                            try {
+                                if (win.closed) {
+                                    clearInterval(checkForButton);
+                                    resolveBtn(null);
+                                    return;
+                                }
+                                
+                                const winDoc = win.document;
+                                // Check if document has actual content (not just empty structure)
+                                const hasContent = winDoc.body && winDoc.body.children.length > 0;
+                                
+                                if (hasContent) {
+                                    const submitButton = this.getElement(Elements.SAVE_BUTTON, winDoc);
+                                    if (submitButton) {
+                                        clearInterval(checkForButton);
+                                        log(`[REFRESH] Save button found after ${attempts * 200}ms`);
+                                        resolveBtn(submitButton);
+                                        return;
+                                    }
+                                }
+                                
+                                if (attempts >= maxAttempts) {
+                                    clearInterval(checkForButton);
+                                    log(`[REFRESH ERROR] Save button not found after ${maxAttempts * 200}ms`);
+                                    resolveBtn(null);
+                                }
+                            } catch (e) {
+                                clearInterval(checkForButton);
+                                log(`[REFRESH ERROR] Exception while waiting for button: ${e}`);
+                                resolveBtn(null);
+                            }
+                        }, 200);
+                    });
+                };
+                
+                // Wait for window to reach complete state AND have content
+                const checkInterval = setInterval(async () => {
+                    try {
+                        // Check if window loaded and has the document
+                        if (win.document && win.document.readyState === 'complete') {
+                            clearInterval(checkInterval);
+                            
+                            try {
+                                log(`[REFRESH] Page readyState complete, waiting for content to load...`);
+                                
+                                // Wait for the save button to actually appear in the DOM
+                                const submitButton = await waitForSaveButton();
+                                
+                                if (!submitButton) {
+                                    log(`[REFRESH ERROR] Could not find Submit button in opened window`);
+                                    try { win.close(); } catch (e) { /* ignore */ }
+                                    resolve(false);
+                                    return;
+                                }
+                                
+                                // Listen for page navigation (submit completion)
+                                let submitCompleted = false;
+                                const checkSubmit = setInterval(() => {
+                                    try {
+                                        // Check if page has reloaded (URL may change or readyState)
+                                        if (win.document.readyState === 'complete' && !submitCompleted) {
+                                            const body = win.document.body.innerHTML;
+                                            if (body.includes('successfully saved') || body.includes('Success')) {
+                                                submitCompleted = true;
+                                                clearInterval(checkSubmit);
+                                                log(`[REFRESH SUCCESS] Document saved successfully`);
+                                                console.log(`✓ REFRESH SUCCESS: Document ${docId} (${title}) saved successfully`);
+                                                setTimeout(() => win.close(), 500);
+                                                resolve(true);
+                                            }
+                                        }
+                                    } catch (e) {
+                                        // Window might be closed or cross-origin
+                                        clearInterval(checkSubmit);
+                                    }
+                                }, 200);
+                                
+                                // Click the Save button (this triggers sec-fetch-dest: "document")
+                                // FFN will preserve the existing content when we submit without changes
+                                log(`[REFRESH] Clicking Save button...`);
+                                submitButton.click();
+                                
+                                // Timeout if no success after 10 seconds
+                                setTimeout(() => {
+                                    if (!submitCompleted) {
+                                        clearInterval(checkSubmit);
+                                        log(`[REFRESH TIMEOUT] No confirmation received after 10s`);
+                                        try { win.close(); } catch (e) { /* ignore */ }
+                                        resolve(false);
+                                    }
+                                }, 10000);
+                                
+                            } catch (e) {
+                                log(`[REFRESH ERROR] Error manipulating window: ${e}`);
+                                try { win.close(); } catch (e2) { /* ignore */ }
+                                resolve(false);
+                            }
+                        }
+                    } catch (e) {
+                        // Can't access window (cross-origin or closed)
+                        clearInterval(checkInterval);
+                        log(`[REFRESH ERROR] Lost access to window: ${e}`);
+                        resolve(false);
+                    }
+                }, 100);
+                
+                // Timeout if window doesn't load after 30 seconds
+                setTimeout(() => {
+                    clearInterval(checkInterval);
+                    try {
+                        if (win && !win.closed) {
+                            log(`[REFRESH TIMEOUT] Window didn't load after 30s`);
+                            win.close();
+                        }
+                    } catch (e) { /* ignore */ }
+                    resolve(false);
+                }, 30000);
+            });
+            
+            // Retry with exponential backoff if failed
+            if (!saveSuccess && attempt < MAX_RETRIES) {
+                const waitTime = attempt * 2000; // 2s, 4s, 6s...
+                log(`[REFRESH] Refresh failed for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                return this.refreshPrivateDoc(docId, title, attempt + 1);
+            }
+            
+            return saveSuccess;
+            
+        } catch (err) {
+            log(`[REFRESH ERROR] Exception during refresh:`, err);
+            console.error(`REFRESH FAILED for document ${docId}:`, err);
+            
+            // Retry with exponential backoff if failed
+            if (attempt < MAX_RETRIES) {
+                const waitTime = attempt * 2000;
+                log(`[REFRESH] Exception occurred. Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                return this.refreshPrivateDoc(docId, title, attempt + 1);
+            }
+            
+            return false;
+        }
+    },
+
+    /**
+     * Exports all author documents from Doc Manager in bulk.
+     * Shows progress in the button text and handles failures gracefully.
+     */
+    bulkExportPrivateDocs: async function () {
+        const log = this.getLogger(this.MODULE_NAME, 'bulkExportPrivateDocs');
+        
+        // Find all export links
+        const exportLinks = Array.from(document.querySelectorAll('a[href*="docs/export.php"]'));
+        
+        if (exportLinks.length === 0) {
+            log('No documents to export');
+            return;
+        }
+        
+        log(`Found ${exportLinks.length} documents to export`);
+        const button = document.querySelector('[data-action="bulk-export"]') as HTMLElement;
+        
+        // First pass - attempt all exports
+        const results = [];
+        for (let i = 0; i < exportLinks.length; i++) {
+            const link = exportLinks[i] as HTMLAnchorElement;
+            const row = link.closest('tr');
+            if (!row) continue;
+            
+            const titleCell = row.cells[0];
+            const title = titleCell?.textContent?.trim() || 'Unknown';
+            const docId = link.href.match(/docid=(\d+)/)?.[1];
+            
+            if (!docId) continue;
+            
+            if (button) button.textContent = `↓ ${i + 1}/${exportLinks.length}`;
+            
+            const markdown = await this.fetchAndConvertPrivateDoc(docId, title);
+            results.push({ docId, title, markdown, element: link });
+            
+            // Add small delay between requests
+            await new Promise(r => setTimeout(r, 1000));
+        }
+        
+        // Second pass - retry failures
+        if (button) button.textContent = 'Cooling...';
+        await new Promise(r => setTimeout(r, 5000));
+        
+        const failures = results.filter(r => !r.markdown);
+        if (failures.length > 0) {
+            log(`Retrying ${failures.length} failed exports`);
+            for (let i = 0; i < failures.length; i++) {
+                const { docId, title } = failures[i];
+                if (button) button.textContent = `Retry ${i + 1}/${failures.length}`;
+                
+                const markdown = await this.fetchAndConvertPrivateDoc(docId, title);
+                if (markdown) {
+                    failures[i].markdown = markdown;
+                }
+                await new Promise(r => setTimeout(r, 3000));
+            }
+        }
+        
+        // Show results
+        const successCount = results.filter(r => r.markdown).length;
+        log(`Export complete: ${successCount}/${results.length} successful`);
+        
+        // Update UI
+        results.forEach(({ markdown, element }) => {
+            const cell = element.closest('td');
+            if (cell) {
+                if (markdown) {
+                    cell.innerHTML += ' <span style="color:green">✓</span>';
+                } else {
+                    cell.innerHTML += ' <span style="color:red">✗</span>';
+                }
+            }
+        });
+        
+        if (button) button.textContent = `All Done!`;
+        setTimeout(() => {
+            if (button) button.textContent = '↓ All';
+        }, 3000);
+    },
+
+    /**
+     * Refreshes all author documents from Doc Manager in bulk.
+     * Shows progress in the button text and handles failures gracefully.
+     */
+    bulkRefreshPrivateDocs: async function () {
+        const log = this.getLogger(this.MODULE_NAME, 'bulkRefreshPrivateDocs');
+        
+        // Find all refresh links
+        const refreshLinks = Array.from(document.querySelectorAll('a[data-action="refresh-doc"]'));
+        
+        if (refreshLinks.length === 0) {
+            log('No documents to refresh');
+            return;
+        }
+        
+        log(`Found ${refreshLinks.length} documents to refresh`);
+        const button = document.querySelector('[data-action="bulk-refresh"]') as HTMLElement;
+        
+        // First pass - attempt all refreshes
+        const results = [];
+        for (let i = 0; i < refreshLinks.length; i++) {
+            const link = refreshLinks[i] as HTMLAnchorElement;
+            const row = link.closest('tr');
+            if (!row) continue;
+            
+            const titleCell = row.cells[0];
+            const title = titleCell?.textContent?.trim() || 'Unknown';
+            const docId = link.getAttribute('data-docid');
+            
+            if (!docId) continue;
+            
+            if (button) button.textContent = `↻ ${i + 1}/${refreshLinks.length}`;
+            
+            const success = await this.refreshPrivateDoc(docId, title);
+            results.push({ docId, title, success, element: link });
+            
+            // Add small delay between requests
+            await new Promise(r => setTimeout(r, 1000));
+        }
+        
+        // Second pass - retry failures
+        if (button) button.textContent = 'Cooling...';
+        await new Promise(r => setTimeout(r, 5000));
+        
+        const failures = results.filter(r => !r.success);
+        if (failures.length > 0) {
+            log(`Retrying ${failures.length} failed refreshes`);
+            for (let i = 0; i < failures.length; i++) {
+                const { docId, title } = failures[i];
+                if (button) button.textContent = `Retry ${i + 1}/${failures.length}`;
+                
+                const success = await this.refreshPrivateDoc(docId, title);
+                if (success) {
+                    failures[i].success = success;
+                }
+                await new Promise(r => setTimeout(r, 3000));
+            }
+        }
+        
+        // Show results
+        const successCount = results.filter(r => r.success).length;
+        log(`Refresh complete: ${successCount}/${results.length} successful`);
+        
+        // Update UI
+        results.forEach(({ success, element }) => {
+            const cell = element.closest('td');
+            if (cell) {
+                if (success) {
+                    cell.innerHTML += ' <span style="color:green">✓</span>';
+                } else {
+                    cell.innerHTML += ' <span style="color:red">✗</span>';
+                }
+            }
+        });
+        
+        if (button) button.textContent = `All Done!`;
+        setTimeout(() => {
+            if (button) button.textContent = '↻ All';
+        }, 3000);
+    },
 };
+
+export default Core;
