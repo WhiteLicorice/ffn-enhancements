@@ -539,7 +539,7 @@ export const DocManager = {
         // ============================================================
         alert(
             `Bulk Refresh will start for ${rows.length} document(s).\n\n` +
-            'Please do NOT close or navigate away from this tab until the refresh is complete.\n\n' +
+            'Please DO NOT CLOSE this tab until the refresh is complete.\n\n' +
             'The refresh runs silently in the background — you will be notified when it is done.'
         );
 
