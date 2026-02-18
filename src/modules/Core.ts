@@ -315,7 +315,7 @@ export const Core = {
                 xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
                 xhr.withCredentials = true;
                 
-                xhr.onload = function() {
+                xhr.onload = () => {
                     log(`[REFRESH] XHR request completed with status: ${xhr.status}`);
                     
                     if (xhr.status === 429) {
@@ -329,9 +329,9 @@ export const Core = {
                         log(`[REFRESH] Response body length: ${responseBody.length}`);
                         log(`[REFRESH] Response body preview: ${responseBody.substring(0, 500)}`);
                         
-                        // Check if response contains success message
-                        const isSuccess = responseBody.includes('successfully saved') || 
-                                         responseBody.includes('Success');
+                        // Check if response contains FFN's success message
+                        // FFN returns the edit page with a success banner when save succeeds
+                        const isSuccess = responseBody.includes('successfully saved');
                         log(`[REFRESH] Success indicator found in response: ${isSuccess}`);
                         
                         if (isSuccess) {
@@ -349,7 +349,7 @@ export const Core = {
                     }
                 };
                 
-                xhr.onerror = function() {
+                xhr.onerror = () => {
                     log(`[REFRESH ERROR] Network error during POST for "${title}"`);
                     console.error(`REFRESH NETWORK ERROR for document ${docId}`);
                     resolve(false);
