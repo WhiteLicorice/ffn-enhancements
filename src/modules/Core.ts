@@ -303,6 +303,7 @@ export const Core = {
             const formDataString = formData.toString();
             log(`[REFRESH] Form data built. Fields: selectdocid, bio (${currentContent.length} chars), action, docid`);
             log(`[REFRESH] Form data string: ${formDataString}`);
+            log(`[REFRESH] Form data string length: ${formDataString.length}`);
             // Step 5: Submit the POST request to save the document
             log(`[REFRESH] Sending POST request to save document...`);
             const saveResponse = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`, {
@@ -310,8 +311,9 @@ export const Core = {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'Referer': `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
+                    'Origin': 'https://www.fanfiction.net',
                 },
-                body: formData.toString(),
+                body: formDataString,
                 credentials: 'include', // Important: Include cookies for authentication
                 redirect: 'follow', // Follow redirects if any
             });
