@@ -10,6 +10,8 @@ import { DocIframeHandler } from './DocIframeHandler';
  * Module responsible for enhancing the Document Manager page (`/docs/docs.php`).
  */
 export const DocManager = {
+    LIFE_COL_IDX: 5,
+
     /**
      * Initializes the module by checking for the document table and observing for the Copy-N-Paste editor.
      */
@@ -259,7 +261,7 @@ export const DocManager = {
         try {
             // Life column is the 6th column (index 5)
             // Structure: Title | Size | Updated | Life | Export | Refresh
-            const lifeCell = row.cells[5];
+            const lifeCell = row.cells[this.LIFE_COL_IDX];
             if (lifeCell) {
                 lifeCell.innerText = '365 days';
                 log(`Updated Life column to "365 days" (${context})`);
@@ -510,7 +512,7 @@ export const DocManager = {
         // Life column is at index 5 (6th column: Title | Size | Updated | Life | Export | Refresh)
         const rowsBeforeFilter = rows.length;
         rows = rows.filter(row => {
-            const lifeCell = (row as HTMLTableRowElement).cells[5];
+            const lifeCell = (row as HTMLTableRowElement).cells[this.LIFE_COL_IDX];
             if (lifeCell) {
                 const lifeText = lifeCell.innerText.trim();
                 // Skip if already at max life (365 days)
