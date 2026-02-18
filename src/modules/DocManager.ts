@@ -250,6 +250,26 @@ export const DocManager = {
     },
 
     /**
+     * Updates the Life column for a given row to show "365 days".
+     * @param row - The table row element containing the Life column.
+     * @param context - Context string for logging (e.g., "single refresh", "bulk pass 1").
+     */
+    updateLifeColumn: function (row: HTMLTableRowElement, context: string = 'refresh') {
+        const log = Core.getLogger('doc-manager', 'updateLifeColumn');
+        try {
+            // Life column is the 6th column (index 5)
+            // Structure: Title | Size | Updated | Life | Export | Refresh
+            const lifeCell = row.cells[5];
+            if (lifeCell) {
+                lifeCell.innerText = '365 days';
+                log(`Updated Life column to "365 days" (${context})`);
+            }
+        } catch (err) {
+            log(`Failed to update Life column (${context})`, err);
+        }
+    },
+
+    /**
      * Handles the export of a single document given a DocID.
      * @param btnElement - The button clicked (for UI feedback).
      * @param docId - The FFN Document ID.
@@ -302,23 +322,10 @@ export const DocManager = {
             btnElement.innerText = "✓";
             btnElement.style.color = "green";
             
-            // ============================================================
-            // UX: Update the Life column to show 365 days
-            // ============================================================
-            try {
-                // Find the row containing this button
-                const row = btnElement.closest('tr') as HTMLTableRowElement;
-                if (row) {
-                    // Life column is typically the 6th column (index 5)
-                    // Structure: Title | Size | Updated | Life | Export | Refresh
-                    const lifeCell = row.cells[5];
-                    if (lifeCell) {
-                        lifeCell.innerText = '365 days';
-                        log(`Updated Life column to "365 days" for ${title}`);
-                    }
-                }
-            } catch (err) {
-                log('Failed to update Life column', err);
+            // Update the Life column to show 365 days
+            const row = btnElement.closest('tr') as HTMLTableRowElement;
+            if (row) {
+                this.updateLifeColumn(row, `single refresh: ${title}`);
             }
             
             setTimeout(() => {
@@ -554,17 +561,8 @@ export const DocManager = {
                 if (success) {
                     successCount++;
                     
-                    // ============================================================
-                    // UX: Update the Life column to show 365 days
-                    // ============================================================
-                    try {
-                        const lifeCell = row.cells[5];
-                        if (lifeCell) {
-                            lifeCell.innerText = '365 days';
-                        }
-                    } catch (err) {
-                        log('Failed to update Life column for row', err);
-                    }
+                    // Update the Life column to show 365 days
+                    this.updateLifeColumn(row, `bulk pass 1: ${title}`);
                 } else {
                     log(`Pass 1 Failed for ${title}. Queueing for retry.`);
                     failedItems.push({ docId, title, row });
@@ -593,17 +591,8 @@ export const DocManager = {
                     if (success) {
                         successCount++;
                         
-                        // ============================================================
-                        // UX: Update the Life column to show 365 days
-                        // ============================================================
-                        try {
-                            const lifeCell = item.row.cells[5];
-                            if (lifeCell) {
-                                lifeCell.innerText = '365 days';
-                            }
-                        } catch (err) {
-                            log('Failed to update Life column for retry', err);
-                        }
+                        // Update the Life column to show 365 days
+                        this.updateLifeColumn(item.row, `bulk pass 2: ${item.title}`);
                     } else {
                         log(`Pass 2 Permanent Failure for ${item.title}`);
                     }
