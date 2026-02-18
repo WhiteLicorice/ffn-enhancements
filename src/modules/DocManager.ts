@@ -309,9 +309,9 @@ export const DocManager = {
                 // Find the row containing this button
                 const row = btnElement.closest('tr') as HTMLTableRowElement;
                 if (row) {
-                    // Life column is typically the 4th column (index 3)
+                    // Life column is typically the 6th column (index 5)
                     // Structure: Title | Size | Updated | Life | Export | Refresh
-                    const lifeCell = row.cells[3];
+                    const lifeCell = row.cells[5];
                     if (lifeCell) {
                         lifeCell.innerText = '365 days';
                         log(`Updated Life column to "365 days" for ${title}`);
@@ -558,7 +558,7 @@ export const DocManager = {
                     // UX: Update the Life column to show 365 days
                     // ============================================================
                     try {
-                        const lifeCell = row.cells[3];
+                        const lifeCell = row.cells[5];
                         if (lifeCell) {
                             lifeCell.innerText = '365 days';
                         }
@@ -597,7 +597,7 @@ export const DocManager = {
                         // UX: Update the Life column to show 365 days
                         // ============================================================
                         try {
-                            const lifeCell = item.row.cells[3];
+                            const lifeCell = item.row.cells[5];
                             if (lifeCell) {
                                 lifeCell.innerText = '365 days';
                             }
