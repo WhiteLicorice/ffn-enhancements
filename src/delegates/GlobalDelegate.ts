@@ -30,6 +30,8 @@ export const GlobalDelegate: IDelegate = {
                 return doc.querySelector("#bio_ifr") as HTMLElement;
             case Elements.SAVE_BUTTON:
                 return doc.querySelector("button[type='submit']") as HTMLButtonElement;
+            case Elements.SUCCESS_PANEL:
+                return doc.querySelector('.panel_success');
             default:
                 return null;
         }

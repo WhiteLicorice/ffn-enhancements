@@ -102,4 +102,7 @@ export enum Elements {
 
     /** The editor i-frame that EDITOR_TEXT_AREA uses. */
     EDITOR_TEXT_AREA_IFRAME = 'EDITOR_TEXT_AREA_IFRAME',
+
+    /** The panel that appears after saving (whether successfully or not) */
+    SUCCESS_PANEL = 'SUCCESS_PANEL',
 }
