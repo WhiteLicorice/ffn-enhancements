@@ -244,7 +244,6 @@ export const Core = {
 
         try {
             log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId})`);
-            
             // Step 1: Fetch the current document content
             log(`[REFRESH] Fetching document content from edit.php...`);
             const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
@@ -302,7 +301,6 @@ export const Core = {
             formData.append('docid', docId);
 
             log(`[REFRESH] Form data built. Fields: selectdocid, bio (${currentContent.length} chars), action, docid`);
-
             // Step 5: Submit the POST request to save the document
             log(`[REFRESH] Sending POST request to save document...`);
             const saveResponse = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`, {
