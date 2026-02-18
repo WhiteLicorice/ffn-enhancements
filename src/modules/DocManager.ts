@@ -575,6 +575,11 @@ export const DocManager = {
 
                 btn.innerText = `${i + 1}/${rows.length}`;
 
+                // UX: Highlight current row being processed
+                const originalBgColor = row.style.backgroundColor;
+                row.style.backgroundColor = '#90EE90'; // Light green
+                row.style.transition = 'background-color 0.3s ease';
+
                 // Standard delay: 1000ms
                 await new Promise(r => setTimeout(r, 1000));
 
@@ -590,6 +595,9 @@ export const DocManager = {
                     log(`Pass 1 Failed for ${title}. Queueing for retry.`);
                     failedItems.push({ docId, title, row });
                 }
+
+                // UX: Remove highlight after processing
+                row.style.backgroundColor = originalBgColor;
             }
 
             // ============================================================
@@ -606,6 +614,11 @@ export const DocManager = {
                     const item = failedItems[i];
                     btn.innerText = `Retry ${i + 1}/${failedItems.length}`;
 
+                    // UX: Highlight current row being processed (retry)
+                    const originalBgColor = item.row.style.backgroundColor;
+                    item.row.style.backgroundColor = '#90EE90'; // Light green
+                    item.row.style.transition = 'background-color 0.3s ease';
+
                     // Extended Delay: 3000ms (Very polite)
                     await new Promise(r => setTimeout(r, 3000));
 
@@ -619,6 +632,9 @@ export const DocManager = {
                     } else {
                         log(`Pass 2 Permanent Failure for ${item.title}`);
                     }
+
+                    // UX: Remove highlight after processing
+                    item.row.style.backgroundColor = originalBgColor;
                 }
             }
 
