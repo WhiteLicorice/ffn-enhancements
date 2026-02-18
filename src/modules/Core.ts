@@ -239,7 +239,7 @@ export const Core = {
      */
     refreshPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<boolean> {
         const log = this.getLogger(this.MODULE_NAME, 'refreshPrivateDoc');
-        const MAX_RETRIES = 3;
+        const _MAX_RETRIES = 3; // FIXME: Implement exponential backoff as well, using MAX_RETRIES and attempt args.
 
         try {
             log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId})`);
@@ -272,11 +272,21 @@ export const Core = {
                             try {
                                 log(`[REFRESH] Page loaded, finding Save button...`);
                                 const winDoc = win.document;
-                                const submitButton = winDoc.querySelector('button[type="submit"]') as HTMLButtonElement;
-                                
+                                const submitButton = this.getElement(Elements.SAVE_BUTTON, winDoc);
+                                 // FIXME: At this point, the HTML body has not fully loaded yet
+                                 // and appears as an empty document:
+                                 /**
+                                  * <html>
+                                  * <head><head>
+                                  * <body><body>
+                                  * </html>
+                                  */
+                                 // The fix is to properly await the loading of the page in the window that opens
+                                 // so our selector successfully fetches the save button.
+                                console.log(winDoc);
                                 if (!submitButton) {
                                     log(`[REFRESH ERROR] Could not find Submit button in opened window`);
-                                    win.close();
+                                    //win.close();
                                     resolve(false);
                                     return;
                                 }
@@ -515,13 +525,6 @@ export const Core = {
             if (button) button.textContent = '↻ All';
         }, 3000);
     },
-
-    getLogger: function (moduleName: string, functionName?: string) {
-        return (...args: unknown[]) => {
-            const prefix = functionName ? `${moduleName} ${functionName}:` : `${moduleName}:`;
-            console.log(`(ffn-enhancements) ${prefix}`, ...args);
-        };
-    }
 };
 
 export default Core;

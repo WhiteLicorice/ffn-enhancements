@@ -28,6 +28,8 @@ export const GlobalDelegate: IDelegate = {
                 return doc.querySelector("textarea[name='bio']") as HTMLElement;
             case Elements.EDITOR_TEXT_AREA_IFRAME:
                 return doc.querySelector("#bio_ifr") as HTMLElement;
+            case Elements.SAVE_BUTTON:
+                return doc.querySelector("button[type='submit']") as HTMLButtonElement;
             default:
                 return null;
         }
