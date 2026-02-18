@@ -239,10 +239,10 @@ export const Core = {
      */
     refreshPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<boolean> {
         const log = this.getLogger(this.MODULE_NAME, 'refreshPrivateDoc');
-        const _MAX_RETRIES = 3; // FIXME: Implement exponential backoff as well, using MAX_RETRIES and attempt args.
+        const MAX_RETRIES = 3;
 
         try {
-            log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId})`);
+            log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId}, Attempt: ${attempt}/${MAX_RETRIES})`);
             log(`[REFRESH] Opening document in new window...`);
             
             const saveSuccess = await new Promise<boolean>((resolve) => {
@@ -262,31 +262,63 @@ export const Core = {
                 
                 log(`[REFRESH] Window opened, waiting for page load...`);
                 
-                // Wait for the window to load
-                const checkInterval = setInterval(() => {
+                // Helper function to wait for the save button to appear in the DOM
+                const waitForSaveButton = (maxAttempts: number = 50): Promise<HTMLElement | null> => {
+                    return new Promise((resolveBtn) => {
+                        let attempts = 0;
+                        const checkForButton = setInterval(() => {
+                            attempts++;
+                            try {
+                                if (win.closed) {
+                                    clearInterval(checkForButton);
+                                    resolveBtn(null);
+                                    return;
+                                }
+                                
+                                const winDoc = win.document;
+                                // Check if document has actual content (not just empty structure)
+                                const hasContent = winDoc.body && winDoc.body.children.length > 0;
+                                
+                                if (hasContent) {
+                                    const submitButton = this.getElement(Elements.SAVE_BUTTON, winDoc);
+                                    if (submitButton) {
+                                        clearInterval(checkForButton);
+                                        log(`[REFRESH] Save button found after ${attempts * 200}ms`);
+                                        resolveBtn(submitButton);
+                                        return;
+                                    }
+                                }
+                                
+                                if (attempts >= maxAttempts) {
+                                    clearInterval(checkForButton);
+                                    log(`[REFRESH ERROR] Save button not found after ${maxAttempts * 200}ms`);
+                                    resolveBtn(null);
+                                }
+                            } catch (e) {
+                                clearInterval(checkForButton);
+                                log(`[REFRESH ERROR] Exception while waiting for button: ${e}`);
+                                resolveBtn(null);
+                            }
+                        }, 200);
+                    });
+                };
+                
+                // Wait for window to reach complete state AND have content
+                const checkInterval = setInterval(async () => {
                     try {
                         // Check if window loaded and has the document
                         if (win.document && win.document.readyState === 'complete') {
                             clearInterval(checkInterval);
                             
                             try {
-                                log(`[REFRESH] Page loaded, finding Save button...`);
-                                const winDoc = win.document;
-                                const submitButton = this.getElement(Elements.SAVE_BUTTON, winDoc);
-                                 // FIXME: At this point, the HTML body has not fully loaded yet
-                                 // and appears as an empty document:
-                                 /**
-                                  * <html>
-                                  * <head><head>
-                                  * <body><body>
-                                  * </html>
-                                  */
-                                 // The fix is to properly await the loading of the page in the window that opens
-                                 // so our selector successfully fetches the save button.
-                                console.log(winDoc);
+                                log(`[REFRESH] Page readyState complete, waiting for content to load...`);
+                                
+                                // Wait for the save button to actually appear in the DOM
+                                const submitButton = await waitForSaveButton();
+                                
                                 if (!submitButton) {
                                     log(`[REFRESH ERROR] Could not find Submit button in opened window`);
-                                    //win.close();
+                                    try { win.close(); } catch (e) { /* ignore */ }
                                     resolve(false);
                                     return;
                                 }
@@ -355,11 +387,28 @@ export const Core = {
                 }, 30000);
             });
             
+            // Retry with exponential backoff if failed
+            if (!saveSuccess && attempt < MAX_RETRIES) {
+                const waitTime = attempt * 2000; // 2s, 4s, 6s...
+                log(`[REFRESH] Refresh failed for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                return this.refreshPrivateDoc(docId, title, attempt + 1);
+            }
+            
             return saveSuccess;
             
         } catch (err) {
             log(`[REFRESH ERROR] Exception during refresh:`, err);
             console.error(`REFRESH FAILED for document ${docId}:`, err);
+            
+            // Retry with exponential backoff if failed
+            if (attempt < MAX_RETRIES) {
+                const waitTime = attempt * 2000;
+                log(`[REFRESH] Exception occurred. Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                return this.refreshPrivateDoc(docId, title, attempt + 1);
+            }
+            
             return false;
         }
     },
