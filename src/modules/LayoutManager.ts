@@ -151,7 +151,25 @@ export const LayoutManager = {
         }
 
         if (enable) {
-            this.bodyObserver = new MutationObserver(() => {
+            this.bodyObserver = new MutationObserver((mutations) => {
+                let bodyAdded = false;
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node === document.body) {
+                            bodyAdded = true;
+                            break;
+                        }
+                    }
+
+                    if (bodyAdded) {
+                        break;
+                    }
+                }
+
+                if (!bodyAdded) {
+                    return;
+                }
+
                 const currentBody = document.body;
                 if (!currentBody) {
                     return;
