@@ -227,5 +227,100 @@ export const Core = {
             log(`Error processing ${title}`, err);
         }
         return null;
+    },
+
+    /**
+     * Refreshes a document by fetching its current content and re-saving it.
+     * This simulates opening the document and clicking Save, which triggers FFN's processing pipeline.
+     * Includes guardrails to prevent data loss from empty POSTs.
+     * @param docId - The internal FFN Document ID.
+     * @param title - The title of the document (for logging).
+     * @param attempt - (Internal) Current retry attempt number.
+     * @returns A promise resolving to true on success, false on failure.
+     */
+    refreshPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<boolean> {
+        const log = this.getLogger(this.MODULE_NAME, 'refreshPrivateDoc');
+        const MAX_RETRIES = 3;
+
+        try {
+            // Step 1: Fetch the current document content
+            const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
+
+            // --- Rate Limit Handling ---
+            if (response.status === 429) {
+                if (attempt <= MAX_RETRIES) {
+                    const waitTime = attempt * 2000; // 2s, 4s, 6s...
+                    log(`Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
+                    await new Promise(r => setTimeout(r, waitTime));
+                    return this.refreshPrivateDoc(docId, title, attempt + 1);
+                }
+                log(`Rate limit exceeded for "${title}". Please wait a moment.`);
+                return false;
+            }
+
+            if (!response.ok) {
+                log(`Network Error for ${docId}: ${response.status}`);
+                return false;
+            }
+
+            const text = await response.text();
+            const doc = new DOMParser().parseFromString(text, 'text/html');
+            
+            // Step 2: Extract the current content from the textarea
+            const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc);
+            
+            if (!contentElement) {
+                log(`Failed to find content textarea for "${title}"`);
+                return false;
+            }
+
+            const currentContent = (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
+
+            // Step 3: Guardrail - Prevent saving empty content
+            if (!currentContent || currentContent.trim().length === 0) {
+                log(`SAFETY: Refusing to save empty content for "${title}". This would delete the document.`);
+                return false;
+            }
+
+            // Step 4: Build the form data for POST request
+            const formData = new URLSearchParams();
+            formData.append('bio', currentContent);
+            formData.append('action', 'save');
+            formData.append('docid', docId);
+
+            // Step 5: Submit the POST request to save the document
+            const saveResponse = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: formData.toString(),
+                credentials: 'include', // Important: Include cookies for authentication
+            });
+
+            // --- Rate Limit Handling on POST ---
+            if (saveResponse.status === 429) {
+                if (attempt <= MAX_RETRIES) {
+                    const waitTime = attempt * 2000; // 2s, 4s, 6s...
+                    log(`POST rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
+                    await new Promise(r => setTimeout(r, waitTime));
+                    return this.refreshPrivateDoc(docId, title, attempt + 1);
+                }
+                log(`POST rate limit exceeded for "${title}". Please wait a moment.`);
+                return false;
+            }
+
+            if (!saveResponse.ok) {
+                log(`POST failed for "${title}": ${saveResponse.status}`);
+                return false;
+            }
+
+            log(`Successfully refreshed "${title}" (DocID: ${docId})`);
+            return true;
+
+        } catch (err) {
+            log(`Error refreshing ${title}`, err);
+            return false;
+        }
     }
 };
