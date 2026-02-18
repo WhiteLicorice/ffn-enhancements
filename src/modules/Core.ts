@@ -304,116 +304,293 @@ export const Core = {
             log(`[REFRESH] Form data built. Fields: selectdocid, bio (${currentContent.length} chars), action, docid`);
             log(`[REFRESH] Form data string: ${formDataString}`);
             log(`[REFRESH] Form data string length: ${formDataString.length}`);
-            // Step 5: Submit via programmatic form submission to get sec-fetch-dest: "document"
-            // FFN requires a real form submission (not XHR) to process the save
-            // XHR sends sec-fetch-dest: "empty" which FFN rejects
-            // Form submission sends sec-fetch-dest: "document" which FFN accepts
-            log(`[REFRESH] Creating and submitting form programmatically...`);
+            // Step 5: Submit via window.open() approach to get sec-fetch-dest: "document"
+            // FFN requires sec-fetch-dest: "document" which only happens with top-level navigation
+            // Iframe submission sends sec-fetch-dest: "iframe" which FFN still rejects
+            // We open the edit page, inject our content, and submit the real form
+            log(`[REFRESH] Opening document in new window for form submission...`);
             
             const saveSuccess = await new Promise<boolean>((resolve) => {
-                // Create a hidden iframe to submit the form without navigating away
-                const iframe = document.createElement('iframe');
-                iframe.style.display = 'none';
-                iframe.name = `refresh_iframe_${docId}`;
-                document.body.appendChild(iframe);
+                // Open the edit page in a new window
+                const win = window.open(
+                    `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
+                    `_ffn_refresh_${docId}`,
+                    'width=1,height=1,left=10000'  // Tiny window off-screen
+                );
                 
-                // Create the form
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = `https://www.fanfiction.net/docs/edit.php?docid=${docId}`;
-                form.target = iframe.name;
-                
-                // Add form fields
-                const fields = {
-                    'selectdocid': docId,
-                    'bio': currentContent,
-                    'action': 'save',
-                    'docid': docId
-                };
-                
-                for (const [name, value] of Object.entries(fields)) {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = name;
-                    input.value = value;
-                    form.appendChild(input);
+                if (!win) {
+                    log(`[REFRESH ERROR] Failed to open window (pop-up blocker?)`);
+                    console.error(`REFRESH FAILED: Could not open window for document ${docId}. Check pop-up blocker.`);
+                    resolve(false);
+                    return;
                 }
                 
-                document.body.appendChild(form);
-                log(`[REFRESH] Form created with ${Object.keys(fields).length} fields`);
+                log(`[REFRESH] Window opened, waiting for page load...`);
                 
-                // Listen for iframe load to check response
-                iframe.onload = () => {
+                // Wait for the window to load
+                const checkInterval = setInterval(() => {
                     try {
-                        // Wait a bit for the iframe to fully load
-                        setTimeout(() => {
+                        // Check if window loaded and has the document
+                        if (win.document && win.document.readyState === 'complete') {
+                            clearInterval(checkInterval);
+                            
                             try {
-                                const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-                                if (iframeDoc) {
-                                    const responseBody = iframeDoc.documentElement.outerHTML;
-                                    log(`[REFRESH] Form submitted, response received (${responseBody.length} chars)`);
-                                    
-                                    // Check for success message
-                                    const isSuccess = responseBody.includes('successfully saved');
-                                    log(`[REFRESH] Success indicator found in response: ${isSuccess}`);
-                                    
-                                    if (isSuccess) {
-                                        log(`[REFRESH SUCCESS] Successfully refreshed "${title}" (DocID: ${docId})`);
-                                        console.log(`✓ REFRESH SUCCESS: Document ${docId} (${title}) saved successfully`);
-                                        resolve(true);
-                                    } else {
-                                        log(`[REFRESH WARNING] Form submitted but no success message found`);
+                                log(`[REFRESH] Page loaded, finding form...`);
+                                const winDoc = win.document;
+                                const textarea = winDoc.querySelector('textarea[name="bio"]') as HTMLTextAreaElement;
+                                const submitButton = winDoc.querySelector('button[type="submit"]') as HTMLButtonElement;
+                                
+                                if (!textarea || !submitButton) {
+                                    log(`[REFRESH ERROR] Could not find form elements in opened window`);
+                                    win.close();
+                                    resolve(false);
+                                    return;
+                                }
+                                
+                                // Set the content
+                                log(`[REFRESH] Updating textarea content...`);
+                                textarea.value = currentContent;
+                                
+                                // Listen for page navigation (submit completion)
+                                let submitCompleted = false;
+                                const checkSubmit = setInterval(() => {
+                                    try {
+                                        // Check if page has reloaded (URL may change or readyState)
+                                        if (win.document.readyState === 'complete' && !submitCompleted) {
+                                            const body = win.document.body.innerHTML;
+                                            if (body.includes('successfully saved') || body.includes('Success')) {
+                                                submitCompleted = true;
+                                                clearInterval(checkSubmit);
+                                                log(`[REFRESH SUCCESS] Document saved successfully`);
+                                                console.log(`✓ REFRESH SUCCESS: Document ${docId} (${title}) saved successfully`);
+                                                setTimeout(() => win.close(), 500);
+                                                resolve(true);
+                                            }
+                                        }
+                                    } catch (e) {
+                                        // Window might be closed or cross-origin
+                                        clearInterval(checkSubmit);
+                                    }
+                                }, 200);
+                                
+                                // Submit the form (this triggers sec-fetch-dest: "document")
+                                log(`[REFRESH] Clicking submit button...`);
+                                submitButton.click();
+                                
+                                // Timeout if no success after 10 seconds
+                                setTimeout(() => {
+                                    if (!submitCompleted) {
+                                        clearInterval(checkSubmit);
+                                        log(`[REFRESH TIMEOUT] No confirmation received after 10s`);
+                                        try { win.close(); } catch (e) { /* ignore */ }
                                         resolve(false);
                                     }
-                                } else {
-                                    log(`[REFRESH ERROR] Cannot access iframe content (same-origin policy)`);
-                                    // If we can't access iframe, assume success after form submission
-                                    log(`[REFRESH] Assuming success since form was submitted`);
-                                    resolve(true);
-                                }
+                                }, 10000);
+                                
                             } catch (e) {
-                                log(`[REFRESH ERROR] Error reading iframe: ${e}`);
-                                // If cross-origin blocks us, assume success
-                                log(`[REFRESH] Assuming success since form was submitted`);
-                                resolve(true);
-                            } finally {
-                                // Cleanup
-                                document.body.removeChild(form);
-                                document.body.removeChild(iframe);
+                                log(`[REFRESH ERROR] Error manipulating window: ${e}`);
+                                try { win.close(); } catch (e2) { /* ignore */ }
+                                resolve(false);
                             }
-                        }, 1000); // Wait 1 second for response
+                        }
                     } catch (e) {
-                        log(`[REFRESH ERROR] Iframe onload error: ${e}`);
+                        // Can't access window (cross-origin or closed)
+                        clearInterval(checkInterval);
+                        log(`[REFRESH ERROR] Lost access to window: ${e}`);
                         resolve(false);
                     }
-                };
+                }, 100);
                 
-                // Handle iframe errors
-                iframe.onerror = () => {
-                    log(`[REFRESH ERROR] Iframe failed to load`);
-                    document.body.removeChild(form);
-                    document.body.removeChild(iframe);
+                // Timeout if window doesn't load after 30 seconds
+                setTimeout(() => {
+                    clearInterval(checkInterval);
+                    try {
+                        if (win && !win.closed) {
+                            log(`[REFRESH TIMEOUT] Window didn't load after 30s`);
+                            win.close();
+                        }
+                    } catch (e) { /* ignore */ }
                     resolve(false);
-                };
-                
-                // Submit the form
-                log(`[REFRESH] Submitting form to ${form.action}...`);
-                form.submit();
+                }, 30000);
             });
             
-            if (!saveSuccess && attempt <= MAX_RETRIES) {
-                const waitTime = attempt * 2000;
-                log(`Retrying refresh for "${title}" in ${waitTime}ms... (Attempt ${attempt})`);
-                await new Promise(r => setTimeout(r, waitTime));
-                return this.refreshPrivateDoc(docId, title, attempt + 1);
-            }
-            
             return saveSuccess;
-
+            
         } catch (err) {
-            log(`[REFRESH ERROR] Error refreshing ${title}`, err);
-            console.error(`REFRESH EXCEPTION for document ${docId}:`, err);
+            log(`[REFRESH ERROR] Exception during refresh:`, err);
+            console.error(`REFRESH FAILED for document ${docId}:`, err);
             return false;
         }
+    },
+
+    /**
+     * Exports all author documents from Doc Manager in bulk.
+     * Shows progress in the button text and handles failures gracefully.
+     */
+    bulkExportPrivateDocs: async function () {
+        const log = this.getLogger(this.MODULE_NAME, 'bulkExportPrivateDocs');
+        
+        // Find all export links
+        const exportLinks = Array.from(document.querySelectorAll('a[href*="docs/export.php"]'));
+        
+        if (exportLinks.length === 0) {
+            log('No documents to export');
+            return;
+        }
+        
+        log(`Found ${exportLinks.length} documents to export`);
+        const button = document.querySelector('[data-action="bulk-export"]') as HTMLElement;
+        
+        // First pass - attempt all exports
+        const results = [];
+        for (let i = 0; i < exportLinks.length; i++) {
+            const link = exportLinks[i] as HTMLAnchorElement;
+            const row = link.closest('tr');
+            if (!row) continue;
+            
+            const titleCell = row.cells[0];
+            const title = titleCell?.textContent?.trim() || 'Unknown';
+            const docId = link.href.match(/docid=(\d+)/)?.[1];
+            
+            if (!docId) continue;
+            
+            if (button) button.textContent = `↓ ${i + 1}/${exportLinks.length}`;
+            
+            const markdown = await this.fetchAndConvertPrivateDoc(docId, title);
+            results.push({ docId, title, markdown, element: link });
+            
+            // Add small delay between requests
+            await new Promise(r => setTimeout(r, 1000));
+        }
+        
+        // Second pass - retry failures
+        if (button) button.textContent = 'Cooling...';
+        await new Promise(r => setTimeout(r, 5000));
+        
+        const failures = results.filter(r => !r.markdown);
+        if (failures.length > 0) {
+            log(`Retrying ${failures.length} failed exports`);
+            for (let i = 0; i < failures.length; i++) {
+                const { docId, title } = failures[i];
+                if (button) button.textContent = `Retry ${i + 1}/${failures.length}`;
+                
+                const markdown = await this.fetchAndConvertPrivateDoc(docId, title);
+                if (markdown) {
+                    failures[i].markdown = markdown;
+                }
+                await new Promise(r => setTimeout(r, 3000));
+            }
+        }
+        
+        // Show results
+        const successCount = results.filter(r => r.markdown).length;
+        log(`Export complete: ${successCount}/${results.length} successful`);
+        
+        // Update UI
+        results.forEach(({ markdown, element }) => {
+            const cell = element.closest('td');
+            if (cell) {
+                if (markdown) {
+                    cell.innerHTML += ' <span style="color:green">✓</span>';
+                } else {
+                    cell.innerHTML += ' <span style="color:red">✗</span>';
+                }
+            }
+        });
+        
+        if (button) button.textContent = `All Done!`;
+        setTimeout(() => {
+            if (button) button.textContent = '↓ All';
+        }, 3000);
+    },
+
+    /**
+     * Refreshes all author documents from Doc Manager in bulk.
+     * Shows progress in the button text and handles failures gracefully.
+     */
+    bulkRefreshPrivateDocs: async function () {
+        const log = this.getLogger(this.MODULE_NAME, 'bulkRefreshPrivateDocs');
+        
+        // Find all refresh links
+        const refreshLinks = Array.from(document.querySelectorAll('a[data-action="refresh-doc"]'));
+        
+        if (refreshLinks.length === 0) {
+            log('No documents to refresh');
+            return;
+        }
+        
+        log(`Found ${refreshLinks.length} documents to refresh`);
+        const button = document.querySelector('[data-action="bulk-refresh"]') as HTMLElement;
+        
+        // First pass - attempt all refreshes
+        const results = [];
+        for (let i = 0; i < refreshLinks.length; i++) {
+            const link = refreshLinks[i] as HTMLAnchorElement;
+            const row = link.closest('tr');
+            if (!row) continue;
+            
+            const titleCell = row.cells[0];
+            const title = titleCell?.textContent?.trim() || 'Unknown';
+            const docId = link.getAttribute('data-docid');
+            
+            if (!docId) continue;
+            
+            if (button) button.textContent = `↻ ${i + 1}/${refreshLinks.length}`;
+            
+            const success = await this.refreshPrivateDoc(docId, title);
+            results.push({ docId, title, success, element: link });
+            
+            // Add small delay between requests
+            await new Promise(r => setTimeout(r, 1000));
+        }
+        
+        // Second pass - retry failures
+        if (button) button.textContent = 'Cooling...';
+        await new Promise(r => setTimeout(r, 5000));
+        
+        const failures = results.filter(r => !r.success);
+        if (failures.length > 0) {
+            log(`Retrying ${failures.length} failed refreshes`);
+            for (let i = 0; i < failures.length; i++) {
+                const { docId, title } = failures[i];
+                if (button) button.textContent = `Retry ${i + 1}/${failures.length}`;
+                
+                const success = await this.refreshPrivateDoc(docId, title);
+                if (success) {
+                    failures[i].success = success;
+                }
+                await new Promise(r => setTimeout(r, 3000));
+            }
+        }
+        
+        // Show results
+        const successCount = results.filter(r => r.success).length;
+        log(`Refresh complete: ${successCount}/${results.length} successful`);
+        
+        // Update UI
+        results.forEach(({ success, element }) => {
+            const cell = element.closest('td');
+            if (cell) {
+                if (success) {
+                    cell.innerHTML += ' <span style="color:green">✓</span>';
+                } else {
+                    cell.innerHTML += ' <span style="color:red">✗</span>';
+                }
+            }
+        });
+        
+        if (button) button.textContent = `All Done!`;
+        setTimeout(() => {
+            if (button) button.textContent = '↻ All';
+        }, 3000);
+    },
+
+    getLogger: function (moduleName: string, functionName?: string) {
+        return (...args: unknown[]) => {
+            const prefix = functionName ? `${moduleName} ${functionName}:` : `${moduleName}:`;
+            console.log(`(ffn-enhancements) ${prefix}`, ...args);
+        };
     }
 };
+
+export default Core;
