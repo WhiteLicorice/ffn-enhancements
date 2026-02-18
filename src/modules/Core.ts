@@ -230,8 +230,10 @@ export const Core = {
     },
 
     /**
-     * Refreshes a document by opening it in a new window and clicking Save.
+     * Refreshes a document by loading it in a hidden iframe and clicking Save.
      * This lets FFN handle preserving the content - we just trigger the save action.
+     * Running in a hidden iframe means no popup window is needed, matching the
+     * background behaviour of the export functions.
      * 
      * **SAFETY GUARDRAIL**: First checks if the document has content before proceeding.
      * If the document is empty, we abort to prevent accidental data loss.
@@ -281,47 +283,54 @@ export const Core = {
             log(`[REFRESH] Content verified (${trimmedContent.length} chars). Proceeding with refresh...`);
             
             // ============================================================
-            // Proceed with refresh
+            // Proceed with refresh via hidden iframe (no popup required)
             // ============================================================
-            log(`[REFRESH] Opening document in new window...`);
+            log(`[REFRESH] Loading document in hidden iframe...`);
             
             const saveSuccess = await new Promise<boolean>((resolve) => {
-                // Open the edit page in a new window (hidden from user view)
-                // Using minimal size and off-screen positioning to keep it invisible
-                const win = window.open(
-                    `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
-                    `_ffn_refresh_${docId}`,
-                    'width=1,height=1,left=100000,top=100000,toolbar=no,menubar=no,scrollbars=no,resizable=no,location=no,status=no'
-                );
+                // Create a hidden, off-screen iframe so the save runs in the background.
+                // This avoids needing popup permissions while still performing a real
+                // browser form submission (sec-fetch-dest: "document").
+                const iframe = document.createElement('iframe');
+                iframe.name = `_ffn_refresh_${docId}`;
+                iframe.style.position = 'absolute';
+                iframe.style.width = '1px';
+                iframe.style.height = '1px';
+                iframe.style.left = '-9999px';
+                iframe.style.top = '-9999px';
+                iframe.style.border = 'none';
+                iframe.style.visibility = 'hidden';
+                document.body.appendChild(iframe);
+                iframe.src = `https://www.fanfiction.net/docs/edit.php?docid=${docId}`;
                 
-                if (!win) {
-                    log(`[REFRESH ERROR] Failed to open window (pop-up blocker?)`);
-                    console.error(`REFRESH FAILED: Could not open window for document ${docId}. Check pop-up blocker.`);
-                    resolve(false);
-                    return;
-                }
+                log(`[REFRESH] Hidden iframe created, waiting for page load...`);
                 
-                log(`[REFRESH] Window opened, waiting for page load...`);
+                // Helper: Cleans up the iframe from the DOM
+                const removeIframe = () => {
+                    if (iframe.parentNode) {
+                        iframe.parentNode.removeChild(iframe);
+                    }
+                };
                 
-                // Helper function to wait for the save button to appear in the DOM
+                // Helper function to wait for the save button to appear in the iframe's DOM
                 const waitForSaveButton = (maxAttempts: number = 50): Promise<HTMLElement | null> => {
                     return new Promise((resolveBtn) => {
                         let attempts = 0;
                         const checkForButton = setInterval(() => {
                             attempts++;
                             try {
-                                if (win.closed) {
+                                const iframeDoc = iframe.contentDocument;
+                                if (!iframeDoc) {
                                     clearInterval(checkForButton);
                                     resolveBtn(null);
                                     return;
                                 }
                                 
-                                const winDoc = win.document;
                                 // Check if document has actual content (not just empty structure)
-                                const hasContent = winDoc.body && winDoc.body.children.length > 0;
+                                const hasContent = iframeDoc.body && iframeDoc.body.children.length > 0;
                                 
                                 if (hasContent) {
-                                    const submitButton = this.getElement(Elements.SAVE_BUTTON, winDoc);
+                                    const submitButton = this.getElement(Elements.SAVE_BUTTON, iframeDoc);
                                     if (submitButton) {
                                         clearInterval(checkForButton);
                                         log(`[REFRESH] Save button found after ${attempts * 200}ms`);
@@ -344,11 +353,12 @@ export const Core = {
                     });
                 };
                 
-                // Wait for window to reach complete state AND have content
+                // Wait for iframe to reach complete state AND have content
                 const checkInterval = setInterval(async () => {
                     try {
-                        // Check if window loaded and has the document
-                        if (win.document && win.document.readyState === 'complete') {
+                        const iframeDoc = iframe.contentDocument;
+                        // Check if iframe loaded and has the document
+                        if (iframeDoc && iframeDoc.readyState === 'complete') {
                             clearInterval(checkInterval);
                             
                             try {
@@ -358,8 +368,8 @@ export const Core = {
                                 const submitButton = await waitForSaveButton();
                                 
                                 if (!submitButton) {
-                                    log(`[REFRESH ERROR] Could not find Submit button in opened window`);
-                                    try { win.close(); } catch (e) { /* ignore */ }
+                                    log(`[REFRESH ERROR] Could not find Submit button in hidden iframe`);
+                                    removeIframe();
                                     resolve(false);
                                     return;
                                 }
@@ -368,20 +378,21 @@ export const Core = {
                                 let submitCompleted = false;
                                 const checkSubmit = setInterval(() => {
                                     try {
+                                        const currentDoc = iframe.contentDocument;
                                         // Check if page has reloaded (URL may change or readyState)
-                                        if (win.document.readyState === 'complete' && !submitCompleted) {
-                                            const body = win.document.body.innerHTML;
+                                        if (currentDoc && currentDoc.readyState === 'complete' && !submitCompleted) {
+                                            const body = currentDoc.body.innerHTML;
                                             if (body.includes('successfully saved') || body.includes('Success')) {
                                                 submitCompleted = true;
                                                 clearInterval(checkSubmit);
                                                 log(`[REFRESH SUCCESS] Document saved successfully`);
                                                 console.log(`✓ REFRESH SUCCESS: Document ${docId} (${title}) saved successfully`);
-                                                setTimeout(() => win.close(), 500);
+                                                setTimeout(removeIframe, 500);
                                                 resolve(true);
                                             }
                                         }
                                     } catch (e) {
-                                        // Window might be closed or cross-origin
+                                        // iframe might be detached or navigated cross-origin
                                         clearInterval(checkSubmit);
                                     }
                                 }, 200);
@@ -396,34 +407,30 @@ export const Core = {
                                     if (!submitCompleted) {
                                         clearInterval(checkSubmit);
                                         log(`[REFRESH TIMEOUT] No confirmation received after 10s`);
-                                        try { win.close(); } catch (e) { /* ignore */ }
+                                        removeIframe();
                                         resolve(false);
                                     }
                                 }, 10000);
                                 
                             } catch (e) {
-                                log(`[REFRESH ERROR] Error manipulating window: ${e}`);
-                                try { win.close(); } catch (e2) { /* ignore */ }
+                                log(`[REFRESH ERROR] Error manipulating iframe: ${e}`);
+                                removeIframe();
                                 resolve(false);
                             }
                         }
                     } catch (e) {
-                        // Can't access window (cross-origin or closed)
+                        // Can't access iframe content (cross-origin or detached)
                         clearInterval(checkInterval);
-                        log(`[REFRESH ERROR] Lost access to window: ${e}`);
+                        log(`[REFRESH ERROR] Lost access to iframe: ${e}`);
                         resolve(false);
                     }
                 }, 100);
                 
-                // Timeout if window doesn't load after 30 seconds
+                // Timeout if iframe doesn't load after 30 seconds
                 setTimeout(() => {
                     clearInterval(checkInterval);
-                    try {
-                        if (win && !win.closed) {
-                            log(`[REFRESH TIMEOUT] Window didn't load after 30s`);
-                            win.close();
-                        }
-                    } catch (e) { /* ignore */ }
+                    log(`[REFRESH TIMEOUT] Iframe didn't load after 30s`);
+                    removeIframe();
                     resolve(false);
                 }, 30000);
             });

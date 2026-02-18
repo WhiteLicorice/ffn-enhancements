@@ -535,14 +535,12 @@ export const DocManager = {
         }
 
         // ============================================================
-        // UX: Remind user to enable pop-ups
+        // UX: Remind user not to close the page during bulk refresh
         // ============================================================
         alert(
-            'Bulk Refresh requires opening popup windows to save each document.\n\n' +
-            'Please ensure pop-ups are enabled for fanfiction.net.\n\n' +
-            'If you see a pop-up blocker warning, click "Allow" to proceed.\n\n' +
-            'NOTE: The refresh process will run in the background. If you need to continue working, ' +
-            'please open a new browser window or use a different browser during the bulk refresh.'
+            `Bulk Refresh will start for ${rows.length} document(s).\n\n` +
+            'Please do NOT close or navigate away from this tab until the refresh is complete.\n\n' +
+            'The refresh runs silently in the background — you will be notified when it is done.'
         );
 
         const originalText = btn.innerText;
@@ -648,12 +646,15 @@ export const DocManager = {
             if (successCount === totalAttempts) {
                 btn.innerText = "All Done!";
                 log(`Successfully refreshed all ${successCount} documents`);
+                alert(`Bulk Refresh complete! All ${successCount} document(s) refreshed successfully.`);
             } else if (successCount > 0) {
                 btn.innerText = `${successCount}/${totalAttempts}`;
                 log(`Refreshed ${successCount} of ${totalAttempts} documents`);
+                alert(`Bulk Refresh complete. ${successCount} of ${totalAttempts} document(s) refreshed successfully.\n\nSome documents could not be refreshed — check the console for details.`);
             } else {
                 btn.innerText = "Failed";
                 log(`Failed to refresh any documents`);
+                alert(`Bulk Refresh failed. No documents could be refreshed.\n\nPlease check the console for details and try again.`);
             }
 
         } catch (error) {
