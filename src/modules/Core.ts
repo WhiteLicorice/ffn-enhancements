@@ -232,6 +232,10 @@ export const Core = {
     /**
      * Refreshes a document by opening it in a new window and clicking Save.
      * This lets FFN handle preserving the content - we just trigger the save action.
+     * 
+     * **SAFETY GUARDRAIL**: First checks if the document has content before proceeding.
+     * If the document is empty, we abort to prevent accidental data loss.
+     * 
      * @param docId - The internal FFN Document ID.
      * @param title - The title of the document (for logging).
      * @param attempt - (Internal) Current retry attempt number.
@@ -243,6 +247,42 @@ export const Core = {
 
         try {
             log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId}, Attempt: ${attempt}/${MAX_RETRIES})`);
+            
+            // ============================================================
+            // SAFETY GUARDRAIL: Check if document has content
+            // ============================================================
+            log(`[REFRESH] Verifying document has content...`);
+            
+            const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
+            if (!response.ok) {
+                log(`[REFRESH ERROR] Failed to fetch document for verification: ${response.status}`);
+                return false;
+            }
+            
+            const text = await response.text();
+            const doc = new DOMParser().parseFromString(text, 'text/html');
+            const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc);
+            
+            if (!contentElement) {
+                log(`[REFRESH ERROR] Could not find content textarea for "${title}"`);
+                return false;
+            }
+            
+            const rawValue = (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
+            const trimmedContent = rawValue.trim();
+            
+            // If content is empty or just whitespace, abort to prevent data loss
+            if (!trimmedContent || trimmedContent.length === 0) {
+                log(`[REFRESH BLOCKED] Document "${title}" appears to be empty. Aborting refresh to prevent data loss.`);
+                console.warn(`⚠️ REFRESH BLOCKED: Document "${title}" (DocID: ${docId}) has no content. Skipping to prevent accidental deletion.`);
+                return false;
+            }
+            
+            log(`[REFRESH] Content verified (${trimmedContent.length} chars). Proceeding with refresh...`);
+            
+            // ============================================================
+            // Proceed with refresh
+            // ============================================================
             log(`[REFRESH] Opening document in new window...`);
             
             const saveSuccess = await new Promise<boolean>((resolve) => {
