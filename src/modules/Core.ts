@@ -381,8 +381,8 @@ export const Core = {
                                         const currentDoc = iframe.contentDocument;
                                         // Check if page has reloaded (URL may change or readyState)
                                         if (currentDoc && currentDoc.readyState === 'complete' && !submitCompleted) {
-                                            const body = currentDoc.body.innerHTML;
-                                            if (body.includes('successfully saved') || body.includes('Success')) {
+                                            const successPanel = this.getElement(Elements.SUCCESS_PANEL, currentDoc);
+                                            if (successPanel?.innerHTML.includes('successfully saved') || successPanel?.innerHTML.includes('Success')) {
                                                 submitCompleted = true;
                                                 clearInterval(checkSubmit);
                                                 log(`[REFRESH SUCCESS] Document saved successfully`);
