@@ -34,10 +34,10 @@ Once you have the extension installed, [Click This Button](https://github.com/Wh
 * [x] Integrate Ao3's export to EPUB/PDF/HTML/MOBI feature (AZW3 is prioprietary and out of scope).
 * [x] Allow slow, but fresh exporting of stories because FicHub's API may be stale for a while.
 * [x] Integrate native dark theme (gave up: may I suggest using the mature [Dark Reader](https://darkreader.org/) instead?).
-* [x] Make story text more large-screen friendly? Expand it so the borders at the sides are gone (Interest in this feature has waned, but feel free to implement it and open a PR).
+* [x] Make story text more large-screen friendly? Expand it so the borders at the sides are gone.
 * [x] Fix FFN's bug where clicking on a story's picture doesn't do anything and just darkens the screen lmao.
 * [x] Allow pasting of Markdown into the Doc Editor and Doc Manager's story boxes. It is automatically converted into Docx format.
-* [x] Allow bulk refresh of author documents in Doc Manager (This feature is harder than it seems, relative to bulk export to MD: I have given up for now, but feel free to open a PR).
+* [x] Allow single and bulk refresh of author documents life in Doc Manager.
 * [x] Inject the story's cover art into EPUBs (from Native and FicHub) as its thumbnail.
 * [x] Get rid of the letterboxed borders at the side of the page (requires a `LayoutManager` of some sort).
 * [ ] UX enhancements from a menu like ao3-enhancements: font, author doc export type, etc.
