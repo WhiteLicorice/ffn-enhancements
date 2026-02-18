@@ -9,7 +9,7 @@ export interface IFanficDownloader {
     /**
      * Module name used for logging.
      */
-    MODULE_NAME?: string;
+    MODULE_NAME: string;
 
     /**
      * Downloads the story as an EPUB (E-book) file.

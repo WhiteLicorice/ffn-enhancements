@@ -24,7 +24,7 @@ export const FicHubDownloader: IFanficDownloader = {
      * INJECTS LOCAL COVER ART into the FicHub EPUB before saving.
      */
     downloadAsEPUB: async function (storyUrl: string, onProgress?: CallableFunction): Promise<void> {
-        const log = Core.getLogger(this.MODULE_NAME!, 'downloadAsEPUB');
+        const log = Core.getLogger(this.MODULE_NAME, 'downloadAsEPUB');
 
         try {
             // 1. Get the download URL from FicHub API
