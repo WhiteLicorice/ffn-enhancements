@@ -504,10 +504,31 @@ export const DocManager = {
         const allRows = Core.getElements(Elements.DOC_TABLE_BODY_ROWS);
 
         // Filter for rows that actually contain documents
-        const rows = allRows.filter(row => row.querySelector('a[href*="docid="]'));
+        let rows = allRows.filter(row => row.querySelector('a[href*="docid="]'));
+
+        // Optimization: Filter out documents that already have 365 days life remaining
+        // Life column is at index 5 (6th column: Title | Size | Updated | Life | Export | Refresh)
+        const rowsBeforeFilter = rows.length;
+        rows = rows.filter(row => {
+            const lifeCell = (row as HTMLTableRowElement).cells[5];
+            if (lifeCell) {
+                const lifeText = lifeCell.innerText.trim();
+                // Skip if already at max life (365 days)
+                if (lifeText === '365 days') {
+                    return false;
+                }
+            }
+            return true;
+        });
+
+        const skippedCount = rowsBeforeFilter - rows.length;
+        if (skippedCount > 0) {
+            log(`Skipped ${skippedCount} document(s) that already have 365 days life remaining.`);
+        }
 
         if (rows.length === 0) {
-            log("No documents to refresh.");
+            log("No documents need refreshing (all already have 365 days).");
+            alert('All documents already have 365 days life remaining. No refresh needed!');
             return;
         }
 
