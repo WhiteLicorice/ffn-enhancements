@@ -484,6 +484,15 @@ export const DocManager = {
             return;
         }
 
+        // ============================================================
+        // UX: Remind user to enable pop-ups
+        // ============================================================
+        alert(
+            'Bulk Refresh requires opening popup windows to save each document.\n\n' +
+            'Please ensure pop-ups are enabled for fanfiction.net.\n\n' +
+            'If you see a pop-up blocker warning, click "Allow" to proceed.'
+        );
+
         const originalText = btn.innerText;
         btn.disabled = true;
         btn.style.cursor = "wait";
