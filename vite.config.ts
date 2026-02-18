@@ -11,6 +11,7 @@ export default defineConfig({
         version: '11.1',
         author: 'WhiteLicorice',
         match: ['https://www.fanfiction.net/*'],
+        'run-at': 'document-start',
         grant: ['GM_xmlhttpRequest'],
         license: 'GPL-3.0-or-later',
         updateURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',

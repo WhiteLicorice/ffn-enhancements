@@ -23,41 +23,51 @@ const path = window.location.pathname;
 
 Core.log('router', 'main', `Here at https://www.fanfiction.net${path}`, path);
 
-/**
- * Bootstraps the Core system.
- * 1. Sets the Delegate based on the path (Core.setDelegate).
- * 2. Initializes the LayoutManager (injects global CSS overrides).
- */
-Core.startup(path);
+LayoutManager.primeFluidMode();
 
-// NOTE: The path includes the "/" and omits "https://www.fanfiction.net".
-// If in doubt, check your browser.
+const bootstrap = () => {
+    /**
+     * Bootstraps the Core system.
+     * 1. Sets the Delegate based on the path (Core.setDelegate).
+     * 2. Initializes the LayoutManager (injects global CSS overrides).
+     */
+    Core.startup(path);
 
-// Initialize the LayoutManager sitewide
-LayoutManager.init()
+    // NOTE: The path includes the "/" and omits "https://www.fanfiction.net".
+    // If in doubt, check your browser.
 
-if (path === "/docs/docs.php") {
-    /**
-     * Route: Document Manager (List View)
-     * Features: Bulk Download, Export Column
-     */
-    DocManager.init();
-}
-else if (path.includes("/docs/edit.php")) {
-    /**
-     * Route: Document Editor (TinyMCE)
-     * Features: Single Document Download button in Toolbar
-     */
-    DocEditor.init();
-}
-else if (path.startsWith("/s/")) {
-    /**
-     * Route: Story Reading Page
-     * Features:
-     * - StoryReader: Copy/Select text unlocking, Hotkeys (WASD/Arrows).
-     * - StoryDownloader: Fichub integration for EPUB/MOBI downloads.
-     */
-    // Matches /s/1234569420/1/Story-Title
-    StoryReader.init();
-    StoryDownloader.init();
+    // Initialize the LayoutManager sitewide
+    LayoutManager.init();
+
+    if (path === "/docs/docs.php") {
+        /**
+         * Route: Document Manager (List View)
+         * Features: Bulk Download, Export Column
+         */
+        DocManager.init();
+    }
+    else if (path.includes("/docs/edit.php")) {
+        /**
+         * Route: Document Editor (TinyMCE)
+         * Features: Single Document Download button in Toolbar
+         */
+        DocEditor.init();
+    }
+    else if (path.startsWith("/s/")) {
+        /**
+         * Route: Story Reading Page
+         * Features:
+         * - StoryReader: Copy/Select text unlocking, Hotkeys (WASD/Arrows).
+         * - StoryDownloader: Fichub integration for EPUB/MOBI downloads.
+         */
+        // Matches /s/1234569420/1/Story-Title
+        StoryReader.init();
+        StoryDownloader.init();
+    }
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+} else {
+    bootstrap();
 }
