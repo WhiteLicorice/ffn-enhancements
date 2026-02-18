@@ -301,6 +301,26 @@ export const DocManager = {
         if (success) {
             btnElement.innerText = "✓";
             btnElement.style.color = "green";
+            
+            // ============================================================
+            // UX: Update the Life column to show 365 days
+            // ============================================================
+            try {
+                // Find the row containing this button
+                const row = btnElement.closest('tr') as HTMLTableRowElement;
+                if (row) {
+                    // Life column is typically the 4th column (index 3)
+                    // Structure: Title | Size | Updated | Life | Export | Refresh
+                    const lifeCell = row.cells[3];
+                    if (lifeCell) {
+                        lifeCell.innerText = '365 days';
+                        log(`Updated Life column to "365 days" for ${title}`);
+                    }
+                }
+            } catch (err) {
+                log('Failed to update Life column', err);
+            }
+            
             setTimeout(() => {
                 btnElement.innerText = originalText;
                 btnElement.style.color = "";
@@ -499,7 +519,7 @@ export const DocManager = {
         btn.style.opacity = "1";
 
         // Store failed items for the second pass
-        interface RefreshItem { docId: string; title: string; }
+        interface RefreshItem { docId: string; title: string; row: HTMLTableRowElement; }
         let failedItems: RefreshItem[] = [];
 
         try {
@@ -533,9 +553,21 @@ export const DocManager = {
 
                 if (success) {
                     successCount++;
+                    
+                    // ============================================================
+                    // UX: Update the Life column to show 365 days
+                    // ============================================================
+                    try {
+                        const lifeCell = row.cells[3];
+                        if (lifeCell) {
+                            lifeCell.innerText = '365 days';
+                        }
+                    } catch (err) {
+                        log('Failed to update Life column for row', err);
+                    }
                 } else {
                     log(`Pass 1 Failed for ${title}. Queueing for retry.`);
-                    failedItems.push({ docId, title });
+                    failedItems.push({ docId, title, row });
                 }
             }
 
@@ -560,6 +592,18 @@ export const DocManager = {
 
                     if (success) {
                         successCount++;
+                        
+                        // ============================================================
+                        // UX: Update the Life column to show 365 days
+                        // ============================================================
+                        try {
+                            const lifeCell = item.row.cells[3];
+                            if (lifeCell) {
+                                lifeCell.innerText = '365 days';
+                            }
+                        } catch (err) {
+                            log('Failed to update Life column for retry', err);
+                        }
                     } else {
                         log(`Pass 2 Permanent Failure for ${item.title}`);
                     }
