@@ -243,7 +243,10 @@ export const Core = {
         const MAX_RETRIES = 3;
 
         try {
+            log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId})`);
+            
             // Step 1: Fetch the current document content
+            log(`[REFRESH] Fetching document content from edit.php...`);
             const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
 
             // --- Rate Limit Handling ---
@@ -263,36 +266,45 @@ export const Core = {
                 return false;
             }
 
+            log(`[REFRESH] Received response, parsing HTML...`);
             const text = await response.text();
             const doc = new DOMParser().parseFromString(text, 'text/html');
             
             // Step 2: Extract the current content from the textarea
+            log(`[REFRESH] Extracting content from textarea...`);
             const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc);
             
             if (!contentElement) {
-                log(`Failed to find content textarea for "${title}"`);
+                log(`[REFRESH ERROR] Failed to find content textarea for "${title}"`);
+                console.error(`REFRESH FAILED: Could not find textarea element for document ${docId}`);
                 return false;
             }
 
             // Extract content (consistent with parseContentFromPrivateDoc method)
             // Note: .value is for textarea elements, .innerHTML is a fallback for other elements
             const currentContent = (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
+            log(`[REFRESH] Extracted content length: ${currentContent.length}`);
 
             // Step 3: Guardrail - Prevent saving empty content
             if (!currentContent || currentContent.trim().length === 0) {
-                log(`SAFETY: Refusing to save empty content for "${title}". This would delete the document.`);
+                log(`[REFRESH SAFETY] Refusing to save empty content for "${title}". This would delete the document.`);
+                console.error(`REFRESH BLOCKED: Document ${docId} has empty content, refusing to save.`);
                 return false;
             }
 
             // Step 4: Build the form data for POST request
             // Note: selectdocid is required by FFN's form submission
+            log(`[REFRESH] Building form data...`);
             const formData = new URLSearchParams();
             formData.append('selectdocid', docId);
             formData.append('bio', currentContent);
             formData.append('action', 'save');
             formData.append('docid', docId);
 
+            log(`[REFRESH] Form data built. Fields: selectdocid, bio (${currentContent.length} chars), action, docid`);
+
             // Step 5: Submit the POST request to save the document
+            log(`[REFRESH] Sending POST request to save document...`);
             const saveResponse = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`, {
                 method: 'POST',
                 headers: {
@@ -303,6 +315,8 @@ export const Core = {
                 credentials: 'include', // Important: Include cookies for authentication
                 redirect: 'follow', // Follow redirects if any
             });
+
+            log(`[REFRESH] POST request sent, received response status: ${saveResponse.status}`);
 
             // --- Rate Limit Handling on POST ---
             if (saveResponse.status === 429) {
@@ -317,17 +331,20 @@ export const Core = {
             }
 
             if (!saveResponse.ok) {
-                log(`POST failed for "${title}": ${saveResponse.status}`);
+                log(`[REFRESH ERROR] POST failed for "${title}": ${saveResponse.status}`);
+                console.error(`REFRESH POST FAILED: Status ${saveResponse.status} for document ${docId}`);
                 return false;
             }
 
             // Read the response to ensure the request completes
             await saveResponse.text();
-            log(`Successfully refreshed "${title}" (DocID: ${docId}). Response status: ${saveResponse.status}, URL: ${saveResponse.url}`);
+            log(`[REFRESH SUCCESS] Successfully refreshed "${title}" (DocID: ${docId}). Response status: ${saveResponse.status}, URL: ${saveResponse.url}`);
+            console.log(`✓ REFRESH SUCCESS: Document ${docId} (${title}) saved successfully`);
             return true;
 
         } catch (err) {
-            log(`Error refreshing ${title}`, err);
+            log(`[REFRESH ERROR] Error refreshing ${title}`, err);
+            console.error(`REFRESH EXCEPTION for document ${docId}:`, err);
             return false;
         }
     }
