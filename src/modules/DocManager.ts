@@ -540,7 +540,9 @@ export const DocManager = {
         alert(
             'Bulk Refresh requires opening popup windows to save each document.\n\n' +
             'Please ensure pop-ups are enabled for fanfiction.net.\n\n' +
-            'If you see a pop-up blocker warning, click "Allow" to proceed.'
+            'If you see a pop-up blocker warning, click "Allow" to proceed.\n\n' +
+            'NOTE: The refresh process will run in the background. If you need to continue working, ' +
+            'please open a new browser window or use a different browser during the bulk refresh.'
         );
 
         const originalText = btn.innerText;

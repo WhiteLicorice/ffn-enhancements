@@ -301,14 +301,6 @@ export const Core = {
                     return;
                 }
                 
-                // Prevent the popup from stealing focus - blur it immediately and refocus main window
-                try {
-                    win.blur();
-                    window.focus();
-                } catch (e) {
-                    // Ignore focus errors - non-critical
-                }
-                
                 log(`[REFRESH] Window opened, waiting for page load...`);
                 
                 // Helper function to wait for the save button to appear in the DOM
