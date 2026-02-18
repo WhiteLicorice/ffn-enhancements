@@ -107,7 +107,7 @@ export const DocManager = {
         btn.innerText = "↓ All";
         btn.title = "Download all documents as Markdown";
         btn.style.cssText = `
-            position: absolute; right: 0px; top: 50%; transform: translateY(-50%); z-index: 99;
+            position: absolute; right: 50px; top: 50%; transform: translateY(-50%); z-index: 99;
             appearance: none; background: transparent; border: 0; outline: none; box-shadow: none;
             font-family: inherit; font-size: 12px; font-weight: 600; color: inherit; cursor: pointer;
             padding: 6px 10px; border-radius: 4px; opacity: 0.6; transition: opacity 0.2s, background-color 0.2s;
@@ -146,7 +146,7 @@ export const DocManager = {
         btn.innerText = "↻ All";
         btn.title = "Refresh all documents (re-save to trigger FFN processing)";
         btn.style.cssText = `
-            position: absolute; right: 50px; top: 50%; transform: translateY(-50%); z-index: 99;
+            position: absolute; right: 0px; top: 50%; transform: translateY(-50%); z-index: 99;
             appearance: none; background: transparent; border: 0; outline: none; box-shadow: none;
             font-family: inherit; font-size: 12px; font-weight: 600; color: inherit; cursor: pointer;
             padding: 6px 10px; border-radius: 4px; opacity: 0.6; transition: opacity 0.2s, background-color 0.2s;

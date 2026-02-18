@@ -295,9 +295,11 @@ export const Core = {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
+                    'Referer': `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
                 },
                 body: formData.toString(),
                 credentials: 'include', // Important: Include cookies for authentication
+                redirect: 'follow', // Follow redirects if any
             });
 
             // --- Rate Limit Handling on POST ---
@@ -317,7 +319,9 @@ export const Core = {
                 return false;
             }
 
-            log(`Successfully refreshed "${title}" (DocID: ${docId})`);
+            // Read the response to ensure the request completes
+            await saveResponse.text();
+            log(`Successfully refreshed "${title}" (DocID: ${docId}). Response status: ${saveResponse.status}, URL: ${saveResponse.url}`);
             return true;
 
         } catch (err) {
