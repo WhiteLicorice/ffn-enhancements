@@ -230,9 +230,8 @@ export const Core = {
     },
 
     /**
-     * Refreshes a document by fetching its current content and re-saving it.
-     * This simulates opening the document and clicking Save, which triggers FFN's processing pipeline.
-     * Includes guardrails to prevent data loss from empty POSTs.
+     * Refreshes a document by opening it in a new window and clicking Save.
+     * This lets FFN handle preserving the content - we just trigger the save action.
      * @param docId - The internal FFN Document ID.
      * @param title - The title of the document (for logging).
      * @param attempt - (Internal) Current retry attempt number.
@@ -244,71 +243,7 @@ export const Core = {
 
         try {
             log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId})`);
-            // Step 1: Fetch the current document content
-            log(`[REFRESH] Fetching document content from edit.php...`);
-            const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
-
-            // --- Rate Limit Handling ---
-            if (response.status === 429) {
-                if (attempt <= MAX_RETRIES) {
-                    const waitTime = attempt * 2000; // 2s, 4s, 6s...
-                    log(`Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
-                    await new Promise(r => setTimeout(r, waitTime));
-                    return this.refreshPrivateDoc(docId, title, attempt + 1);
-                }
-                log(`Rate limit exceeded for "${title}". Please wait a moment.`);
-                return false;
-            }
-
-            if (!response.ok) {
-                log(`Network Error for ${docId}: ${response.status}`);
-                return false;
-            }
-
-            log(`[REFRESH] Received response, parsing HTML...`);
-            const text = await response.text();
-            const doc = new DOMParser().parseFromString(text, 'text/html');
-            
-            // Step 2: Extract the current content from the textarea
-            log(`[REFRESH] Extracting content from textarea...`);
-            const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc);
-            
-            if (!contentElement) {
-                log(`[REFRESH ERROR] Failed to find content textarea for "${title}"`);
-                console.error(`REFRESH FAILED: Could not find textarea element for document ${docId}`);
-                return false;
-            }
-
-            // Extract content (consistent with parseContentFromPrivateDoc method)
-            // Note: .value is for textarea elements, .innerHTML is a fallback for other elements
-            const currentContent = (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
-            log(`[REFRESH] Extracted content length: ${currentContent.length}`);
-
-            // Step 3: Guardrail - Prevent saving empty content
-            if (!currentContent || currentContent.trim().length === 0) {
-                log(`[REFRESH SAFETY] Refusing to save empty content for "${title}". This would delete the document.`);
-                console.error(`REFRESH BLOCKED: Document ${docId} has empty content, refusing to save.`);
-                return false;
-            }
-
-            // Step 4: Build the form data for POST request
-            // Note: selectdocid is required by FFN's form submission
-            log(`[REFRESH] Building form data...`);
-            const formData = new URLSearchParams();
-            formData.append('selectdocid', docId);
-            formData.append('bio', currentContent);
-            formData.append('action', 'save');
-            formData.append('docid', docId);
-
-            const formDataString = formData.toString();
-            log(`[REFRESH] Form data built. Fields: selectdocid, bio (${currentContent.length} chars), action, docid`);
-            log(`[REFRESH] Form data string: ${formDataString}`);
-            log(`[REFRESH] Form data string length: ${formDataString.length}`);
-            // Step 5: Submit via window.open() approach to get sec-fetch-dest: "document"
-            // FFN requires sec-fetch-dest: "document" which only happens with top-level navigation
-            // Iframe submission sends sec-fetch-dest: "iframe" which FFN still rejects
-            // We open the edit page, inject our content, and submit the real form
-            log(`[REFRESH] Opening document in new window for form submission...`);
+            log(`[REFRESH] Opening document in new window...`);
             
             const saveSuccess = await new Promise<boolean>((resolve) => {
                 // Open the edit page in a new window
@@ -335,21 +270,16 @@ export const Core = {
                             clearInterval(checkInterval);
                             
                             try {
-                                log(`[REFRESH] Page loaded, finding form...`);
+                                log(`[REFRESH] Page loaded, finding Save button...`);
                                 const winDoc = win.document;
-                                const textarea = winDoc.querySelector('textarea[name="bio"]') as HTMLTextAreaElement;
                                 const submitButton = winDoc.querySelector('button[type="submit"]') as HTMLButtonElement;
                                 
-                                if (!textarea || !submitButton) {
-                                    log(`[REFRESH ERROR] Could not find form elements in opened window`);
+                                if (!submitButton) {
+                                    log(`[REFRESH ERROR] Could not find Submit button in opened window`);
                                     win.close();
                                     resolve(false);
                                     return;
                                 }
-                                
-                                // Set the content
-                                log(`[REFRESH] Updating textarea content...`);
-                                textarea.value = currentContent;
                                 
                                 // Listen for page navigation (submit completion)
                                 let submitCompleted = false;
@@ -373,8 +303,9 @@ export const Core = {
                                     }
                                 }, 200);
                                 
-                                // Submit the form (this triggers sec-fetch-dest: "document")
-                                log(`[REFRESH] Clicking submit button...`);
+                                // Click the Save button (this triggers sec-fetch-dest: "document")
+                                // FFN will preserve the existing content when we submit without changes
+                                log(`[REFRESH] Clicking Save button...`);
                                 submitButton.click();
                                 
                                 // Timeout if no success after 10 seconds
