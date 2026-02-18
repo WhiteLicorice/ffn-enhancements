@@ -286,11 +286,12 @@ export const Core = {
             log(`[REFRESH] Opening document in new window...`);
             
             const saveSuccess = await new Promise<boolean>((resolve) => {
-                // Open the edit page in a new window
+                // Open the edit page in a new window (hidden from user view)
+                // Using minimal size and off-screen positioning to keep it invisible
                 const win = window.open(
                     `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
                     `_ffn_refresh_${docId}`,
-                    'width=1,height=1,left=10000'  // Tiny window off-screen
+                    'width=1,height=1,left=10000,top=10000,toolbar=no,menubar=no,scrollbars=no,resizable=no,location=no,status=no'
                 );
                 
                 if (!win) {
