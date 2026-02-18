@@ -291,7 +291,7 @@ export const Core = {
                 const win = window.open(
                     `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
                     `_ffn_refresh_${docId}`,
-                    'width=1,height=1,left=10000,top=10000,toolbar=no,menubar=no,scrollbars=no,resizable=no,location=no,status=no'
+                    'width=1,height=1,left=100000,top=100000,toolbar=no,menubar=no,scrollbars=no,resizable=no,location=no,status=no'
                 );
                 
                 if (!win) {
