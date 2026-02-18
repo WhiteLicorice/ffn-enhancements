@@ -285,7 +285,9 @@ export const Core = {
             }
 
             // Step 4: Build the form data for POST request
+            // Note: selectdocid is required by FFN's form submission
             const formData = new URLSearchParams();
+            formData.append('selectdocid', docId);
             formData.append('bio', currentContent);
             formData.append('action', 'save');
             formData.append('docid', docId);
