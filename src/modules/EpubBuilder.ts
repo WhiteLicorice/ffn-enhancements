@@ -11,11 +11,13 @@ import { ChapterData } from '../interfaces/ChapterData';
  * Designed to have parity with FicHub's output structure.
  */
 export const EpubBuilder = {
+    MODULE_NAME: 'EpubBuilder',
+
     /**
      * Generates and triggers a download of the EPUB file.
      */
     build: async function (meta: StoryMetadata, chapters: ChapterData[]) {
-        const log = Core.getLogger('EpubBuilder', 'build');
+        const log = Core.getLogger(this.MODULE_NAME, 'build');
         log(`Generating EPUB for "${meta.title}" with ${chapters.length} chapters.`);
 
         const zip = new JSZip();

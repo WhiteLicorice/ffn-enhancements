@@ -7,6 +7,11 @@
  */
 export interface IFanficDownloader {
     /**
+     * Module name used for logging.
+     */
+    MODULE_NAME?: string;
+
+    /**
      * Downloads the story as an EPUB (E-book) file.
      * @param storyIdOrUrl - The ID or full URL of the story.
      * @param onProgress - Optional generic callback for status updates.

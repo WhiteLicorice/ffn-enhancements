@@ -11,6 +11,7 @@ import { FFNLogger } from './FFNLogger';
  * the fixed-width borders on FFN stories to emulate an AO3-style reading experience.
  */
 export const LayoutManager = {
+    MODULE_NAME: 'LayoutManager',
 
     /**
      * The ID used for the injected style tag to prevent duplicates.
@@ -45,7 +46,7 @@ export const LayoutManager = {
      * @param msg - The message to log.
      */
     log: function (funcName: string, msg: string): void {
-        FFNLogger.log('LayoutManager', funcName, msg);
+        FFNLogger.log(this.MODULE_NAME, funcName, msg);
     },
 
     /**

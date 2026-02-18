@@ -9,6 +9,8 @@ import { marked } from 'marked';
  * Features a weighted heuristic to prevent hijacking standard document pastes.
  */
 export const SimpleMarkdownParser = {
+    MODULE_NAME: 'SimpleMarkdownParser',
+
     /**
      * Checks if the input text contains intentional Markdown formatting.
      * Uses a deep-search heuristic to distinguish between Markdown intent and accidental prose.
@@ -16,7 +18,7 @@ export const SimpleMarkdownParser = {
      * @returns True if high-confidence Markdown syntax is detected; false if plain text.
      */
     isMarkdown: function (text: string): boolean {
-        const log = Core.getLogger('SimpleMarkdownParser', 'isMarkdown');
+        const log = Core.getLogger(this.MODULE_NAME, 'isMarkdown');
 
         // We trim to ensure leading whitespace doesn't trigger "indented code" logic prematurely
         const tokens = marked.lexer(text.trim());
@@ -94,7 +96,7 @@ export const SimpleMarkdownParser = {
      * @returns A string of HTML, ready for insertion into the TinyMCE editor.
      */
     parse: function (text: string): string {
-        const log = Core.getLogger('SimpleMarkdownParser', 'parse');
+        const log = Core.getLogger(this.MODULE_NAME, 'parse');
 
         // Configure marked for security and standard behavior
         marked.setOptions({

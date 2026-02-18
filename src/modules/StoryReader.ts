@@ -8,12 +8,14 @@ import { Elements } from '../enums/Elements';
  * Handles unlocking text selection and enabling hotkey navigation.
  */
 export const StoryReader = {
+    MODULE_NAME: 'story-reader',
+
     /**
      * Initializes the module logic.
      * Waits for the DOM to be ready before applying enhancements.
      */
     init: function () {
-        const log = Core.getLogger('story-reader', 'init');
+        const log = Core.getLogger(this.MODULE_NAME, 'init');
         Core.onDomReady(() => {
             log('Initializing UX Enhancements...');
             this.enableSelectableText();
@@ -27,7 +29,7 @@ export const StoryReader = {
      * Also replaces the story text node with a clone to strip inline event listeners (like oncopy/onselectstart).
      */
     enableSelectableText: function () {
-        const log = Core.getLogger('story-reader', 'enableSelectableText');
+        const log = Core.getLogger(this.MODULE_NAME, 'enableSelectableText');
 
         const style = document.createElement('style');
         style.innerHTML = `
@@ -56,7 +58,7 @@ export const StoryReader = {
      * ensure it works even when FFN's native jQuery plugins fail.
      */
     fixCoverArtModal: function () {
-        const log = Core.getLogger('story-reader', 'fixCoverArtModal');
+        const log = Core.getLogger(this.MODULE_NAME, 'fixCoverArtModal');
 
         // Find the specific span trigger and the modal container
         const trigger = document.querySelector('#profile_top span[onclick*="img_large"]');
@@ -185,7 +187,7 @@ export const StoryReader = {
      * - Down Arrow / S: Scroll Down
      */
     enableKeyboardNav: function () {
-        const log = Core.getLogger('story-reader', 'enableKeyboardNav');
+        const log = Core.getLogger(this.MODULE_NAME, 'enableKeyboardNav');
 
         document.addEventListener('keydown', (e) => {
             const target = e.target as HTMLElement;

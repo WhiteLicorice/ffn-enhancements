@@ -7,11 +7,14 @@ import { ChapterData } from '../interfaces/ChapterData';
 import { Elements } from '../enums/Elements';
 import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
 
+const MODULE_NAME = 'NativeDownloader';
+
 /**
  * Fallback strategy that scrapes the content directly from the browser.
  * Useful when FicHub is down or stale.
  */
 export const NativeDownloader: IFanficDownloader = {
+    MODULE_NAME: MODULE_NAME,
 
     async downloadAsEPUB(storyIdOrUrl: string, onProgress?: CallableFunction): Promise<void> {
         // Extract Story ID
@@ -58,7 +61,7 @@ export const NativeDownloader: IFanficDownloader = {
  */
 async function _fetchChapter(storyId: string, chapterNum: number, onProgress?: CallableFunction): Promise<string> {
     const url = `/s/${storyId}/${chapterNum}/`;
-    const log = Core.getLogger('NativeDownloader', 'fetchChapter');
+    const log = Core.getLogger(MODULE_NAME, 'fetchChapter');
     let attempt = 0;
     const maxRetries = 5;
     let backoffDelay = 5000;
@@ -100,7 +103,7 @@ async function _runScraper(
     localMetaSerializer: LocalMetadataSerializer,
     onProgress?: CallableFunction
 ): Promise<void> {
-    const log = Core.getLogger('NativeDownloader', 'runScraper');
+    const log = Core.getLogger(MODULE_NAME, 'runScraper');
     log(`Fetching from ${storyUrl}`);
 
     // 1. Metadata Scraping (Delegated to Serializer)
