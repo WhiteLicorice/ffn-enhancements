@@ -327,7 +327,16 @@ export const Core = {
                     if (xhr.status >= 200 && xhr.status < 300) {
                         const responseBody = xhr.responseText;
                         log(`[REFRESH] Response body length: ${responseBody.length}`);
-                        log(`[REFRESH] Response body preview: ${responseBody.substring(0, 500)}`);
+                        log(`[REFRESH] Response body preview (first 500 chars): ${responseBody.substring(0, 500)}`);
+                        
+                        // Log more of the response to find potential success/error messages
+                        const bodySegment = responseBody.substring(0, 3000);
+                        log(`[REFRESH] Searching for success message in first 3000 chars...`);
+                        log(`[REFRESH] Contains "Success": ${bodySegment.includes('Success')}`);
+                        log(`[REFRESH] Contains "successfully saved": ${bodySegment.includes('successfully saved')}`);
+                        log(`[REFRESH] Contains "saved": ${bodySegment.includes('saved')}`);
+                        log(`[REFRESH] Contains "panel_success": ${bodySegment.includes('panel_success')}`);
+                        log(`[REFRESH] Contains "panel_error": ${bodySegment.includes('panel_error')}`);
                         
                         // Check if response contains FFN's success message
                         // FFN returns the edit page with a success banner when save succeeds
@@ -340,6 +349,11 @@ export const Core = {
                             resolve(true);
                         } else {
                             log(`[REFRESH WARNING] POST returned ${xhr.status} but no success message found`);
+                            // Log a section around where the message panel would be
+                            const panelIndex = responseBody.indexOf('panel_');
+                            if (panelIndex !== -1) {
+                                log(`[REFRESH DEBUG] Found panel at index ${panelIndex}: ${responseBody.substring(panelIndex, panelIndex + 300)}`);
+                            }
                             resolve(false);
                         }
                     } else {
