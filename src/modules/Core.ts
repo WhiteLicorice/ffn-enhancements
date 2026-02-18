@@ -304,47 +304,68 @@ export const Core = {
             log(`[REFRESH] Form data built. Fields: selectdocid, bio (${currentContent.length} chars), action, docid`);
             log(`[REFRESH] Form data string: ${formDataString}`);
             log(`[REFRESH] Form data string length: ${formDataString.length}`);
-            // Step 5: Submit the POST request to save the document
-            log(`[REFRESH] Sending POST request to save document...`);
-            const saveResponse = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Referer': `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
-                    'Origin': 'https://www.fanfiction.net',
-                },
-                body: formDataString,
-                credentials: 'include', // Important: Include cookies for authentication
-                redirect: 'follow', // Follow redirects if any
+            // Step 5: Submit the POST request to save the document using XMLHttpRequest
+            // We use XHR instead of fetch because fetch() cannot set sec-fetch-* headers
+            // that FFN might be checking for form submissions
+            log(`[REFRESH] Sending POST request to save document using XMLHttpRequest...`);
+            
+            const saveSuccess = await new Promise<boolean>((resolve) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `https://www.fanfiction.net/docs/edit.php?docid=${docId}`, true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.withCredentials = true;
+                
+                xhr.onload = function() {
+                    log(`[REFRESH] XHR request completed with status: ${xhr.status}`);
+                    
+                    if (xhr.status === 429) {
+                        log(`POST rate limited (429) for "${title}".`);
+                        resolve(false);
+                        return;
+                    }
+                    
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        const responseBody = xhr.responseText;
+                        log(`[REFRESH] Response body length: ${responseBody.length}`);
+                        log(`[REFRESH] Response body preview: ${responseBody.substring(0, 500)}`);
+                        
+                        // Check if response contains success message
+                        const isSuccess = responseBody.includes('successfully saved') || 
+                                         responseBody.includes('Success');
+                        log(`[REFRESH] Success indicator found in response: ${isSuccess}`);
+                        
+                        if (isSuccess) {
+                            log(`[REFRESH SUCCESS] Successfully refreshed "${title}" (DocID: ${docId})`);
+                            console.log(`✓ REFRESH SUCCESS: Document ${docId} (${title}) saved successfully`);
+                            resolve(true);
+                        } else {
+                            log(`[REFRESH WARNING] POST returned ${xhr.status} but no success message found`);
+                            resolve(false);
+                        }
+                    } else {
+                        log(`[REFRESH ERROR] POST failed for "${title}": ${xhr.status}`);
+                        console.error(`REFRESH POST FAILED: Status ${xhr.status} for document ${docId}`);
+                        resolve(false);
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    log(`[REFRESH ERROR] Network error during POST for "${title}"`);
+                    console.error(`REFRESH NETWORK ERROR for document ${docId}`);
+                    resolve(false);
+                };
+                
+                xhr.send(formDataString);
             });
-
-            log(`[REFRESH] POST request sent, received response status: ${saveResponse.status}`);
-
-            // --- Rate Limit Handling on POST ---
-            if (saveResponse.status === 429) {
-                if (attempt <= MAX_RETRIES) {
-                    const waitTime = attempt * 2000; // 2s, 4s, 6s...
-                    log(`POST rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
-                    await new Promise(r => setTimeout(r, waitTime));
-                    return this.refreshPrivateDoc(docId, title, attempt + 1);
-                }
-                log(`POST rate limit exceeded for "${title}". Please wait a moment.`);
-                return false;
+            
+            if (!saveSuccess && attempt <= MAX_RETRIES) {
+                const waitTime = attempt * 2000;
+                log(`Retrying refresh for "${title}" in ${waitTime}ms... (Attempt ${attempt})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                return this.refreshPrivateDoc(docId, title, attempt + 1);
             }
-
-            if (!saveResponse.ok) {
-                log(`[REFRESH ERROR] POST failed for "${title}": ${saveResponse.status}`);
-                console.error(`REFRESH POST FAILED: Status ${saveResponse.status} for document ${docId}`);
-                return false;
-            }
-
-            // Read the response to ensure the request completes
-            const responseBody = await saveResponse.text();
-            log(`[REFRESH] Response body length: ${responseBody.length}`);
-            log(`[REFRESH] Response body preview: ${responseBody.substring(0, 500)}`);
-            log(`[REFRESH SUCCESS] Successfully refreshed "${title}" (DocID: ${docId}). Response status: ${saveResponse.status}, URL: ${saveResponse.url}`);
-            console.log(`✓ REFRESH SUCCESS: Document ${docId} (${title}) saved successfully`);
-            return true;
+            
+            return saveSuccess;
 
         } catch (err) {
             log(`[REFRESH ERROR] Error refreshing ${title}`, err);
