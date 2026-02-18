@@ -274,6 +274,8 @@ export const Core = {
                 return false;
             }
 
+            // Extract content (consistent with parseContentFromPrivateDoc method)
+            // Note: .value is for textarea elements, .innerHTML is a fallback for other elements
             const currentContent = (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
 
             // Step 3: Guardrail - Prevent saving empty content
