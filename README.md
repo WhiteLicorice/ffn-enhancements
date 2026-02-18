@@ -106,7 +106,7 @@ Contributions are welcome. Please follow these guidelines to keep the project or
 
 ### Commit Messages
 
-This project follows the semantic commits. Start your commit message with a type, followed by a colon and a brief description.
+This project follows semantic commits. Start your commit message with a type, followed by a colon and a brief description.
 
 * `feat:` A new feature
 * `fix:` A bug fix
@@ -116,4 +116,5 @@ This project follows the semantic commits. Start your commit message with a type
 * `refactor:` A code change that neither fixes a bug nor adds a feature, but makes the codebase better
 * `chore:` Build process or auxiliary tool changes
 * `meta:` License, metadata, dependency changes, etc.
+* `debug/test:` Testing, scaffolding, and debugging.
 * Example: `feat: add markdown export to doc manager`
