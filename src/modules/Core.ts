@@ -300,7 +300,9 @@ export const Core = {
             formData.append('action', 'save');
             formData.append('docid', docId);
 
+            const formDataString = formData.toString();
             log(`[REFRESH] Form data built. Fields: selectdocid, bio (${currentContent.length} chars), action, docid`);
+            log(`[REFRESH] Form data string: ${formDataString}`);
             // Step 5: Submit the POST request to save the document
             log(`[REFRESH] Sending POST request to save document...`);
             const saveResponse = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`, {
@@ -335,7 +337,9 @@ export const Core = {
             }
 
             // Read the response to ensure the request completes
-            await saveResponse.text();
+            const responseBody = await saveResponse.text();
+            log(`[REFRESH] Response body length: ${responseBody.length}`);
+            log(`[REFRESH] Response body preview: ${responseBody.substring(0, 500)}`);
             log(`[REFRESH SUCCESS] Successfully refreshed "${title}" (DocID: ${docId}). Response status: ${saveResponse.status}, URL: ${saveResponse.url}`);
             console.log(`✓ REFRESH SUCCESS: Document ${docId} (${title}) saved successfully`);
             return true;
