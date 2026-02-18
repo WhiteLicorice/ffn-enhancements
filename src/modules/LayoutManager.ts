@@ -23,6 +23,12 @@ export const LayoutManager = {
     FLUID_CLASS: 'fichub-fluid-mode',
 
     /**
+     * Observer used to apply Fluid Mode class as soon as <body> becomes available
+     * when running at document-start.
+     */
+    bodyObserver: null as MutationObserver | null,
+
+    /**
      * The Delegate used for DOM retrieval (if specific elements are needed).
      */
     delegate: LayoutManagerDelegate,
@@ -56,6 +62,15 @@ export const LayoutManager = {
         // FFN lacks a viewport meta tag, which breaks zooming/reflow on many devices.
         // We inject it permanently to modernize the page behavior.
         this.injectViewportMeta();
+    },
+
+    /**
+     * Primes Fluid Mode styles at document-start to prevent FOUC.
+     * Safe to call before DOM is fully ready.
+     */
+    primeFluidMode: function (): void {
+        this.injectFluidStyles();
+        this.applyFluidClass(this.isFluid);
     },
 
     /**
@@ -101,24 +116,59 @@ export const LayoutManager = {
      * * @param enable - True to enable fluid mode, False to revert to default.
      */
     setFluidMode: function (enable: boolean): void {
-        const body = document.body;
-
         // Ensure CSS styles exist before we try to use them
         this.injectFluidStyles();
+        this.applyFluidClass(enable);
 
         // Remove the manual width control element if it exists (conflicts with our CSS)
         this.removeWidthControl();
+    },
+
+    /**
+     * Applies or removes the Fluid Mode class on body, with a body observer fallback
+     * for early document-start execution.
+     * @param enable - True to add class, False to remove class.
+     */
+    applyFluidClass: function (enable: boolean): void {
+        const body = document.body;
+
+        if (this.bodyObserver) {
+            this.bodyObserver.disconnect();
+            this.bodyObserver = null;
+        }
+
+        if (body) {
+            if (enable) {
+                if (!body.classList.contains(this.FLUID_CLASS)) {
+                    body.classList.add(this.FLUID_CLASS);
+                    this.log('applyFluidClass', 'Fluid mode enabled (Class added).');
+                }
+            } else if (body.classList.contains(this.FLUID_CLASS)) {
+                body.classList.remove(this.FLUID_CLASS);
+                this.log('applyFluidClass', 'Fluid mode disabled (Class removed).');
+            }
+            return;
+        }
 
         if (enable) {
-            if (!body.classList.contains(this.FLUID_CLASS)) {
-                body.classList.add(this.FLUID_CLASS);
-                this.log('setFluidMode', 'Fluid mode enabled (Classes added).');
-            }
-        } else {
-            if (body.classList.contains(this.FLUID_CLASS)) {
-                body.classList.remove(this.FLUID_CLASS);
-                this.log('setFluidMode', 'Fluid mode disabled (Classes removed).');
-            }
+            this.bodyObserver = new MutationObserver(() => {
+                const currentBody = document.body;
+                if (!currentBody) {
+                    return;
+                }
+
+                if (!currentBody.classList.contains(this.FLUID_CLASS)) {
+                    currentBody.classList.add(this.FLUID_CLASS);
+                    this.log('applyFluidClass', 'Fluid mode enabled on body creation.');
+                }
+
+                if (this.bodyObserver) {
+                    this.bodyObserver.disconnect();
+                    this.bodyObserver = null;
+                }
+            });
+
+            this.bodyObserver.observe(document.documentElement, { childList: true });
         }
     },
 
