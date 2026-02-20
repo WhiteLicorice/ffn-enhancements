@@ -376,7 +376,7 @@ function _injectFluidStyles(): void {
     style.id = STYLE_TAG_ID;
     style.textContent = css;
     if (document.head) {
-        document.appendChild(style);
+        document.head.appendChild(style);
     } else {
         document.documentElement.appendChild(style); // shouldn't happen
     }
