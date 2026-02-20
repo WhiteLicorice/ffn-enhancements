@@ -16,7 +16,7 @@
     "@types/turndown": "^5.0.6",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
-    "vite-plugin-monkey": "^7.1.9"
+    "vite-plugin-monkey": "^5.0.9"
   },
   "dependencies": {
     "file-saver": "^2.0.4",
