@@ -28,11 +28,10 @@ Core.log('Router', 'main', `Here at https://www.fanfiction.net${path}`, path);
 // Order of registration determines execution order and CSS cascade layering.
 // Structural modules (layout, spacing) must be registered before theme modules (colors).
 //
-// Arrow function adapters are used intentionally: they close over the module object
-// and guarantee correct 'this' binding regardless of how EarlyBoot invokes the methods.
-// This decouples module implementations from the ISitewideModule interface — modules
-// do not need to import or declare conformance to EarlyBoot.
-// This shit is so ass, but TypeScript will be TypeScripting.
+// Modules are registered directly with EarlyBoot. LayoutManager is registered first
+// so that structural layout and spacing are established before any theme-level styles.
+// This keeps layout concerns decoupled from higher-level visual customization.
+//
 EarlyBoot.register(LayoutManager);
 EarlyBoot.prime();
 
