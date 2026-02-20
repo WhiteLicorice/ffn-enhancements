@@ -39,6 +39,17 @@ export const DarkTheme: ITheme = {
     preserveSelectors: ['img', 'canvas', 'video', '#top'],
 
     // Layer 4: targeted corrections for elements the filter layers don't
-    // handle perfectly. Populated in subsequent commits as issues are audited.
-    userCss: '',
+    // handle perfectly.
+    userCss: `
+        /* img.cimage — FFN story cover images.
+           The generic \`img\` preserveSelectors rule already re-inverts all images,
+           but FFN's own stylesheet may apply conflicting styles to img.cimage
+           (e.g. opacity, filter, or compositing properties) at higher specificity.
+           This explicit rule uses !important to guarantee the re-inversion is
+           applied regardless of any FFN CSS, preventing the washed-out appearance
+           caused by a partial or missed double-invert. */
+        body.ffn-theme img.cimage {
+            filter: invert(1) hue-rotate(180deg) !important;
+        }
+    `,
 };
