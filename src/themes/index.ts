@@ -1,6 +1,6 @@
 // themes/index.ts
 
-import { DarkTheme } from './dark';
+import { DarkTheme } from './DarkTheme';
 import type { ITheme } from '../interfaces/ITheme';
 
 /**
