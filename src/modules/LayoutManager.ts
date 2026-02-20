@@ -70,7 +70,7 @@ export const LayoutManager = {
 
     /**
      * Toggles the Full Width / Fluid Layout mode.
-     * * @returns The new state of the layout (true = Fluid, false = Fixed).
+     * @returns The new state of the layout (true = Fluid, false = Fixed).
      */
     toggleFluidMode(): boolean {
         _isFluid = !_isFluid;
@@ -130,7 +130,7 @@ function _log(funcName: string, msg: string): void {
 
 /**
  * Toggles the fluid mode class on the document body and ensures styles are injected.
- * * @param enable - True to enable fluid mode, False to revert to default.
+ * @param enable - True to enable fluid mode, False to revert to default.
  */
 function _setFluidMode(enable: boolean): void {
     // Ensure CSS styles exist before we try to use them
