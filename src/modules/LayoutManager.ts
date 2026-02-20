@@ -7,6 +7,11 @@ import { FFNLogger } from './FFNLogger';
 // ─── Module-level Constants ────────────────────────────────────────────────────
 
 /**
+ * Module name used for logging.
+ */
+const MODULE_NAME = 'LayoutManager';
+
+/**
  * The ID used for the injected style tag to prevent duplicates.
  */
 const STYLE_TAG_ID = 'ffn-enhancements-layout-styles';
@@ -125,7 +130,7 @@ export const LayoutManager = {
  * @param msg - The message to log.
  */
 function _log(funcName: string, msg: string): void {
-    FFNLogger.log('LayoutManager', funcName, msg);
+    FFNLogger.log(MODULE_NAME, funcName, msg);
 }
 
 /**

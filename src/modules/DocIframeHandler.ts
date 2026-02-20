@@ -8,6 +8,8 @@ import { SimpleMarkdownParser } from './SimpleMarkdownParser';
  * Handles the attachment of Markdown-aware paste listeners.
  */
 export const DocIframeHandler = {
+    MODULE_NAME: 'DocIframeHandler',
+
     /** * Stores the specific event listener function attached to a specific DOM element.
      * This allows us to retrieve and remove the exact anonymous function later.
      */
@@ -19,7 +21,7 @@ export const DocIframeHandler = {
      * @param iframe - The iframe element to enhance.
      */
     attachMarkdownPasterListener: function (iframe: HTMLIFrameElement) {
-        const log = Core.getLogger('DocIframeHandler', 'attach');
+        const log = Core.getLogger(this.MODULE_NAME, 'attach');
 
         const setup = () => {
             const doc = iframe.contentDocument;
@@ -60,7 +62,7 @@ export const DocIframeHandler = {
      * If Markdown is detected, it parses it to HTML and inserts it.
      */
     handlePaste: function (e: ClipboardEvent, iframe: HTMLIFrameElement) {
-        const log = Core.getLogger('DocIframeHandler', 'handlePaste');
+        const log = Core.getLogger(this.MODULE_NAME, 'handlePaste');
         const text = e.clipboardData?.getData('text/plain');
 
         if (text && SimpleMarkdownParser.isMarkdown(text)) {

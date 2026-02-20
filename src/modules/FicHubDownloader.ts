@@ -10,18 +10,21 @@ import { FicHubMetadataSerializer } from '../serializers/FicHubMetadataSerialize
 import { Globals } from '../enums/Globals';
 import JSZip from 'jszip';
 
+const MODULE_NAME = 'FicHubDownloader';
+
 /**
  * Concrete implementation of the Downloader strategy using the FicHub API.
  * Handles the external API communication, error parsing, and final file retrieval.
  */
 export const FicHubDownloader: IFanficDownloader = {
+    MODULE_NAME: MODULE_NAME,
 
     /**
      * Downloads the story as an EPUB (E-book) file.
      * INJECTS LOCAL COVER ART into the FicHub EPUB before saving.
      */
     downloadAsEPUB: async function (storyUrl: string, onProgress?: CallableFunction): Promise<void> {
-        const log = Core.getLogger('FicHubDownloader', 'downloadAsEPUB');
+        const log = Core.getLogger(this.MODULE_NAME, 'downloadAsEPUB');
 
         try {
             // 1. Get the download URL from FicHub API
@@ -99,7 +102,7 @@ export function checkFicHubFreshness(
     storyUrl: string,
     localMeta: LocalMetadataSerializer
 ): Promise<FicHubStatus> {
-    const log = Core.getLogger('FicHubDownloader', 'checkFreshness');
+    const log = Core.getLogger(MODULE_NAME, 'checkFreshness');
 
     return new Promise((resolve) => {
         const apiUrl = `https://fichub.net/api/v0/meta?q=${encodeURIComponent(storyUrl)}`;
@@ -176,7 +179,7 @@ export function checkFicHubFreshness(
  * Simply redirects the browser to the file.
  */
 function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgress?: CallableFunction): Promise<void> {
-    const log = Core.getLogger('FicHubDownloader', 'processApiRequest');
+    const log = Core.getLogger(MODULE_NAME, 'processApiRequest');
 
     return _getFicHubDownloadUrl(storyUrl, format, onProgress)
         .then(dlUrl => {
@@ -194,7 +197,7 @@ function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgre
  * Contacts the FicHub API to generate the file and retrieve the download URL.
  */
 function _getFicHubDownloadUrl(storyUrl: string, format: SupportedFormats, onProgress?: CallableFunction): Promise<string> {
-    const log = Core.getLogger('FicHubDownloader', 'getDownloadUrl');
+    const log = Core.getLogger(MODULE_NAME, 'getDownloadUrl');
     const apiUrl = `https://fichub.net/api/v0/epub?q=${encodeURIComponent(storyUrl)}`;
 
     log(`Initiating API request for ${format}: ${apiUrl}`);
@@ -257,7 +260,7 @@ function _fetchBlob(url: string): Promise<Blob> {
  * Only injects the thumbnail; does not create a cover page.
  */
 async function _injectCoverIntoEpub(epubBlob: Blob, coverBlob: Blob): Promise<Blob> {
-    const log = Core.getLogger('FicHubDownloader', 'injectCover');
+    const log = Core.getLogger(MODULE_NAME, 'injectCover');
     const zip = await JSZip.loadAsync(epubBlob);
 
     // 1. Find the OPF file location from container.xml

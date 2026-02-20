@@ -12,6 +12,8 @@ import { SupportedFormats } from '../enums/SupportedFormats';
  * the actual download logic to specific strategies (FicHub or Native).
  */
 export const StoryDownloader = {
+    MODULE_NAME: 'story-downloader',
+
     /** Flag tracking if a download request is currently in progress. */
     isDownloading: false,
 
@@ -34,7 +36,7 @@ export const StoryDownloader = {
      * Uses the Core Delegate system to find the injection point.
      */
     init: function () {
-        const log = Core.getLogger('story-downloader', 'init');
+        const log = Core.getLogger(this.MODULE_NAME, 'init');
         Core.onDomReady(() => {
             const header = Core.getElement(Elements.PROFILE_HEADER);
             if (header) {
@@ -107,7 +109,7 @@ export const StoryDownloader = {
      * @param parentGroup - The header container element where the dropdown should be injected.
      */
     injectDropdown: function (parentGroup: HTMLElement) {
-        const log = Core.getLogger('story-downloader', 'injectDropdown');
+        const log = Core.getLogger(this.MODULE_NAME, 'injectDropdown');
 
         if (this.abortController) {
             this.abortController.abort();
@@ -188,7 +190,7 @@ export const StoryDownloader = {
      * @param formatId - The requested format.
      */
     openDownloadModal: function (formatId: SupportedFormats) {
-        const log = Core.getLogger('story-downloader', 'openDownloadModal');
+        const log = Core.getLogger(this.MODULE_NAME, 'openDownloadModal');
 
         if (!document.getElementById('ffe-download-modal')) {
             this.injectModal();
@@ -276,7 +278,7 @@ export const StoryDownloader = {
      * Executes the download task based on the user's selection from the Modal.
      */
     processDownload: async function (formatId: SupportedFormats, strategy: 'native' | 'fichub') {
-        const log = Core.getLogger('story-downloader', 'processDownload');
+        const log = Core.getLogger(this.MODULE_NAME, 'processDownload');
 
         if (!this.mainBtn) return;
         this.mainBtn.disabled = true;
@@ -314,7 +316,7 @@ export const StoryDownloader = {
      * Helper to execute the FicHub strategy.
      */
     runFicHubStrategy: async function (formatId: SupportedFormats, url: string, cb: CallableFunction) {
-        const log = Core.getLogger('story-downloader', 'runFicHubStrategy');
+        const log = Core.getLogger(this.MODULE_NAME, 'runFicHubStrategy');
         try {
             switch (formatId) {
                 case SupportedFormats.EPUB: await FicHubDownloader.downloadAsEPUB(url, cb); break;

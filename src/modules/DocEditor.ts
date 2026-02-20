@@ -10,6 +10,8 @@ import { DocIframeHandler } from './DocIframeHandler';
  * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).
  */
 export const DocEditor = {
+    MODULE_NAME: 'doc-editor',
+
     /** Cached reference to the editor toolbar element. */
     toolbar: null as HTMLElement | null,
 
@@ -21,7 +23,7 @@ export const DocEditor = {
      * Uses MutationObserver to react instantly when the toolbar is injected, preventing UI flicker.
      */
     init: function () {
-        const log = Core.getLogger('doc-editor', 'init');
+        const log = Core.getLogger(this.MODULE_NAME, 'init');
 
         Core.onDomReady(() => {
             // 1. Fast Path: Check if it's already there
@@ -85,7 +87,7 @@ export const DocEditor = {
         if (this.toolbar) {
             this.toolbar.appendChild(button);
         } else {
-            Core.log('doc-editor', 'injectToolbarButton', 'Toolbar reference missing.');
+            Core.log(this.MODULE_NAME, 'injectToolbarButton', 'Toolbar reference missing.');
         }
     },
 
@@ -93,7 +95,7 @@ export const DocEditor = {
      * Locates the Editor Iframe and delegates paste handling to the shared module.
      */
     setupPasteHandler: function () {
-        const log = Core.getLogger('doc-editor', 'setupPasteHandler');
+        const log = Core.getLogger(this.MODULE_NAME, 'setupPasteHandler');
 
         const iframe = Core.getElement(Elements.EDITOR_TEXT_AREA_IFRAME) as HTMLIFrameElement;
 
@@ -149,7 +151,7 @@ export const DocEditor = {
      * Uses FileSaver to trigger the browser download.
      */
     exportCurrentDoc: function () {
-        const log = Core.getLogger('doc-editor', 'exportCurrentDoc');
+        const log = Core.getLogger(this.MODULE_NAME, 'exportCurrentDoc');
         const title = this.getTitle();
 
         try {

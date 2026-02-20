@@ -10,13 +10,15 @@ import { DocIframeHandler } from './DocIframeHandler';
  * Module responsible for enhancing the Document Manager page (`/docs/docs.php`).
  */
 export const DocManager = {
+    MODULE_NAME: 'doc-manager',
+
     LIFE_COL_IDX: 5,
 
     /**
      * Initializes the module by checking for the document table and observing for the Copy-N-Paste editor.
      */
     init: function () {
-        const log = Core.getLogger('doc-manager', 'init');
+        const log = Core.getLogger(this.MODULE_NAME, 'init');
 
         Core.onDomReady(() => {
             // 1. Fast Path: Check if table exists immediately
@@ -57,7 +59,7 @@ export const DocManager = {
      * Waiting strategy for the main Document Table.
      */
     waitForTable: function () {
-        const log = Core.getLogger('doc-manager', 'waitForTable');
+        const log = Core.getLogger(this.MODULE_NAME, 'waitForTable');
         log('Table not found. Setting up MutationObserver...');
 
         const observer = new MutationObserver((_mutations, obs) => {
@@ -89,7 +91,7 @@ export const DocManager = {
      * Finds the "Document Manager" label or falls back to the main content wrapper.
      */
     injectBulkButton: function () {
-        const log = Core.getLogger('doc-manager', 'injectBulkButton');
+        const log = Core.getLogger(this.MODULE_NAME, 'injectBulkButton');
         log('Attempting to inject UI...');
 
         let container = Core.getElement(Elements.DOC_MANAGER_LABEL);
@@ -128,7 +130,7 @@ export const DocManager = {
      * Positioned next to the "Download All" button.
      */
     injectRefreshAllButton: function () {
-        const log = Core.getLogger('doc-manager', 'injectRefreshAllButton');
+        const log = Core.getLogger(this.MODULE_NAME, 'injectRefreshAllButton');
         log('Attempting to inject Refresh All button...');
 
         let container = Core.getElement(Elements.DOC_MANAGER_LABEL);
@@ -167,7 +169,7 @@ export const DocManager = {
      * Adds an "Export" button to each row for individual downloading.
      */
     injectTableColumn: function () {
-        const log = Core.getLogger('doc-manager', 'injectTableColumn');
+        const log = Core.getLogger(this.MODULE_NAME, 'injectTableColumn');
 
         const table = Core.getElement(Elements.DOC_TABLE);
         if (!table) {
@@ -257,7 +259,7 @@ export const DocManager = {
      * @param context - Context string for logging (e.g., "single refresh", "bulk pass 1").
      */
     updateLifeColumn: function (row: HTMLTableRowElement, context: string = 'refresh') {
-        const log = Core.getLogger('doc-manager', 'updateLifeColumn');
+        const log = Core.getLogger(this.MODULE_NAME, 'updateLifeColumn');
         try {
             // Life column is the 6th column (index 5)
             // Structure: Title | Size | Updated | Life | Export | Refresh
@@ -278,7 +280,7 @@ export const DocManager = {
      * @param title - The title of the document.
      */
     runSingleExport: async function (btnElement: HTMLElement, docId: string, title: string) {
-        const log = Core.getLogger('doc-manager', 'runSingleExport');
+        const log = Core.getLogger(this.MODULE_NAME, 'runSingleExport');
         const originalText = btnElement.innerText;
 
         btnElement.innerText = "...";
@@ -310,7 +312,7 @@ export const DocManager = {
      * @param title - The title of the document.
      */
     runSingleRefresh: async function (btnElement: HTMLElement, docId: string, title: string) {
-        const log = Core.getLogger('doc-manager', 'runSingleRefresh');
+        const log = Core.getLogger(this.MODULE_NAME, 'runSingleRefresh');
         const originalText = btnElement.innerText;
 
         btnElement.innerText = "...";
@@ -356,7 +358,7 @@ export const DocManager = {
      * @param e - The mouse event from the bulk button.
      */
     runBulkExport: async function (e: MouseEvent) {
-        const log = Core.getLogger('doc-manager', 'runBulkExport');
+        const log = Core.getLogger(this.MODULE_NAME, 'runBulkExport');
 
         log('Export initiated.');
         const btn = e.target as HTMLButtonElement;
@@ -493,7 +495,7 @@ export const DocManager = {
      * @param e - The mouse event from the bulk button.
      */
     runBulkRefresh: async function (e: MouseEvent) {
-        const log = Core.getLogger('doc-manager', 'runBulkRefresh');
+        const log = Core.getLogger(this.MODULE_NAME, 'runBulkRefresh');
 
         log('Bulk refresh initiated.');
         const btn = e.target as HTMLButtonElement;
