@@ -47,6 +47,16 @@ const STORAGE_KEY = 'ffn-enhancements-theme';
 const GM_STORAGE_KEY = 'ffnEnhancementsTheme';
 
 /**
+ * DEBUG/TEST: Force dark mode unconditionally, bypassing all storage and
+ * preference logic in prime().
+ * Set to true to verify that the CSS injection strategy (structural CSS +
+ * variable block + THEME_CLASS on body) works as intended, independently of
+ * the localStorage / prefers-color-scheme resolution path.
+ * Must be false in production.
+ */
+const FORCE_DARK_MODE = false;
+
+/**
  * Full structural CSS for all themes.
  * Every color value is a CSS custom property (var(--ffn-*)) so that switching
  * themes at runtime requires only replacing the variable block — these rules
@@ -363,6 +373,17 @@ export const ThemeManager = {
         // The structural CSS is always injected — it is inert (selectors never
         // match) until THEME_CLASS is applied to <body>.
         _injectStructuralCss();
+
+        // TEST: FORCE_DARK_MODE bypasses all storage and preference logic.
+        // Flip to true to verify that the CSS injection strategy works correctly
+        // before debugging the storage/preference resolution path.
+        if (FORCE_DARK_MODE) {
+            _log('prime', '[TEST] FORCE_DARK_MODE is enabled — applying dark theme unconditionally.');
+            _activeTheme = 'dark';
+            _upsertVariableBlock(THEMES['dark']);
+            _applyThemeClass(true);
+            return;
+        }
 
         const stored = _readStoredThemeRaw();
 
