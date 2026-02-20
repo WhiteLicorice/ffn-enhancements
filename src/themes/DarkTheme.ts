@@ -38,6 +38,13 @@ export const DarkTheme: ITheme = {
     // inverted-dark background. Meaningless when isDarkTheme is false.
     preserveSelectors: ['img', 'canvas', 'video', '#top', '.cimage'],
 
+    // TinyMCE 4/5 (used on FFN for the review box and document/bio editors) creates
+    // editor iframes following the pattern <textareaId>_ifr — e.g. 'review_review_ifr',
+    // 'bio_ifr'.  CSS filter on the parent document's body does not penetrate into
+    // separate browsing contexts (iframe documents) in all browsers, so dark mode
+    // CSS must be injected directly into each matching iframe's contentDocument.
+    iframeSelectors: ['iframe[id$="_ifr"]'],
+
     // Layer 4: targeted corrections for elements the filter layers don't
     // handle perfectly.
     userCss: ``,

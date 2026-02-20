@@ -35,6 +35,13 @@ const FILTER_STYLE_TAG_ID = 'ffn-enhancements-theme-filters';
 const USER_CSS_STYLE_TAG_ID = 'ffn-enhancements-theme-user';
 
 /**
+ * ID of the <style> tag injected into TinyMCE (and other rich-editor) iframe
+ * documents to apply dark-mode inversion inside the iframe's own browsing
+ * context.  Each matching iframe gets one tag with this ID in its own <head>.
+ */
+const IFRAME_STYLE_TAG_ID = 'ffn-enhancements-theme-iframe';
+
+/**
  * The localStorage key used to persist an explicit user theme preference.
  * Read synchronously at prime()-time to prevent FOUC.
  * A stored value of null means "no explicit preference — follow the system".
@@ -71,6 +78,20 @@ let _activeTheme = 'default';
  * during document-start execution, before the DOM is fully parsed.
  */
 let _bodyObserver: MutationObserver | null = null;
+
+/**
+ * Observer watching for dynamically spawned TinyMCE (or other rich-editor)
+ * iframes matching the active theme's iframeSelectors.
+ * Active while a non-default theme with at least one iframeSelector is applied.
+ * Disconnected and nulled when the theme reverts to 'default' or changes.
+ */
+let _iframeObserver: MutationObserver | null = null;
+
+/**
+ * Set of iframe elements that have received direct dark-mode CSS injection into
+ * their contentDocument.  Used for targeted cleanup when the theme changes.
+ */
+let _trackedIframes: Set<HTMLIFrameElement> = new Set();
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
@@ -142,12 +163,14 @@ export const ThemeManager = {
      * Reconciles the prime-phase preference with the persisted GM storage value
      * (catches cross-session changes) and wires up the system color-scheme
      * listener so that the theme tracks OS changes when no explicit preference
-     * is set.
+     * is set.  Also starts the iframe injection watcher for themes that target
+     * rich-editor iframes (e.g. TinyMCE).
      */
     init(): void {
         _log('init', 'Starting init sequence...');
         _reconcileWithGmStorage();
         _watchSystemColorScheme();
+        _syncIframeInjection();
     },
 
     /**
@@ -168,6 +191,7 @@ export const ThemeManager = {
         _applyTheme(name);
         _writeStoredTheme(name);
         _writeGmStorage(name);
+        _syncIframeInjection();
     },
 
     /**
@@ -423,6 +447,206 @@ function _removeUserCss(): void {
     }
 }
 
+// ─── Iframe CSS Injection (TinyMCE / Rich Editors) ────────────────────────────
+
+/**
+ * Generates the CSS to inject directly into a TinyMCE (or other rich-editor)
+ * iframe's contentDocument when a dark theme is active.
+ *
+ * CSS filter on an ancestor element may not propagate into the separate browsing
+ * context of an <iframe> in all browsers.  Injecting inversion CSS directly into
+ * the iframe's own document is the only reliable cross-browser fix — this is the
+ * same approach used by Dark Reader.
+ *
+ * The generated CSS mirrors the theme's Layer 1 (body inversion) and Layer 2–3
+ * (preserveSelectors re-inversion) rules, adapted for the iframe's own document
+ * (selectors are relative to the iframe's root, so no THEME_CLASS prefix is used).
+ *
+ * @param theme - The active ITheme data object.
+ * @returns A CSS string to inject into the iframe document, or '' if not needed.
+ */
+function _buildIframeCss(theme: ITheme): string {
+    if (!theme.isDarkTheme) {
+        return '';
+    }
+
+    const parts: string[] = [
+        `/* FFN Enhancements: Dark mode (${theme.name}) — injected into iframe */`,
+        `body {\n    filter: invert(1) hue-rotate(180deg) !important;\n}`,
+    ];
+
+    if (theme.preserveSelectors.length > 0) {
+        const selectors = theme.preserveSelectors.join(',\n');
+        parts.push(`${selectors} {\n    filter: invert(1) hue-rotate(180deg) !important;\n}`);
+    }
+
+    return parts.join('\n\n');
+}
+
+/**
+ * Injects or updates the dark-mode inversion <style> tag inside a single
+ * iframe's contentDocument.  If the iframe has not yet loaded, waits for its
+ * 'load' event before injecting.
+ *
+ * @param iframe - The target <iframe> element.
+ * @param css    - The CSS string to inject.
+ */
+function _injectCssIntoIframe(iframe: HTMLIFrameElement, css: string): void {
+    const inject = () => {
+        try {
+            const doc = iframe.contentDocument;
+            if (!doc || !doc.head) {
+                return;
+            }
+
+            let styleTag = doc.getElementById(IFRAME_STYLE_TAG_ID) as HTMLStyleElement | null;
+            if (styleTag) {
+                styleTag.textContent = css;
+            } else {
+                styleTag = doc.createElement('style');
+                styleTag.id = IFRAME_STYLE_TAG_ID;
+                styleTag.textContent = css;
+                doc.head.appendChild(styleTag);
+            }
+
+            _trackedIframes.add(iframe);
+            _log('injectCssIntoIframe', `Injected dark mode CSS into iframe "${iframe.id}".`);
+        } catch (e) {
+            // Cross-origin iframes will throw on contentDocument access; silently skip.
+            _log('injectCssIntoIframe', `Could not access iframe "${iframe.id}": ${e}`);
+        }
+    };
+
+    if (iframe.contentDocument?.readyState === 'complete') {
+        inject();
+    } else {
+        iframe.addEventListener('load', inject, { once: true });
+    }
+}
+
+/**
+ * Removes the dark-mode <style> tag from a single iframe's contentDocument
+ * and removes the iframe from the tracked set.
+ *
+ * @param iframe - The iframe to clean up.
+ */
+function _removeCssFromIframe(iframe: HTMLIFrameElement): void {
+    try {
+        const doc = iframe.contentDocument;
+        if (doc) {
+            const styleTag = doc.getElementById(IFRAME_STYLE_TAG_ID);
+            if (styleTag) {
+                styleTag.remove();
+                _log('removeCssFromIframe', `Removed dark mode CSS from iframe "${iframe.id}".`);
+            }
+        }
+    } catch {
+        // Cross-origin or detached iframe — nothing to clean up.
+    }
+    _trackedIframes.delete(iframe);
+}
+
+/**
+ * Tears down all active iframe CSS injection:
+ * - Disconnects the MutationObserver watching for new iframes.
+ * - Removes injected <style> tags from all tracked iframes.
+ * - Clears the tracked iframe set.
+ */
+function _clearIframeInjections(): void {
+    if (_iframeObserver) {
+        _iframeObserver.disconnect();
+        _iframeObserver = null;
+    }
+
+    for (const iframe of _trackedIframes) {
+        _removeCssFromIframe(iframe);
+    }
+    _trackedIframes.clear();
+}
+
+/**
+ * Starts the MutationObserver that watches for TinyMCE (or other rich-editor)
+ * iframes matching the active theme's iframeSelectors, and injects dark-mode
+ * CSS into each one's contentDocument.
+ *
+ * Also performs an immediate scan of any matching iframes already in the DOM
+ * at call time (covers the case where the editor was initialised before init()).
+ *
+ * @param theme - The ITheme data object whose iframeSelectors to monitor.
+ */
+function _watchDynamicIframes(theme: ITheme): void {
+    const selectors = theme.iframeSelectors;
+    if (!selectors || selectors.length === 0) {
+        return;
+    }
+
+    const iframeCss = _buildIframeCss(theme);
+    if (!iframeCss) {
+        return;
+    }
+
+    // Inject into any iframes already present in the DOM at init time.
+    for (const selector of selectors) {
+        try {
+            document.querySelectorAll<HTMLIFrameElement>(selector).forEach(iframe => {
+                _injectCssIntoIframe(iframe, iframeCss);
+            });
+        } catch (e) {
+            _log('watchDynamicIframes', `Invalid selector "${selector}": ${e}`);
+        }
+    }
+
+    // Observe the document for dynamically spawned iframes (TinyMCE is lazy-loaded
+    // — it initialises after user interaction, not at page load).
+    if (_iframeObserver) {
+        _iframeObserver.disconnect();
+    }
+
+    _iframeObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            for (const node of mutation.addedNodes) {
+                if (!(node instanceof HTMLIFrameElement)) {
+                    continue;
+                }
+
+                const matches = selectors.some(selector => {
+                    try {
+                        return node.matches(selector);
+                    } catch {
+                        return false;
+                    }
+                });
+
+                if (matches) {
+                    _injectCssIntoIframe(node, iframeCss);
+                }
+            }
+        }
+    });
+
+    _iframeObserver.observe(
+        document.body ?? document.documentElement,
+        { childList: true, subtree: true },
+    );
+
+    _log('watchDynamicIframes', `Watching for iframes: ${selectors.join(', ')}`);
+}
+
+/**
+ * Synchronises iframe CSS injection with the current _activeTheme.
+ * Tears down any existing injection and restarts it for the new theme,
+ * or clears it entirely when reverting to 'default'.
+ *
+ * Called after any event that changes _activeTheme: init(), setTheme(),
+ * and the prefers-color-scheme change listener.
+ */
+function _syncIframeInjection(): void {
+    _clearIframeInjections();
+    if (_activeTheme !== 'default' && _activeTheme in THEMES) {
+        _watchDynamicIframes(THEMES[_activeTheme]);
+    }
+}
+
 /**
  * Applies or clears a theme by name.
  * For non-default themes: checks for selector conflicts, upserts filter CSS
@@ -645,6 +869,7 @@ function _watchSystemColorScheme(): void {
         _log('watchSystemColorScheme', `System color scheme changed. Applying "${target}".`);
         _activeTheme = target;
         _applyTheme(target);
+        _syncIframeInjection();
         // Intentionally do NOT write to localStorage/GM — we want prime() to keep
         // checking the system preference on subsequent page loads.
     });

@@ -78,4 +78,22 @@ export interface ITheme {
      * sufficient for this theme.
      */
     readonly userCss: string;
+
+    /**
+     * CSS selectors (evaluated in the parent document) that match <iframe>
+     * elements whose contentDocument should receive direct CSS injection.
+     *
+     * CSS filter on an ancestor element may not propagate into separate browsing
+     * contexts (iframe documents) in all browsers.  For iframes hosting rich
+     * editors — such as TinyMCE, which FFN uses for the review box and document
+     * editor — ThemeManager.init() uses a MutationObserver to detect matching
+     * iframes and injects the theme's inversion CSS directly into each iframe's
+     * contentDocument.head.
+     *
+     * TinyMCE 4/5 follows the naming convention <originalTextareaId>_ifr for its
+     * editor iframes (e.g. 'review_review_ifr', 'bio_ifr').
+     *
+     * An empty array means no iframes require direct CSS injection for this theme.
+     */
+    readonly iframeSelectors: readonly string[];
 }
