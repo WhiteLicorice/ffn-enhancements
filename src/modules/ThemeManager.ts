@@ -42,6 +42,14 @@ const USER_CSS_STYLE_TAG_ID = 'ffn-enhancements-theme-user';
 const IFRAME_STYLE_TAG_ID = 'ffn-enhancements-theme-iframe';
 
 /**
+ * The CSS filter value used for both the page-level inversion (Layer 1) and
+ * the element-level re-inversion (Layers 2–3, preserve/invertSelectors).
+ * Centralised here so both _buildFilterCss and _buildIframeCss stay in sync
+ * without duplicating the string.
+ */
+const INVERT_FILTER = 'invert(1) hue-rotate(180deg)';
+
+/**
  * The localStorage key used to persist an explicit user theme preference.
  * Read synchronously at prime()-time to prevent FOUC.
  * A stored value of null means "no explicit preference — follow the system".
@@ -308,7 +316,7 @@ function _buildFilterCss(theme: ITheme): string {
         parts.push(
             `    /* ── Layer 1: Base inversion (html root) ── */\n` +
             `    html.${THEME_CLASS} {\n` +
-            `        filter: invert(1) hue-rotate(180deg);\n` +
+            `        filter: ${INVERT_FILTER};\n` +
             `    }`,
         );
     }
@@ -323,7 +331,7 @@ function _buildFilterCss(theme: ITheme): string {
         parts.push(
             `    /* ── invertSelectors: Force inversion (light theme) ── */\n` +
             `${selectors} {\n` +
-            `        filter: invert(1) hue-rotate(180deg);\n` +
+            `        filter: ${INVERT_FILTER};\n` +
             `    }`,
         );
     }
@@ -339,7 +347,7 @@ function _buildFilterCss(theme: ITheme): string {
         parts.push(
             `    /* ── Layers 2-3: Preserve original appearance ── */\n` +
             `${selectors} {\n` +
-            `        filter: invert(1) hue-rotate(180deg);\n` +
+            `        filter: ${INVERT_FILTER};\n` +
             `    }`,
         );
     }
@@ -350,7 +358,7 @@ function _buildFilterCss(theme: ITheme): string {
 
     return (
         `/* --- FFN Enhancements: Theme Filter Rules (${theme.name}) ---\n` +
-        `   Scoped under body.${THEME_CLASS} — inert when no theme is active. */\n\n` +
+        `   Scoped under html.${THEME_CLASS} — inert when no theme is active. */\n\n` +
         parts.join('\n\n')
     );
 }
@@ -481,12 +489,12 @@ function _buildIframeCss(theme: ITheme): string {
 
     const parts: string[] = [
         `/* FFN Enhancements: Dark mode (${theme.name}) — injected into iframe */`,
-        `body {\n    filter: invert(1) hue-rotate(180deg) !important;\n}`,
+        `body {\n    filter: ${INVERT_FILTER} !important;\n}`,
     ];
 
     if (theme.preserveSelectors.length > 0) {
         const selectors = theme.preserveSelectors.join(',\n');
-        parts.push(`${selectors} {\n    filter: invert(1) hue-rotate(180deg) !important;\n}`);
+        parts.push(`${selectors} {\n    filter: ${INVERT_FILTER} !important;\n}`);
     }
 
     return parts.join('\n\n');
@@ -614,20 +622,35 @@ function _watchDynamicIframes(theme: ITheme): void {
     _iframeObserver = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
             for (const node of mutation.addedNodes) {
-                if (!(node instanceof HTMLIFrameElement)) {
+                if (!(node instanceof Element)) {
                     continue;
                 }
 
-                const matches = selectors.some(selector => {
-                    try {
-                        return node.matches(selector);
-                    } catch {
-                        return false;
+                // Check the added node itself if it is an iframe.
+                if (node instanceof HTMLIFrameElement) {
+                    const matches = selectors.some(selector => {
+                        try {
+                            return node.matches(selector);
+                        } catch {
+                            return false;
+                        }
+                    });
+                    if (matches) {
+                        _injectCssIntoIframe(node, iframeCss);
                     }
-                });
+                }
 
-                if (matches) {
-                    _injectCssIntoIframe(node, iframeCss);
+                // Also query for iframes nested inside the added node
+                // (e.g. TinyMCE may insert a wrapper <div> that contains
+                // the editor <iframe> in a single DOM operation).
+                for (const selector of selectors) {
+                    try {
+                        node.querySelectorAll<HTMLIFrameElement>(selector).forEach(iframe => {
+                            _injectCssIntoIframe(iframe, iframeCss);
+                        });
+                    } catch {
+                        // Invalid or unsupported selector — skip silently.
+                    }
                 }
             }
         }
