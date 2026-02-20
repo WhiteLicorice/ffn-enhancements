@@ -26,11 +26,11 @@ const THEME_CLASS = 'ffn-theme';
 const STRUCTURAL_STYLE_TAG_ID = 'ffn-enhancements-theme-structural';
 
 /**
- * ID of the injected <style> tag that holds CSS custom property values
- * for the active theme.  Replaced (textContent swap) when the theme changes;
- * removed entirely when reverting to 'default'.
+ * ID of the injected <style> tag that holds the per-theme Layer 4 user CSS.
+ * Replaced (textContent swap) when the theme changes; removed entirely when
+ * reverting to 'default' or when the active theme has no userCss.
  */
-const VARIABLE_STYLE_TAG_ID = 'ffn-enhancements-theme-variables';
+const USER_CSS_STYLE_TAG_ID = 'ffn-enhancements-theme-user';
 
 /**
  * The localStorage key used to persist an explicit user theme preference.
@@ -57,276 +57,50 @@ const GM_STORAGE_KEY = 'ffnEnhancementsTheme';
 const FORCE_DARK_MODE = false;
 
 /**
- * Full structural CSS for all themes.
- * Every color value is a CSS custom property (var(--ffn-*)) so that switching
- * themes at runtime requires only replacing the variable block — these rules
- * never change.  All selectors are scoped under body.${THEME_CLASS} to prevent
- * any leakage when no theme is active.
+ * Structural CSS implementing the hybrid filter dark mode.
+ * Injected once at prime()-time and never replaced — these rules are inert
+ * until THEME_CLASS is applied to <body>.
  *
- * Selector inventory is compiled from the codebase's delegate system and
- * cross-referenced against FFN's live DOM structure.
+ * Four-layer architecture:
+ *   Layer 1 — Invert the entire page with hue correction.
+ *   Layer 2 — Re-invert media elements to restore original colors.
+ *   Layer 3 — Re-invert brand elements that must not be color-shifted.
+ *   Layer 4 — Per-theme user CSS (ITheme.userCss) — injected separately.
  *
- * PRESERVED (intentionally not targeted):
- *   #top               — the green branded navigation bar.
- *   img, canvas        — images must never be darkened.
- *   FFN link colors    — teal/green accents are part of FFN's navigational language.
+ * Using filter: invert(1) hue-rotate(180deg) rather than per-selector color
+ * overrides means zero selector maintenance when FFN changes its markup.
+ * The hue-rotate(180deg) cancels the color distortion from a raw invert,
+ * producing a natural dark palette from any light design.
  */
 const STRUCTURAL_CSS = `
-    /* --- FFN Enhancements: Theme Structural Rules ---
-       All color values are CSS custom properties (var(--ffn-*)).
-       These rules are written once and apply to every theme.
-       Scoped under body.${THEME_CLASS} — inert when no theme is active. */
+    /* --- FFN Enhancements: Dark Mode Filter Rules ---
+       Scoped under body.${THEME_CLASS} — inert when no theme is active.
+       Layer 4 (ITheme.userCss) is injected in a separate style tag. */
 
-    /* ── 1. Layout shell ─────────────────────────────────────────────────── */
+    /* ── Layer 1: Base inversion ─────────────────────────────────────────── */
 
-    /* body: base background and text. Highest-leverage target.
-       FFN hardcodes background-color: white inline on some page types. */
+    /* Invert the entire page.  hue-rotate(180deg) cancels the color
+       distortion of a raw invert, yielding a natural dark palette. */
     body.${THEME_CLASS} {
-        background-color: var(--ffn-bg-primary) !important;
-        color: var(--ffn-text-primary) !important;
+        filter: invert(1) hue-rotate(180deg);
     }
 
-    body.${THEME_CLASS} #content_wrapper,
-    body.${THEME_CLASS} #content_wrapper_inner {
-        background-color: var(--ffn-bg-primary) !important;
+    /* ── Layer 2: Media re-inversion ─────────────────────────────────────── */
+
+    /* Re-invert media so images, videos, and canvas are displayed in their
+       original colors — a double invert is a no-op on the pixel values. */
+    body.${THEME_CLASS} img,
+    body.${THEME_CLASS} canvas,
+    body.${THEME_CLASS} video {
+        filter: invert(1) hue-rotate(180deg);
     }
 
-    /* .z-top-container: top bar housing the site logo and login/account links.
-       Do NOT target child #top — that is the green branded navigation bar. */
-    body.${THEME_CLASS} .z-top-container {
-        background-color: var(--ffn-bg-nav) !important;
-    }
+    /* ── Layer 3: Brand element re-inversion ─────────────────────────────── */
 
-    /* .menulink: horizontal nav bars (Browse, Communities, Forums).
-       #zmenu: secondary author tools bar (visible when logged in).
-       Both are structural chrome, not brand elements — safe to remap. */
-    body.${THEME_CLASS} .menulink,
-    body.${THEME_CLASS} #zmenu {
-        background-color: var(--ffn-bg-nav) !important;
-    }
-
-    /* Reset the #zmenu inner table so it does not double-apply backgrounds. */
-    body.${THEME_CLASS} #zmenu table {
-        background-color: transparent !important;
-    }
-
-    /* ── 2. Semantic color classes — highest-leverage selectors ──────────── */
-
-    /* .xcontrast_txt: applied by FFN to titles, author names, story summaries,
-       chapter navigation labels, and the story text container itself.
-       Setting a dark color here has the broadest single reach across all pages. */
-    body.${THEME_CLASS} .xcontrast_txt {
-        color: var(--ffn-text-primary) !important;
-    }
-
-    /* .xgray / .gray: secondary/muted text — metadata, stats, timestamps.
-       Must be lighter than the primary text value but still subordinate. */
-    body.${THEME_CLASS} .xgray,
-    body.${THEME_CLASS} .gray,
-    body.${THEME_CLASS} span.gray {
-        color: var(--ffn-text-secondary) !important;
-    }
-
-    /* ── 3. Story page — header block (/s/*) ─────────────────────────────── */
-
-    /* #profile_top: story title, author, cover art, summary, metadata.
-       The cover image (img.cimage) must not be touched — handled by specificity. */
-    body.${THEME_CLASS} #profile_top {
-        background-color: var(--ffn-bg-secondary) !important;
-        border-color: var(--ffn-border-primary) !important;
-    }
-
-    /* ── 4. Story page — reading surface ─────────────────────────────────── */
-
-    /* #storytext / .storytext: the primary reading surface.
-       Most critical target for readability — explicit background + text. */
-    body.${THEME_CLASS} #storytext,
-    body.${THEME_CLASS} .storytext,
-    body.${THEME_CLASS} #storytextp,
-    body.${THEME_CLASS} .storytextp {
-        background-color: var(--ffn-bg-secondary) !important;
-        color: var(--ffn-text-primary) !important;
-    }
-
-    body.${THEME_CLASS} blockquote {
-        background-color: var(--ffn-bg-secondary) !important;
-        border-left-color: var(--ffn-border-primary) !important;
-        color: var(--ffn-text-primary) !important;
-    }
-
-    /* ── 5. Story page — chapter navigation ──────────────────────────────── */
-
-    /* #chap_select: platform-native <select>; needs explicit override
-       to prevent a white dropdown appearing over a dark page. */
-    body.${THEME_CLASS} #chap_select,
-    body.${THEME_CLASS} #nav_top,
-    body.${THEME_CLASS} #nav_bottom {
-        background-color: var(--ffn-bg-primary) !important;
-        color: var(--ffn-text-primary) !important;
-        border-color: var(--ffn-border-primary) !important;
-    }
-
-    /* ── 6. Browse and listing pages ─────────────────────────────────────── */
-
-    /* .lc-wrapper, .lc, .lc-right: story card containers on browse pages. */
-    body.${THEME_CLASS} .lc-wrapper,
-    body.${THEME_CLASS} .lc,
-    body.${THEME_CLASS} .lc-right {
-        background-color: var(--ffn-bg-secondary) !important;
-        border-color: var(--ffn-border-primary) !important;
-        color: var(--ffn-text-primary) !important;
-    }
-
-    /* .lc-left: holds cover thumbnail — remap container bg only, never the img. */
-    body.${THEME_CLASS} .lc-left {
-        background-color: var(--ffn-bg-secondary) !important;
-    }
-
-    /* .z-list: older-style browse and search result listing rows. */
-    body.${THEME_CLASS} .z-list,
-    body.${THEME_CLASS} div.z-list,
-    body.${THEME_CLASS} .z-list-wrap,
-    body.${THEME_CLASS} .z-padtop2 {
-        background-color: var(--ffn-bg-secondary) !important;
-        border-color: var(--ffn-border-primary) !important;
-        color: var(--ffn-text-primary) !important;
-    }
-
-    body.${THEME_CLASS} .z-indent,
-    body.${THEME_CLASS} .z-list .z-indent {
-        background-color: var(--ffn-bg-secondary) !important;
-        color: var(--ffn-text-secondary) !important;
-    }
-
-    /* ── 7. Form inputs (sitewide) ───────────────────────────────────────── */
-
-    /* Blanket dark remap of all three element types.
-       Does not conflict with FFN's own CSS; confirmed by community dark themes. */
-    body.${THEME_CLASS} input,
-    body.${THEME_CLASS} select,
-    body.${THEME_CLASS} textarea {
-        background-color: var(--ffn-bg-input) !important;
-        color: var(--ffn-text-input) !important;
-        border-color: var(--ffn-border-primary) !important;
-    }
-
-    body.${THEME_CLASS} option {
-        background-color: var(--ffn-bg-input) !important;
-        color: var(--ffn-text-input) !important;
-    }
-
-    body.${THEME_CLASS} input::placeholder,
-    body.${THEME_CLASS} textarea::placeholder {
-        color: var(--ffn-text-secondary) !important;
-        opacity: 0.7 !important;
-    }
-
-    /* ── 8. Buttons ──────────────────────────────────────────────────────── */
-
-    /* button.btn: FFN's generic button class — Follow, Fav, chapter nav,
-       and the Download button injected by this extension. */
-    body.${THEME_CLASS} button.btn,
-    body.${THEME_CLASS} input[type="submit"],
-    body.${THEME_CLASS} input[type="button"] {
-        background-color: var(--ffn-bg-input) !important;
-        color: var(--ffn-text-primary) !important;
-        border-color: var(--ffn-border-primary) !important;
-    }
-
-    /* ── 9. General sitewide chrome ──────────────────────────────────────── */
-
-    body.${THEME_CLASS} #bio,
-    body.${THEME_CLASS} #filters,
-    body.${THEME_CLASS} #filters_head,
-    body.${THEME_CLASS} #storyinfo,
-    body.${THEME_CLASS} .module,
-    body.${THEME_CLASS} .tab-content,
-    body.${THEME_CLASS} #sidebar,
-    body.${THEME_CLASS} .sidebar,
-    body.${THEME_CLASS} .module .module-content,
-    body.${THEME_CLASS} .cco-div {
-        background-color: var(--ffn-bg-secondary) !important;
-        border-color: var(--ffn-border-primary) !important;
-        color: var(--ffn-text-primary) !important;
-    }
-
-    /* ── 10. Review section ───────────────────────────────────────────────── */
-
-    body.${THEME_CLASS} #review,
-    body.${THEME_CLASS} #review_title,
-    body.${THEME_CLASS} .review-reply {
-        background-color: var(--ffn-bg-secondary) !important;
-        border-color: var(--ffn-border-primary) !important;
-        color: var(--ffn-text-primary) !important;
-    }
-
-    /* ── 11. Alert and notice bars ────────────────────────────────────────── */
-
-    body.${THEME_CLASS} .alert.alert-info,
-    body.${THEME_CLASS} .gui_note,
-    body.${THEME_CLASS} .gui_warning {
-        background-color: var(--ffn-bg-secondary) !important;
-        border-color: var(--ffn-border-primary) !important;
-        color: var(--ffn-text-primary) !important;
-    }
-
-    /* ── 12. Modal dialogs ────────────────────────────────────────────────── */
-
-    body.${THEME_CLASS} .modal-content,
-    body.${THEME_CLASS} .modal-header,
-    body.${THEME_CLASS} .modal-body,
-    body.${THEME_CLASS} .modal-footer {
-        background-color: var(--ffn-bg-secondary) !important;
-        border-color: var(--ffn-border-primary) !important;
-        color: var(--ffn-text-primary) !important;
-    }
-
-    body.${THEME_CLASS} .modal-header {
-        border-bottom-color: var(--ffn-border-primary) !important;
-    }
-
-    body.${THEME_CLASS} .modal-footer {
-        border-top-color: var(--ffn-border-primary) !important;
-    }
-
-    /* ── 13. Tables ───────────────────────────────────────────────────────── */
-
-    body.${THEME_CLASS} table,
-    body.${THEME_CLASS} tr,
-    body.${THEME_CLASS} td,
-    body.${THEME_CLASS} th {
-        border-color: var(--ffn-border-primary) !important;
-        color: var(--ffn-text-primary) !important;
-    }
-
-    body.${THEME_CLASS} tr:nth-child(even) td {
-        background-color: var(--ffn-bg-secondary) !important;
-    }
-
-    /* ── 14. Headings ─────────────────────────────────────────────────────── */
-
-    body.${THEME_CLASS} h1,
-    body.${THEME_CLASS} h2,
-    body.${THEME_CLASS} h3,
-    body.${THEME_CLASS} h4,
-    body.${THEME_CLASS} h5,
-    body.${THEME_CLASS} h6 {
-        color: var(--ffn-text-primary) !important;
-    }
-
-    /* ── 15. Scrollbars (Chromium-based browsers) ────────────────────────── */
-
-    body.${THEME_CLASS} ::-webkit-scrollbar {
-        background-color: var(--ffn-bg-primary);
-    }
-
-    body.${THEME_CLASS} ::-webkit-scrollbar-thumb {
-        background-color: var(--ffn-border-primary);
-        border-radius: 4px;
-    }
-
-    body.${THEME_CLASS} ::-webkit-scrollbar-thumb:hover {
-        background-color: var(--ffn-text-secondary);
+    /* #top — the green branded navigation bar.
+       Must be re-inverted so it renders in its original FFN brand color. */
+    body.${THEME_CLASS} #top {
+        filter: invert(1) hue-rotate(180deg);
     }
 `;
 
@@ -358,7 +132,7 @@ export const ThemeManager = {
     /**
      * ISitewideModule Phase 1 — document-start.
      * Injects the structural CSS (once, idempotent) and, if a theme should be
-     * active, injects the variable block and arms the body class observer.
+     * active, injects the Layer 4 user CSS and arms the body class observer.
      *
      * Theme resolution order:
      *   1. Explicit localStorage preference (user has made a deliberate choice).
@@ -380,7 +154,7 @@ export const ThemeManager = {
         if (FORCE_DARK_MODE) {
             _log('prime', '[TEST] FORCE_DARK_MODE is enabled — applying dark theme unconditionally.');
             _activeTheme = 'dark';
-            _upsertVariableBlock(THEMES['dark']);
+            _upsertUserCss(THEMES['dark']);
             _applyThemeClass(true);
             return;
         }
@@ -393,7 +167,7 @@ export const ThemeManager = {
             // even if their OS is in dark mode — honour that choice.
             if (stored !== 'default' && stored in THEMES) {
                 _activeTheme = stored;
-                _upsertVariableBlock(THEMES[stored]);
+                _upsertUserCss(THEMES[stored]);
                 _applyThemeClass(true);
                 _log('prime', `Explicit localStorage preference applied: "${stored}".`);
             } else {
@@ -402,7 +176,7 @@ export const ThemeManager = {
         } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
             // No explicit preference stored; follow the system setting.
             _activeTheme = 'dark';
-            _upsertVariableBlock(THEMES['dark']);
+            _upsertUserCss(THEMES['dark']);
             _applyThemeClass(true);
             _log('prime', 'No stored preference — applied dark theme from prefers-color-scheme.');
         } else {
@@ -545,45 +319,33 @@ function _injectStructuralCss(): void {
 }
 
 /**
- * Generates the CSS custom property declaration block for a given theme.
- * The returned string is injected as the content of VARIABLE_STYLE_TAG_ID.
- * Replacing this block is all that is needed to switch themes at runtime.
- * @param theme - The ITheme data object to build variables from.
+ * Creates or updates the Layer 4 user CSS <style> tag for the given theme.
+ * If the tag already exists, its textContent is replaced in-place to avoid
+ * a DOM removal/insertion cycle and prevent any intermediate repaint.
+ * If the theme has no userCss, any existing tag is removed (no empty node left).
+ * @param theme - The ITheme data object whose userCss to inject.
  */
-function _buildVariableBlock(theme: ITheme): string {
-    return `
-        body.${THEME_CLASS} {
-            --ffn-bg-primary:     ${theme.bgPrimary};
-            --ffn-bg-secondary:   ${theme.bgSecondary};
-            --ffn-bg-input:       ${theme.bgInput};
-            --ffn-bg-nav:         ${theme.bgNav};
-            --ffn-text-primary:   ${theme.textPrimary};
-            --ffn-text-secondary: ${theme.textSecondary};
-            --ffn-text-input:     ${theme.textInput};
-            --ffn-border-primary: ${theme.borderPrimary};
-        }
-    `;
-}
+function _upsertUserCss(theme: ITheme): void {
+    const existing = document.getElementById(USER_CSS_STYLE_TAG_ID);
 
-/**
- * Creates or updates the variable block <style> tag for the given theme.
- * If the tag already exists its textContent is replaced in-place, avoiding
- * a DOM removal/insertion cycle and preventing any intermediate repaint.
- * @param theme - The ITheme data object whose tokens to inject.
- */
-function _upsertVariableBlock(theme: ITheme): void {
-    const css = _buildVariableBlock(theme);
-    const existing = document.getElementById(VARIABLE_STYLE_TAG_ID);
+    if (!theme.userCss) {
+        // Theme has no Layer 4 CSS — remove any previously-injected tag.
+        if (existing) {
+            existing.remove();
+            _log('upsertUserCss', `User CSS removed (theme "${theme.name}" has none).`);
+        }
+        return;
+    }
 
     if (existing) {
-        existing.textContent = css;
-        _log('upsertVariableBlock', `Variable block updated for theme "${theme.name}".`);
+        existing.textContent = theme.userCss;
+        _log('upsertUserCss', `User CSS updated for theme "${theme.name}".`);
         return;
     }
 
     const style = document.createElement('style');
-    style.id = VARIABLE_STYLE_TAG_ID;
-    style.textContent = css;
+    style.id = USER_CSS_STYLE_TAG_ID;
+    style.textContent = theme.userCss;
 
     if (document.head) {
         document.head.appendChild(style);
@@ -591,37 +353,37 @@ function _upsertVariableBlock(theme: ITheme): void {
         document.documentElement.appendChild(style);
     }
 
-    _log('upsertVariableBlock', `Variable block injected for theme "${theme.name}".`);
+    _log('upsertUserCss', `User CSS injected for theme "${theme.name}".`);
 }
 
 /**
- * Removes the variable block <style> tag from the DOM.
+ * Removes the Layer 4 user CSS <style> tag from the DOM.
  * Called when reverting to 'default' (no theme active).
  */
-function _removeVariableBlock(): void {
-    const existing = document.getElementById(VARIABLE_STYLE_TAG_ID);
+function _removeUserCss(): void {
+    const existing = document.getElementById(USER_CSS_STYLE_TAG_ID);
     if (existing) {
         existing.remove();
-        _log('removeVariableBlock', 'Variable block removed.');
+        _log('removeUserCss', 'User CSS removed.');
     }
 }
 
 /**
  * Applies or clears a theme by name.
- * For non-default themes: upserts the variable block and adds THEME_CLASS.
- * For 'default': removes the variable block and removes THEME_CLASS.
+ * For non-default themes: upserts the Layer 4 user CSS and adds THEME_CLASS.
+ * For 'default': removes the user CSS and removes THEME_CLASS.
  * @param name - The theme name to apply, or 'default' to clear.
  */
 function _applyTheme(name: string): void {
     if (name === 'default') {
-        _removeVariableBlock();
+        _removeUserCss();
         _applyThemeClass(false);
     } else {
         const theme = THEMES[name];
         if (!theme) {
             return;
         }
-        _upsertVariableBlock(theme);
+        _upsertUserCss(theme);
         _applyThemeClass(true);
     }
 }

@@ -4,33 +4,24 @@ import type { ITheme } from '../interfaces/ITheme';
 
 /**
  * DarkTheme
- * * The default dark palette for FFN Enhancements.
+ * * The default dark mode theme for FFN Enhancements.
  *
- * Remaps FFN's light palette to a comfortable dark reading environment.
- * Only color token values live here — no CSS selectors, no !important.
- * The structural CSS rules that consume these values are owned entirely
- * by ThemeManager.STRUCTURAL_CSS via CSS custom properties.
+ * Dark mode is achieved via a hybrid filter architecture (Layers 1–3 in
+ * ThemeManager.STRUCTURAL_CSS) rather than hand-authored per-selector CSS:
  *
- * Preserved (intentionally not remapped):
- *   - The green branded navigation bar (#top).
- *   - FFN's teal/green link accent colors.
- *   - The site logo.
- *   - All <img> and <canvas> elements.
+ *   Layer 1: filter: invert(1) hue-rotate(180deg) on body.
+ *            Inverts the entire page. hue-rotate(180deg) cancels the color
+ *            distortion from a raw invert, yielding a natural dark palette.
+ *   Layer 2: Re-invert img, canvas, video — restores media to original colors.
+ *   Layer 3: Re-invert #top — preserves the green branded navigation bar exactly.
+ *
+ * The userCss field (Layer 4) starts empty.  Any elements the filter layers
+ * don't handle perfectly can be corrected here without touching the structural
+ * rules or adding new selectors to ThemeManager.
  */
 export const DarkTheme: ITheme = {
     name: 'dark',
 
-    // Backgrounds
-    bgPrimary:    '#1a1a1a',   // page background, wrappers, nav rows
-    bgSecondary:  '#242424',   // cards, profile header, story text, panels
-    bgInput:      '#2a2a2a',   // form controls, buttons
-    bgNav:        '#2d2d2d',   // .menulink, #zmenu, .z-top-container
-
-    // Text
-    textPrimary:   '#e0e0e0',  // xcontrast_txt — primary content text
-    textSecondary: '#a0a0a0',  // xgray — muted metadata, timestamps, stats
-    textInput:     '#e0e0e0',  // text inside form controls
-
-    // Borders
-    borderPrimary: '#3a3a3a',  // card edges, panel dividers, form control borders
+    // No Layer 4 overrides yet — the filter layers handle everything.
+    userCss: '',
 };
