@@ -508,6 +508,19 @@ function _writeStoredTheme(name: string): void {
 }
 
 /**
+ * Removes the theme entry from localStorage.
+ * Used to clear stale 'default' entries written by older extension versions,
+ * so that prime() falls through to the prefers-color-scheme check on the next load.
+ */
+function _clearStoredTheme(): void {
+    try {
+        localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+        _log('clearStoredTheme', `localStorage remove error: ${e}`);
+    }
+}
+
+/**
  * Injects the structural <style> tag (STRUCTURAL_CSS) onto the document.
  * Uses document.head when available, falls back to document.documentElement
  * at document-start time before <head> has been parsed.
@@ -685,17 +698,21 @@ function _applyThemeClass(enable: boolean): void {
  * GM_getValue is the Tampermonkey-native persistent storage API and replaces
  * the chrome.storage.sync approach, which is unavailable in userscript contexts.
  *
- * If GM storage has never been set (returns undefined), there is no cross-session
- * explicit preference — prime()'s resolution (localStorage or prefers-color-scheme)
- * is authoritative and must not be overridden.
+ * GM storage is the authoritative record of explicit user intent: it is written
+ * only by setTheme().  localStorage is a fast-read cache for prime() — but it
+ * may contain stale 'default' entries written by older extension versions.
  *
- * Only when GM storage holds an explicit value does reconciliation act, covering
- * the case where the user updated their preference in another browser session.
+ * When GM storage holds no value:
+ *   - If localStorage also has no entry: prime()'s matchMedia resolution is correct.
+ *   - If localStorage has a stale 'default' (no paired GM entry): the entry was
+ *     written by an older buggy run, not by the user. Clear it and re-apply the
+ *     system preference so both the current page load and future loads behave
+ *     correctly.
+ *
+ * When GM storage holds an explicit value: reconcile against it, covering the
+ * case where the user updated their preference in another browser session.
  */
 function _reconcileWithGmStorage(): void {
-    if (_activeTheme === "dark" && FORCE_DARK_MODE) {
-        return; // fail early if we are forcing dark mode
-    }
     let gmRaw: string | undefined;
     try {
         // Use undefined (not 'default') as the fallback so that "never set"
@@ -708,10 +725,31 @@ function _reconcileWithGmStorage(): void {
     }
 
     if (gmRaw === undefined) {
-        // Nothing has ever been saved to GM storage — no explicit cross-session
-        // preference exists.  Preserve whatever prime() determined (localStorage
-        // or prefers-color-scheme) without writing anything to localStorage.
-        _log('reconcileWithGmStorage', 'No GM preference on record; preserving prime() resolution.');
+        // No explicit user preference in GM storage.
+        const localStored = _readStoredThemeRaw();
+
+        if (localStored === 'default') {
+            // localStorage has 'default' but GM has nothing.
+            // A legitimate 'default' is always written by setTheme() which also
+            // writes to GM.  A solo localStorage 'default' is a stale entry from
+            // an older version. Clear it and apply the real system preference.
+            _log('reconcileWithGmStorage', 'Stale localStorage opt-out found with no GM record — clearing and re-applying system preference.');
+            _clearStoredTheme();
+
+            const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (systemDark && _activeTheme !== 'dark') {
+                _activeTheme = 'dark';
+                _applyTheme('dark');
+                _log('reconcileWithGmStorage', 'Re-applied dark theme from system prefers-color-scheme.');
+            } else if (!systemDark && _activeTheme === 'dark') {
+                _activeTheme = 'default';
+                _applyTheme('default');
+                _log('reconcileWithGmStorage', 'System is light; removed dark theme.');
+            }
+        } else {
+            // No localStorage entry either — prime()'s resolution was correct.
+            _log('reconcileWithGmStorage', 'No GM preference on record; preserving prime() resolution.');
+        }
         return;
     }
 
@@ -743,15 +781,28 @@ function _writeGmStorage(name: string): void {
 
 /**
  * Arms a MediaQueryList change listener on prefers-color-scheme.
- * Only acts when the user has no explicit preference stored in localStorage
- * (i.e. they have never used the settings menu).  This ensures that:
- *   - First-time visitors automatically get the correct theme for their OS.
- *   - Users who have made an explicit in-extension choice are never overridden.
+ * Reacts to OS/browser dark/light mode changes unless the user has an
+ * explicit preference recorded in GM storage (written only by setTheme()).
+ *
+ * The guard intentionally uses GM storage, not localStorage.  localStorage
+ * may contain stale entries from older extension versions; only a GM entry
+ * is proof of a deliberate in-extension user choice that should override
+ * the system setting.
  */
 function _watchSystemColorScheme(): void {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-        // Honour explicit user preference over the system setting.
-        if (_readStoredThemeRaw() !== null) {
+        // Only bail if the user has an explicit preference in GM storage.
+        // GM storage is written exclusively by setTheme() — it is the authoritative
+        // record of deliberate user intent.  Do NOT guard on localStorage, which
+        // may hold stale 'default' entries from older runs.
+        let gmRaw: string | undefined;
+        try {
+            gmRaw = GM_getValue(GM_STORAGE_KEY, undefined as string | undefined);
+        } catch (e) {
+            _log('watchSystemColorScheme', `GM_getValue error: ${e}`);
+        }
+
+        if (gmRaw !== undefined) {
             return;
         }
 
