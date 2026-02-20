@@ -229,7 +229,11 @@ function _injectViewportMeta(): void {
         const meta = document.createElement('meta');
         meta.name = 'viewport';
         meta.content = 'width=device-width, initial-scale=1.0';
-        document.head.appendChild(meta);
+        if (document.head) {
+            document.head.appendChild(meta);
+        } else {
+            document.documentElement.appendChild(meta); // shouldn't happen
+        }
         _log('injectViewportMeta', 'Injected missing Viewport Meta tag.');
     }
 }
@@ -371,7 +375,10 @@ function _injectFluidStyles(): void {
     const style = document.createElement('style');
     style.id = STYLE_TAG_ID;
     style.textContent = css;
-    document.head.appendChild(style);
-
+    if (document.head) {
+        document.appendChild(style);
+    } else {
+        document.documentElement.appendChild(style); // shouldn't happen
+    }
     _log('injectFluidStyles', 'Fluid styles injected into head.');
 }
