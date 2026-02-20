@@ -19,11 +19,13 @@ const MODULE_NAME = 'ThemeManager';
 const THEME_CLASS = 'ffn-theme';
 
 /**
- * ID of the injected <style> tag that holds the structural CSS rules.
- * Contains all selector-to-var() mappings. Injected once at prime()-time
- * and never replaced; inert until THEME_CLASS is applied to <body>.
+ * ID of the injected <style> tag that holds the per-theme filter CSS.
+ * Contains Layer 1 (body inversion) and Layers 2-3 (preserveSelectors /
+ * invertSelectors re-inversions), generated from the active theme's fields.
+ * Replaced (textContent swap) when the theme changes; removed when reverting
+ * to 'default'.
  */
-const STRUCTURAL_STYLE_TAG_ID = 'ffn-enhancements-theme-structural';
+const FILTER_STYLE_TAG_ID = 'ffn-enhancements-theme-filters';
 
 /**
  * ID of the injected <style> tag that holds the per-theme Layer 4 user CSS.
@@ -49,60 +51,12 @@ const GM_STORAGE_KEY = 'ffnEnhancementsTheme';
 /**
  * DEBUG/TEST: Force dark mode unconditionally, bypassing all storage and
  * preference logic in prime().
- * Set to true to verify that the CSS injection strategy (structural CSS +
- * variable block + THEME_CLASS on body) works as intended, independently of
- * the localStorage / prefers-color-scheme resolution path.
+ * Set to true to verify that the CSS injection strategy (filter CSS +
+ * THEME_CLASS on body) works as intended, independently of the
+ * localStorage / prefers-color-scheme resolution path.
  * Must be false in production.
  */
 const FORCE_DARK_MODE = false;
-
-/**
- * Structural CSS implementing the hybrid filter dark mode.
- * Injected once at prime()-time and never replaced — these rules are inert
- * until THEME_CLASS is applied to <body>.
- *
- * Four-layer architecture:
- *   Layer 1 — Invert the entire page with hue correction.
- *   Layer 2 — Re-invert media elements to restore original colors.
- *   Layer 3 — Re-invert brand elements that must not be color-shifted.
- *   Layer 4 — Per-theme user CSS (ITheme.userCss) — injected separately.
- *
- * Using filter: invert(1) hue-rotate(180deg) rather than per-selector color
- * overrides means zero selector maintenance when FFN changes its markup.
- * The hue-rotate(180deg) cancels the color distortion from a raw invert,
- * producing a natural dark palette from any light design.
- */
-const STRUCTURAL_CSS = `
-    /* --- FFN Enhancements: Dark Mode Filter Rules ---
-       Scoped under body.${THEME_CLASS} — inert when no theme is active.
-       Layer 4 (ITheme.userCss) is injected in a separate style tag. */
-
-    /* ── Layer 1: Base inversion ─────────────────────────────────────────── */
-
-    /* Invert the entire page.  hue-rotate(180deg) cancels the color
-       distortion of a raw invert, yielding a natural dark palette. */
-    body.${THEME_CLASS} {
-        filter: invert(1) hue-rotate(180deg);
-    }
-
-    /* ── Layer 2: Media re-inversion ─────────────────────────────────────── */
-
-    /* Re-invert media so images, videos, and canvas are displayed in their
-       original colors — a double invert is a no-op on the pixel values. */
-    body.${THEME_CLASS} img,
-    body.${THEME_CLASS} canvas,
-    body.${THEME_CLASS} video {
-        filter: invert(1) hue-rotate(180deg);
-    }
-
-    /* ── Layer 3: Brand element re-inversion ─────────────────────────────── */
-
-    /* #top — the green branded navigation bar.
-       Must be re-inverted so it renders in its original FFN brand color. */
-    body.${THEME_CLASS} #top {
-        filter: invert(1) hue-rotate(180deg);
-    }
-`;
 
 // ─── Module-level State ────────────────────────────────────────────────────────
 
@@ -131,8 +85,8 @@ export const ThemeManager = {
 
     /**
      * ISitewideModule Phase 1 — document-start.
-     * Injects the structural CSS (once, idempotent) and, if a theme should be
-     * active, injects the Layer 4 user CSS and arms the body class observer.
+     * If a theme should be active, injects the filter CSS (Layers 1–3) and the
+     * Layer 4 user CSS, then arms the body class observer.
      *
      * Theme resolution order:
      *   1. Explicit localStorage preference (user has made a deliberate choice).
@@ -144,16 +98,13 @@ export const ThemeManager = {
      * permitted reads at this phase.
      */
     prime(): void {
-        // The structural CSS is always injected — it is inert (selectors never
-        // match) until THEME_CLASS is applied to <body>.
-        _injectStructuralCss();
-
         // TEST: FORCE_DARK_MODE bypasses all storage and preference logic.
         // Flip to true to verify that the CSS injection strategy works correctly
         // before debugging the storage/preference resolution path.
         if (FORCE_DARK_MODE) {
             _log('prime', '[TEST] FORCE_DARK_MODE is enabled — applying dark theme unconditionally.');
             _activeTheme = 'dark';
+            _upsertFilterCss(THEMES['dark']);
             _upsertUserCss(THEMES['dark']);
             _applyThemeClass(true);
             return;
@@ -167,6 +118,7 @@ export const ThemeManager = {
             // even if their OS is in dark mode — honour that choice.
             if (stored !== 'default' && stored in THEMES) {
                 _activeTheme = stored;
+                _upsertFilterCss(THEMES[stored]);
                 _upsertUserCss(THEMES[stored]);
                 _applyThemeClass(true);
                 _log('prime', `Explicit localStorage preference applied: "${stored}".`);
@@ -176,6 +128,7 @@ export const ThemeManager = {
         } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
             // No explicit preference stored; follow the system setting.
             _activeTheme = 'dark';
+            _upsertFilterCss(THEMES['dark']);
             _upsertUserCss(THEMES['dark']);
             _applyThemeClass(true);
             _log('prime', 'No stored preference — applied dark theme from prefers-color-scheme.');
@@ -295,19 +248,109 @@ function _clearStoredTheme(): void {
 }
 
 /**
- * Injects the structural <style> tag (STRUCTURAL_CSS) onto the document.
- * Uses document.head when available, falls back to document.documentElement
- * at document-start time before <head> has been parsed.
- * Idempotent — no-ops if the tag already exists.
+ * Generates the filter CSS (Layers 1–3) for a given theme from its data fields.
+ *
+ * Layer 1 (body inversion) fires only when theme.isDarkTheme is true.
+ * Layer 2/3 (preserveSelectors re-inversion) fires only for dark themes —
+ *   each listed selector gets filter: invert(1) hue-rotate(180deg) to cancel
+ *   the body inversion and restore original colors.
+ * invertSelectors (force inversion) fires only for non-dark themes —
+ *   each listed selector gets filter: invert(1) hue-rotate(180deg) to darken
+ *   specific elements against the un-inverted light background.
+ *
+ * NOTE: invertSelectors is a no-op in dark themes (isDarkTheme: true) because
+ * the body filter already inverts everything — elements are already dark.
+ * preserveSelectors is a no-op in light themes (isDarkTheme: false) because
+ * no body inversion is applied — elements are already at their original colors.
+ *
+ * If a selector appears in both invertSelectors and preserveSelectors,
+ * preserveSelectors wins by cascade order (its rules are generated last).
+ * @param theme - The ITheme data object to build filter CSS from.
  */
-function _injectStructuralCss(): void {
-    if (document.getElementById(STRUCTURAL_STYLE_TAG_ID)) {
+function _buildFilterCss(theme: ITheme): string {
+    const parts: string[] = [];
+
+    // Layer 1: base inversion — dark themes only.
+    if (theme.isDarkTheme) {
+        parts.push(
+            `    /* ── Layer 1: Base inversion ── */\n` +
+            `    body.${THEME_CLASS} {\n` +
+            `        filter: invert(1) hue-rotate(180deg);\n` +
+            `    }`,
+        );
+    }
+
+    // invertSelectors — meaningful only for non-dark themes.
+    // In dark themes the body filter already handles inversion; this list
+    // is a no-op and no rules are emitted.
+    if (!theme.isDarkTheme && theme.invertSelectors.length > 0) {
+        const selectors = theme.invertSelectors
+            .map(s => `    body.${THEME_CLASS} ${s}`)
+            .join(',\n');
+        parts.push(
+            `    /* ── invertSelectors: Force inversion (light theme) ── */\n` +
+            `${selectors} {\n` +
+            `        filter: invert(1) hue-rotate(180deg);\n` +
+            `    }`,
+        );
+    }
+
+    // preserveSelectors — meaningful only for dark themes.
+    // Re-invert each listed element to cancel the body filter and restore
+    // its original colors.  In light themes (isDarkTheme: false) no body
+    // inversion is active, so no rules are emitted.
+    if (theme.isDarkTheme && theme.preserveSelectors.length > 0) {
+        const selectors = theme.preserveSelectors
+            .map(s => `    body.${THEME_CLASS} ${s}`)
+            .join(',\n');
+        parts.push(
+            `    /* ── Layers 2-3: Preserve original appearance ── */\n` +
+            `${selectors} {\n` +
+            `        filter: invert(1) hue-rotate(180deg);\n` +
+            `    }`,
+        );
+    }
+
+    if (parts.length === 0) {
+        return '';
+    }
+
+    return (
+        `/* --- FFN Enhancements: Theme Filter Rules (${theme.name}) ---\n` +
+        `   Scoped under body.${THEME_CLASS} — inert when no theme is active. */\n\n` +
+        parts.join('\n\n')
+    );
+}
+
+/**
+ * Creates or updates the filter CSS <style> tag for the given theme.
+ * If the tag already exists, its textContent is replaced in-place to avoid
+ * a DOM removal/insertion cycle and prevent any intermediate repaint.
+ * If the theme generates no filter CSS (e.g. a light theme with no
+ * invertSelectors), any existing tag is removed.
+ * @param theme - The ITheme data object to build filter CSS from.
+ */
+function _upsertFilterCss(theme: ITheme): void {
+    const css = _buildFilterCss(theme);
+    const existing = document.getElementById(FILTER_STYLE_TAG_ID);
+
+    if (!css) {
+        if (existing) {
+            existing.remove();
+            _log('upsertFilterCss', `Filter CSS removed (theme "${theme.name}" generates none).`);
+        }
+        return;
+    }
+
+    if (existing) {
+        existing.textContent = css;
+        _log('upsertFilterCss', `Filter CSS updated for theme "${theme.name}".`);
         return;
     }
 
     const style = document.createElement('style');
-    style.id = STRUCTURAL_STYLE_TAG_ID;
-    style.textContent = STRUCTURAL_CSS;
+    style.id = FILTER_STYLE_TAG_ID;
+    style.textContent = css;
 
     if (document.head) {
         document.head.appendChild(style);
@@ -315,7 +358,19 @@ function _injectStructuralCss(): void {
         document.documentElement.appendChild(style);
     }
 
-    _log('injectStructuralCss', 'Structural theme CSS injected.');
+    _log('upsertFilterCss', `Filter CSS injected for theme "${theme.name}".`);
+}
+
+/**
+ * Removes the filter CSS <style> tag from the DOM.
+ * Called when reverting to 'default' (no theme active).
+ */
+function _removeFilterCss(): void {
+    const existing = document.getElementById(FILTER_STYLE_TAG_ID);
+    if (existing) {
+        existing.remove();
+        _log('removeFilterCss', 'Filter CSS removed.');
+    }
 }
 
 /**
@@ -370,12 +425,14 @@ function _removeUserCss(): void {
 
 /**
  * Applies or clears a theme by name.
- * For non-default themes: upserts the Layer 4 user CSS and adds THEME_CLASS.
- * For 'default': removes the user CSS and removes THEME_CLASS.
+ * For non-default themes: checks for selector conflicts, upserts filter CSS
+ * (Layers 1–3) and Layer 4 user CSS, then adds THEME_CLASS to <body>.
+ * For 'default': removes filter CSS, user CSS, and THEME_CLASS.
  * @param name - The theme name to apply, or 'default' to clear.
  */
 function _applyTheme(name: string): void {
     if (name === 'default') {
+        _removeFilterCss();
         _removeUserCss();
         _applyThemeClass(false);
     } else {
@@ -383,6 +440,22 @@ function _applyTheme(name: string): void {
         if (!theme) {
             return;
         }
+
+        // Warn if a selector appears in both arrays.
+        // preserveSelectors wins by cascade — its rules are generated last.
+        const conflict = theme.invertSelectors.filter(
+            s => (theme.preserveSelectors as readonly string[]).includes(s),
+        );
+        if (conflict.length > 0) {
+            _log(
+                'applyTheme',
+                `Selector conflict in theme "${theme.name}": ` +
+                `[${conflict.join(', ')}] appear in both invertSelectors and ` +
+                `preserveSelectors. preserveSelectors takes precedence.`,
+            );
+        }
+
+        _upsertFilterCss(theme);
         _upsertUserCss(theme);
         _applyThemeClass(true);
     }
