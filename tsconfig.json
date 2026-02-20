@@ -21,7 +21,7 @@
     "noUncheckedSideEffectImports": true,
 
     /* Custom types from plugins */
-    "types": ["vite-plugin-monkey/client"]
+    "types": ["vite-plugin-monkey/client", "chrome"]
   },
   "include": ["src"]
 }
