@@ -470,41 +470,68 @@ function _removeUserCss(): void {
  * Generates the CSS to inject directly into a TinyMCE (or other rich-editor)
  * iframe's contentDocument when a dark theme is active.
  *
- * The parent page's `html.ffn-theme { filter: invert(1) hue-rotate(180deg) }` creates
- * a page-level compositing layer that covers ALL same-origin content, including
- * child <iframe> elements.  This means the parent filter already inverts the
- * TinyMCE iframe's rendered pixels — dark mode is achieved without any additional
- * injection on the <body> inside the iframe.
+ * WHY direct injection is required
+ * ---------------------------------
+ * Each <iframe> element creates its own compositor layer.  The parent page's
+ * `html.ffn-theme { filter: invert(1) hue-rotate(180deg) }` applies to the
+ * parent document's stacking context and does NOT cross into the iframe's
+ * separate browsing context (confirmed empirically — without this injection the
+ * TinyMCE editor box stays in light mode regardless of the parent filter).
+ * Dark mode must therefore be injected directly into the iframe's own <head>.
  *
- * Injecting a second `body { filter: invert }` inside the iframe would produce a
- * DOUBLE inversion (parent + iframe = two inversions = original light-mode colours),
- * which is the root cause of the "flickers dark then turns white-on-white" bug.
+ * WHY `html` (not `body`) is targeted, and WHY `color-scheme: light` is added
+ * ---------------------------------------------------------------------------
+ * 1.  Targeting `html` (not `body`) mirrors the parent-page approach and avoids
+ *     the `overflow-x: hidden` compositing-boundary issue that caused #p_footer
+ *     to escape a body-level filter.
  *
- * What we DO inject is the preserveSelectors re-inversion:  elements inside the
- * editor (e.g. user-inserted <img>) are inverted once by the parent filter; we
- * re-invert them here to restore their original colours (double-invert is a no-op
- * on pixel values).
+ * 2.  TinyMCE (v4/v5) monitors the browser's OS color-scheme preference and, when
+ *     the OS is in dark mode, automatically applies its dark skin inside the iframe
+ *     (setting `body { background: #1a1a1a; color: #fff }` via its own JS/CSS).
+ *     If we then invert the html element, the dark skin produces a light appearance
+ *     (inverted dark = light background; inverted white text = black text), which
+ *     fights our intent. Adding `color-scheme: light` to the iframe's `html` element
+ *     suppresses TinyMCE's OS-based dark-skin activation, ensuring it always uses
+ *     its light skin.  Our html-level inversion then flips the light skin to a dark
+ *     appearance — exactly one inversion, no fighting.
  *
- * If the theme has no preserveSelectors, nothing needs to be injected and this
- * function returns '' — no <style> tag is created for that iframe.
+ * preserveSelectors inside the iframe
+ * ------------------------------------
+ * Elements such as user-inserted <img> are inverted once by our html filter above.
+ * We re-invert them to restore original colours (two inversions = no-op on pixels).
  *
  * @param theme - The active ITheme data object.
  * @returns A CSS string to inject into the iframe document, or '' if not needed.
  */
 function _buildIframeCss(theme: ITheme): string {
-    if (!theme.isDarkTheme || theme.preserveSelectors.length === 0) {
+    if (!theme.isDarkTheme) {
         return '';
     }
 
-    // Only re-invert elements listed in preserveSelectors.
-    // The parent html.ffn-theme filter handles the base dark-mode inversion for
-    // the iframe; this CSS only corrects specific child elements (e.g. images)
-    // so they are not double-inverted by the parent filter.
-    const selectors = theme.preserveSelectors.join(',\n');
+    const parts: string[] = [];
+
+    // Layer 1 (iframe): invert the iframe's html root + force light color-scheme
+    // so TinyMCE always uses its light skin (which our filter then flips to dark).
+    parts.push(
+        `html {\n` +
+        `    filter: ${INVERT_FILTER};\n` +
+        `    color-scheme: light;\n` +
+        `}`,
+    );
+
+    // Layers 2-3 (iframe): re-invert media/preserve elements inside the editor
+    // to restore their original colours after the html-level inversion above.
+    if (theme.preserveSelectors.length > 0) {
+        const selectors = theme.preserveSelectors.join(',\n');
+        parts.push(
+            `${selectors} {\n    filter: ${INVERT_FILTER} !important;\n}`,
+        );
+    }
+
     return (
         `/* FFN Enhancements: Dark mode (${theme.name}) — injected into iframe */\n` +
-        `/* Re-invert to cancel the parent-page filter's effect on these elements */\n\n` +
-        `${selectors} {\n    filter: ${INVERT_FILTER} !important;\n}`
+        `/* Direct injection required: parent-page filter does not cross iframe boundaries. */\n\n` +
+        parts.join('\n\n')
     );
 }
 
