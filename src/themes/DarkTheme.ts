@@ -1,4 +1,4 @@
-// themes/dark.ts
+// themes/DarkTheme.ts
 
 import type { ITheme } from '../interfaces/ITheme';
 
