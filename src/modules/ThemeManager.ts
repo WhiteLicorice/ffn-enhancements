@@ -545,89 +545,110 @@ function _buildIframeCss(theme: ITheme): string {
 
 /**
  * Injects or updates the dark-mode inversion <style> tag inside a single
- * iframe's contentDocument.
+ * iframe's contentDocument by polling for TinyMCE's initialisation signature.
  *
- * WHY we listen on contentWindow, not just the iframe element
- * -----------------------------------------------------------
+ * WHY polling, not load events
+ * ----------------------------
  * TinyMCE creates iframes in two stages:
- *   1. An <iframe> is added to the DOM in an initial blank state
- *      (src="" or about:blank; readyState is already 'complete').
- *   2. TinyMCE calls contentDocument.open() / document.write() / document.close()
- *      to inject its editor HTML.  document.open() replaces the document entirely —
- *      wiping any <style> tag we injected in step 1.
+ *   1. An <iframe> is added to the DOM (src="" / about:blank).
+ *   2. TinyMCE calls contentDocument.open() → write() → close() to inject its
+ *      editor HTML, then dynamically appends skin <link> elements to <head>.
  *
- * The critical distinction: document.close() fires 'load' on the iframe's OWN
- * WINDOW (contentWindow), not necessarily on the <iframe> ELEMENT in the parent
- * document.  In Tampermonkey's sandbox the element-level event may not propagate,
- * which is why a listener on `iframe` alone fails.
+ * Tampermonkey's content-script sandbox silently drops addEventListener calls
+ * on iframe.contentWindow (cross-context boundary).  The iframe-element 'load'
+ * event is also suppressed for document.write()-initiated loads in the sandbox.
+ * All event-based approaches therefore fail without throwing — the callback is
+ * simply never called.
  *
- * The contentWindow object PERSISTS across document.write() cycles — the window
- * is reused, only the document inside it changes.  A 'load' listener on
- * contentWindow therefore survives the document.open() replacement and fires
- * reliably after document.close() completes with TinyMCE's fully-initialised
- * document in place.
+ * What DOES work from a Tampermonkey userscript: reading iframe.contentDocument
+ * synchronously.  We poll it every 100 ms until TinyMCE's skin CSS <link>
+ * appears in <head> (TinyMCE 4 always adds these via JS after document.close()).
+ * At that point TinyMCE's head rebuild is complete and our <style> will survive.
  *
- * We keep the iframe-element listener as a belt-and-suspenders fallback for
- * environments where contentWindow events don't propagate upward.
+ * A MutationObserver on the TinyMCE head then re-injects exactly once if
+ * TinyMCE strips our tag during any final init step.
  *
- * The AbortController allows _removeCssFromIframe / _clearIframeInjections to
- * cleanly detach all listeners at once without needing a reference to the
- * callback function.
+ * The AbortController lets _removeCssFromIframe / _clearIframeInjections stop
+ * the poll and the guard observer cleanly when the theme changes or resets.
  *
  * @param iframe - The target <iframe> element.
  * @param css    - The CSS string to inject.
  */
 function _injectCssIntoIframe(iframe: HTMLIFrameElement, css: string): void {
-    // Abort any previous listeners for this iframe before re-arming,
-    // preventing double-injection if called more than once on the same iframe.
+    // Abort any existing poll/guard for this iframe before re-arming.
     _iframeListeners.get(iframe)?.abort();
     const controller = new AbortController();
+    const { signal } = controller;
     _iframeListeners.set(iframe, controller);
 
-    const inject = () => {
+    /**
+     * Write our <style> tag into doc.head.
+     * @param doc       - The TinyMCE iframe's contentDocument.
+     * @param armGuard  - If true, arm a MutationObserver that re-injects once
+     *                    if TinyMCE removes our tag during its final init steps.
+     */
+    const doInject = (doc: Document, armGuard: boolean): void => {
+        if (signal.aborted || !doc.head) {
+            return;
+        }
         try {
-            const doc = iframe.contentDocument;
-            if (!doc || !doc.head) {
-                // Document not yet ready (e.g. mid-write); the next 'load' event
-                // will fire again and retry automatically.
-                return;
-            }
-
             let styleTag = doc.getElementById(IFRAME_STYLE_TAG_ID) as HTMLStyleElement | null;
-            if (styleTag) {
-                styleTag.textContent = css;
-            } else {
+            if (!styleTag) {
                 styleTag = doc.createElement('style');
                 styleTag.id = IFRAME_STYLE_TAG_ID;
-                styleTag.textContent = css;
                 doc.head.appendChild(styleTag);
             }
-
+            styleTag.textContent = css;
             _trackedIframes.add(iframe);
-            _log('injectCssIntoIframe', `Injected dark mode CSS into iframe "${iframe.id}".`);
+            _log('injectCssIntoIframe', `CSS injected into iframe "${iframe.id}".`);
+
+            if (armGuard) {
+                // If TinyMCE strips our tag once more (final init step),
+                // re-inject exactly once without setting up another guard.
+                const guard = new MutationObserver(() => {
+                    if (signal.aborted) {
+                        guard.disconnect();
+                        return;
+                    }
+                    if (!doc.getElementById(IFRAME_STYLE_TAG_ID)) {
+                        guard.disconnect();
+                        doInject(doc, false);
+                    }
+                });
+                guard.observe(doc.head, { childList: true });
+            }
         } catch (e) {
-            // Cross-origin iframes will throw on contentDocument access; silently skip.
-            _log('injectCssIntoIframe', `Could not access iframe "${iframe.id}": ${e}`);
+            _log('injectCssIntoIframe', `Inject failed for iframe "${iframe.id}": ${e}`);
         }
     };
 
-    // PRIMARY: listen on contentWindow — this object persists across
-    // document.write() cycles so the listener survives document replacement.
-    // 'load' fires here after TinyMCE's document.close() completes.
-    try {
-        iframe.contentWindow?.addEventListener('load', inject, { signal: controller.signal });
-    } catch (e) {
-        _log('injectCssIntoIframe', `Could not attach contentWindow listener for "${iframe.id}": ${e}`);
-    }
+    // Poll every 100 ms until TinyMCE has appended its skin <link> to <head>.
+    // TinyMCE 4 always adds at least one skin CSS <link> after document.close();
+    // its presence is the reliable "init complete" signal.
+    // Timeout: 100 polls × 100 ms = 10 s.
+    let pollAttempts = 0;
+    const MAX_POLL_ATTEMPTS = 100;
+    const poll = (): void => {
+        if (signal.aborted) {
+            return;
+        }
+        try {
+            const doc = iframe.contentDocument;
+            if (doc?.head?.querySelector('link')) {
+                doInject(doc, true);
+                return;
+            }
+        } catch {
+            // contentDocument inaccessible (cross-origin or not yet initialised).
+        }
+        if (++pollAttempts < MAX_POLL_ATTEMPTS) {
+            setTimeout(poll, 100);
+        } else {
+            _log('injectCssIntoIframe', `Timed out waiting for TinyMCE in iframe "${iframe.id}".`);
+        }
+    };
 
-    // FALLBACK: also listen on the iframe element itself for environments /
-    // cases (e.g. src navigation) where the element-level event does fire.
-    iframe.addEventListener('load', inject, { signal: controller.signal });
-
-    // Attempt immediate injection for the case where the editor is already
-    // fully loaded (e.g. the user switches the theme while the editor is open,
-    // or init() fires after TinyMCE has finished initialising).
-    inject();
+    poll();
 }
 
 /**
