@@ -693,6 +693,9 @@ function _applyThemeClass(enable: boolean): void {
  * the case where the user updated their preference in another browser session.
  */
 function _reconcileWithGmStorage(): void {
+    if (_activeTheme === "dark" && FORCE_DARK_MODE) {
+        return; // fail early if we are forcing dark mode
+    }
     let gmRaw: string | undefined;
     try {
         // Use undefined (not 'default') as the fallback so that "never set"
