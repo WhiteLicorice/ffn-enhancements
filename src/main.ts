@@ -7,6 +7,7 @@ import { DocEditor } from './modules/DocEditor';
 import { StoryReader } from './modules/StoryReader';
 import { StoryDownloader } from './modules/StoryDownloader';
 import { LayoutManager } from './modules/LayoutManager';
+import { ThemeManager } from './modules/ThemeManager';
 
 /**
  * The Entry Point / Router.
@@ -33,6 +34,9 @@ Core.log('Router', 'main', `Here at https://www.fanfiction.net${path}`, path);
 // This keeps layout concerns decoupled from higher-level visual customization.
 //
 EarlyBoot.register(LayoutManager);
+// ThemeManager is registered after LayoutManager: structural (layout/spacing) CSS
+// must precede color/theme CSS in the cascade. Registration order is intentional.
+EarlyBoot.register(ThemeManager);
 EarlyBoot.prime();
 
 const bootstrap = () => {
