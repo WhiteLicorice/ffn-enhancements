@@ -101,6 +101,14 @@ let _iframeObserver: MutationObserver | null = null;
  */
 let _trackedIframes: Set<HTMLIFrameElement> = new Set();
 
+/**
+ * AbortControllers keyed by iframe element, used to clean up persistent 'load'
+ * event listeners when the theme changes or an iframe is unmounted.
+ * An entry exists for every iframe that has had _injectCssIntoIframe called on
+ * it, regardless of whether injection succeeded.
+ */
+let _iframeListeners: Map<HTMLIFrameElement, AbortController> = new Map();
+
 // ─── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -537,17 +545,42 @@ function _buildIframeCss(theme: ITheme): string {
 
 /**
  * Injects or updates the dark-mode inversion <style> tag inside a single
- * iframe's contentDocument.  If the iframe has not yet loaded, waits for its
- * 'load' event before injecting.
+ * iframe's contentDocument.
+ *
+ * WHY we always register a persistent 'load' listener (not only inject once)
+ * ---------------------------------------------------------------------------
+ * TinyMCE creates iframes in two stages:
+ *   1. An <iframe> is added to the DOM in an initial blank state
+ *      (src="" or about:blank; readyState is already 'complete').
+ *   2. TinyMCE calls contentDocument.open() / document.write() / document.close()
+ *      to inject its editor HTML.  document.open() replaces the document —
+ *      wiping any <style> tag we injected in step 1 — then document.close()
+ *      fires another 'load' event on the iframe element.
+ *
+ * If we inject only on the initial readyState === 'complete' snapshot (step 1),
+ * TinyMCE's document.write() will erase our style before the editor is visible.
+ * We must also listen for the second 'load' event (step 2) to re-inject after
+ * TinyMCE has written its own document.
+ *
+ * The AbortController allows _removeCssFromIframe / _clearIframeInjections to
+ * cleanly detach the listener without needing a reference to the callback.
  *
  * @param iframe - The target <iframe> element.
  * @param css    - The CSS string to inject.
  */
 function _injectCssIntoIframe(iframe: HTMLIFrameElement, css: string): void {
+    // Abort any previous load listener for this iframe before re-arming,
+    // preventing double-injection if called more than once on the same iframe.
+    _iframeListeners.get(iframe)?.abort();
+    const controller = new AbortController();
+    _iframeListeners.set(iframe, controller);
+
     const inject = () => {
         try {
             const doc = iframe.contentDocument;
             if (!doc || !doc.head) {
+                // Document not yet ready (e.g. mid-write); the next 'load' event
+                // will fire again and retry automatically.
                 return;
             }
 
@@ -569,20 +602,30 @@ function _injectCssIntoIframe(iframe: HTMLIFrameElement, css: string): void {
         }
     };
 
-    if (iframe.contentDocument?.readyState === 'complete') {
-        inject();
-    } else {
-        iframe.addEventListener('load', inject, { once: true });
-    }
+    // Register the persistent load listener BEFORE the immediate injection
+    // attempt.  This is the critical path: TinyMCE's document.write() fires a
+    // second 'load' event that wipes the initial injection — this listener
+    // catches it and re-injects into TinyMCE's fully-initialised document.
+    iframe.addEventListener('load', inject, { signal: controller.signal });
+
+    // Also attempt immediate injection for the case where the editor is already
+    // fully loaded (e.g. the user switches the theme while the editor is open,
+    // or init() fires after TinyMCE has finished initialising).
+    inject();
 }
 
 /**
- * Removes the dark-mode <style> tag from a single iframe's contentDocument
- * and removes the iframe from the tracked set.
+ * Removes the dark-mode <style> tag from a single iframe's contentDocument,
+ * detaches the persistent 'load' listener, and removes the iframe from the
+ * tracked set.
  *
  * @param iframe - The iframe to clean up.
  */
 function _removeCssFromIframe(iframe: HTMLIFrameElement): void {
+    // Detach the persistent load listener first.
+    _iframeListeners.get(iframe)?.abort();
+    _iframeListeners.delete(iframe);
+
     try {
         const doc = iframe.contentDocument;
         if (doc) {
@@ -601,8 +644,10 @@ function _removeCssFromIframe(iframe: HTMLIFrameElement): void {
 /**
  * Tears down all active iframe CSS injection:
  * - Disconnects the MutationObserver watching for new iframes.
- * - Removes injected <style> tags from all tracked iframes.
- * - Clears the tracked iframe set.
+ * - Removes injected <style> tags from all tracked iframes and detaches their
+ *   persistent 'load' listeners.
+ * - Clears both the tracked-iframe set and the listener map, including any
+ *   orphaned controllers for iframes where injection failed before tracking.
  */
 function _clearIframeInjections(): void {
     if (_iframeObserver) {
@@ -614,6 +659,14 @@ function _clearIframeInjections(): void {
         _removeCssFromIframe(iframe);
     }
     _trackedIframes.clear();
+
+    // Abort any controllers for iframes that were queued but never successfully
+    // tracked (e.g. injection failed due to a cross-origin error before the
+    // iframe was added to _trackedIframes).
+    for (const controller of _iframeListeners.values()) {
+        controller.abort();
+    }
+    _iframeListeners.clear();
 }
 
 /**
