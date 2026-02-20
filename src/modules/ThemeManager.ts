@@ -547,29 +547,38 @@ function _buildIframeCss(theme: ITheme): string {
  * Injects or updates the dark-mode inversion <style> tag inside a single
  * iframe's contentDocument.
  *
- * WHY we always register a persistent 'load' listener (not only inject once)
- * ---------------------------------------------------------------------------
+ * WHY we listen on contentWindow, not just the iframe element
+ * -----------------------------------------------------------
  * TinyMCE creates iframes in two stages:
  *   1. An <iframe> is added to the DOM in an initial blank state
  *      (src="" or about:blank; readyState is already 'complete').
  *   2. TinyMCE calls contentDocument.open() / document.write() / document.close()
- *      to inject its editor HTML.  document.open() replaces the document —
- *      wiping any <style> tag we injected in step 1 — then document.close()
- *      fires another 'load' event on the iframe element.
+ *      to inject its editor HTML.  document.open() replaces the document entirely —
+ *      wiping any <style> tag we injected in step 1.
  *
- * If we inject only on the initial readyState === 'complete' snapshot (step 1),
- * TinyMCE's document.write() will erase our style before the editor is visible.
- * We must also listen for the second 'load' event (step 2) to re-inject after
- * TinyMCE has written its own document.
+ * The critical distinction: document.close() fires 'load' on the iframe's OWN
+ * WINDOW (contentWindow), not necessarily on the <iframe> ELEMENT in the parent
+ * document.  In Tampermonkey's sandbox the element-level event may not propagate,
+ * which is why a listener on `iframe` alone fails.
+ *
+ * The contentWindow object PERSISTS across document.write() cycles — the window
+ * is reused, only the document inside it changes.  A 'load' listener on
+ * contentWindow therefore survives the document.open() replacement and fires
+ * reliably after document.close() completes with TinyMCE's fully-initialised
+ * document in place.
+ *
+ * We keep the iframe-element listener as a belt-and-suspenders fallback for
+ * environments where contentWindow events don't propagate upward.
  *
  * The AbortController allows _removeCssFromIframe / _clearIframeInjections to
- * cleanly detach the listener without needing a reference to the callback.
+ * cleanly detach all listeners at once without needing a reference to the
+ * callback function.
  *
  * @param iframe - The target <iframe> element.
  * @param css    - The CSS string to inject.
  */
 function _injectCssIntoIframe(iframe: HTMLIFrameElement, css: string): void {
-    // Abort any previous load listener for this iframe before re-arming,
+    // Abort any previous listeners for this iframe before re-arming,
     // preventing double-injection if called more than once on the same iframe.
     _iframeListeners.get(iframe)?.abort();
     const controller = new AbortController();
@@ -602,13 +611,20 @@ function _injectCssIntoIframe(iframe: HTMLIFrameElement, css: string): void {
         }
     };
 
-    // Register the persistent load listener BEFORE the immediate injection
-    // attempt.  This is the critical path: TinyMCE's document.write() fires a
-    // second 'load' event that wipes the initial injection — this listener
-    // catches it and re-injects into TinyMCE's fully-initialised document.
+    // PRIMARY: listen on contentWindow — this object persists across
+    // document.write() cycles so the listener survives document replacement.
+    // 'load' fires here after TinyMCE's document.close() completes.
+    try {
+        iframe.contentWindow?.addEventListener('load', inject, { signal: controller.signal });
+    } catch (e) {
+        _log('injectCssIntoIframe', `Could not attach contentWindow listener for "${iframe.id}": ${e}`);
+    }
+
+    // FALLBACK: also listen on the iframe element itself for environments /
+    // cases (e.g. src navigation) where the element-level event does fire.
     iframe.addEventListener('load', inject, { signal: controller.signal });
 
-    // Also attempt immediate injection for the case where the editor is already
+    // Attempt immediate injection for the case where the editor is already
     // fully loaded (e.g. the user switches the theme while the editor is open,
     // or init() fires after TinyMCE has finished initialising).
     inject();
