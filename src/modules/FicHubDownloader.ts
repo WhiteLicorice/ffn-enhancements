@@ -94,7 +94,7 @@ export const FicHubDownloader: IFanficDownloader = {
 /**
  * Compares Local metadata against FicHub metadata to determine freshness.
  * USES GM_xmlhttpRequest TO BYPASS CORS.
- * * @param storyUrl The canonical URL of the story.
+ * @param storyUrl The canonical URL of the story.
  * @param localMeta The serializer containing local page statistics.
  * @returns - FicHubStatus (whether the API returns STALE, FRESH, or ERROR)
  */
