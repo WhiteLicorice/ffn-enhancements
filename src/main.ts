@@ -1,6 +1,7 @@
 // main.ts
 
 import { Core } from './modules/Core';
+import { EarlyBoot } from './modules/EarlyBoot';
 import { DocManager } from './modules/DocManager';
 import { DocEditor } from './modules/DocEditor';
 import { StoryReader } from './modules/StoryReader';
@@ -21,23 +22,34 @@ import { LayoutManager } from './modules/LayoutManager';
  */
 const path = window.location.pathname;
 
-Core.log('router', 'main', `Here at https://www.fanfiction.net${path}`, path);
+Core.log('Router', 'main', `Here at https://www.fanfiction.net${path}`, path);
 
-LayoutManager.primeFluidMode();
+// Register all sitewide modules with EarlyBoot.
+// Order of registration determines execution order and CSS cascade layering.
+// Structural modules (layout, spacing) must be registered before theme modules (colors).
+//
+// Arrow function adapters are used intentionally: they close over the module object
+// and guarantee correct 'this' binding regardless of how EarlyBoot invokes the methods.
+// This decouples module implementations from the ISitewideModule interface — modules
+// do not need to import or declare conformance to EarlyBoot.
+// This shit is so ass, but TypeScript will be TypeScripting.
+EarlyBoot.register(LayoutManager);
+EarlyBoot.prime();
 
 const bootstrap = () => {
     /**
      * Bootstraps the Core system.
      * 1. Sets the Delegate based on the path (Core.setDelegate).
-     * 2. Initializes the LayoutManager (injects global CSS overrides).
+     * 2. Runs Phase 2 init() on all registered sitewide modules via EarlyBoot.
      */
     Core.startup(path);
 
     // NOTE: The path includes the "/" and omits "https://www.fanfiction.net".
     // If in doubt, check your browser.
 
-    // Initialize the LayoutManager sitewide
-    LayoutManager.init();
+    // Phase 2 — DOMContentLoaded.
+    // Calls init() on every registered sitewide module now that the DOM is fully ready.
+    EarlyBoot.init();
 
     if (path === "/docs/docs.php") {
         /**

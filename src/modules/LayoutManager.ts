@@ -49,8 +49,9 @@ export const LayoutManager = {
     },
 
     /**
-     * Starts the layout adjustment sequence.
-     * Typically called by the Core on page load.
+     * ISitewideModule Phase 2 — DOMContentLoaded.
+     * Starts the full layout adjustment sequence.
+     * Typically called by EarlyBoot after the DOM is ready.
      */
     init: function () {
         this.log('init', 'Starting init sequence...');
@@ -65,10 +66,12 @@ export const LayoutManager = {
     },
 
     /**
-     * Primes Fluid Mode styles at document-start to prevent FOUC.
-     * Safe to call before DOM is fully ready.
+     * ISitewideModule Phase 1 — document-start.
+     * Primes Fluid Mode styles before the first paint to prevent FOUC.
+     * Injects the stylesheet and arms the body class observer.
+     * Safe to call before the DOM is fully parsed.
      */
-    primeFluidMode: function (): void {
+    prime: function (): void {
         this.injectFluidStyles();
         this.applyFluidClass(this.isFluid);
     },
