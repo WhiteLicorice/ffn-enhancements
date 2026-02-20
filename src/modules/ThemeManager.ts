@@ -277,15 +277,21 @@ function _clearStoredTheme(): void {
  * Layer 1 (body inversion) fires only when theme.isDarkTheme is true.
  * Layer 2/3 (preserveSelectors re-inversion) fires only for dark themes —
  *   each listed selector gets filter: invert(1) hue-rotate(180deg) to cancel
- *   the body inversion and restore original colors.
+ *   the html inversion and restore original colors.
  * invertSelectors (force inversion) fires only for non-dark themes —
  *   each listed selector gets filter: invert(1) hue-rotate(180deg) to darken
  *   specific elements against the un-inverted light background.
  *
+ * The filter is applied to the <html> element (not <body>) so that the composite
+ * scope covers ALL page content.  When body carries both overflow-x:hidden (from
+ * LayoutManager) and filter, Chromium can exclude elements near the overflow
+ * boundary (such as #p_footer) from the filter's composite layer.  Anchoring
+ * the filter to the document root avoids this edge-case entirely.
+ *
  * NOTE: invertSelectors is a no-op in dark themes (isDarkTheme: true) because
- * the body filter already inverts everything — elements are already dark.
+ * the html filter already inverts everything — elements are already dark.
  * preserveSelectors is a no-op in light themes (isDarkTheme: false) because
- * no body inversion is applied — elements are already at their original colors.
+ * no html inversion is applied — elements are already at their original colors.
  *
  * If a selector appears in both invertSelectors and preserveSelectors,
  * preserveSelectors wins by cascade order (its rules are generated last).
@@ -294,22 +300,25 @@ function _clearStoredTheme(): void {
 function _buildFilterCss(theme: ITheme): string {
     const parts: string[] = [];
 
-    // Layer 1: base inversion — dark themes only.
+    // Layer 1: base inversion on the root element — dark themes only.
+    // Anchoring the filter to <html> (not <body>) ensures the composite scope
+    // covers all page content, including elements that can escape a body-level
+    // filter (e.g. #p_footer on pages where body has overflow-x: hidden).
     if (theme.isDarkTheme) {
         parts.push(
-            `    /* ── Layer 1: Base inversion ── */\n` +
-            `    body.${THEME_CLASS} {\n` +
+            `    /* ── Layer 1: Base inversion (html root) ── */\n` +
+            `    html.${THEME_CLASS} {\n` +
             `        filter: invert(1) hue-rotate(180deg);\n` +
             `    }`,
         );
     }
 
     // invertSelectors — meaningful only for non-dark themes.
-    // In dark themes the body filter already handles inversion; this list
+    // In dark themes the html filter already handles inversion; this list
     // is a no-op and no rules are emitted.
     if (!theme.isDarkTheme && theme.invertSelectors.length > 0) {
         const selectors = theme.invertSelectors
-            .map(s => `    body.${THEME_CLASS} ${s}`)
+            .map(s => `    html.${THEME_CLASS} ${s}`)
             .join(',\n');
         parts.push(
             `    /* ── invertSelectors: Force inversion (light theme) ── */\n` +
@@ -320,12 +329,12 @@ function _buildFilterCss(theme: ITheme): string {
     }
 
     // preserveSelectors — meaningful only for dark themes.
-    // Re-invert each listed element to cancel the body filter and restore
-    // its original colors.  In light themes (isDarkTheme: false) no body
+    // Re-invert each listed element to cancel the html filter and restore
+    // its original colors.  In light themes (isDarkTheme: false) no html
     // inversion is active, so no rules are emitted.
     if (theme.isDarkTheme && theme.preserveSelectors.length > 0) {
         const selectors = theme.preserveSelectors
-            .map(s => `    body.${THEME_CLASS} ${s}`)
+            .map(s => `    html.${THEME_CLASS} ${s}`)
             .join(',\n');
         parts.push(
             `    /* ── Layers 2-3: Preserve original appearance ── */\n` +
@@ -686,69 +695,36 @@ function _applyTheme(name: string): void {
 }
 
 /**
- * Applies or removes THEME_CLASS on <body> to activate or deactivate theme
- * scoping.  Mirrors LayoutManager._applyFluidClass(): if <body> is not yet
- * in the DOM at document-start time, a MutationObserver is armed to apply
- * the class as soon as <body> is inserted.
- * @param enable - True to add THEME_CLASS, false to remove it.
+ * Applies or removes THEME_CLASS on <html> (document.documentElement) to
+ * activate or deactivate theme scoping.
+ *
+ * The class is placed on <html> rather than <body> for two reasons:
+ *   1. document.documentElement is always present — even at document-start
+ *      before <body> is parsed — eliminating the need for a MutationObserver.
+ *   2. The filter CSS rules use html.THEME_CLASS as their selector root,
+ *      anchoring the filter composite to the document root so that all page
+ *      content (including #p_footer and other elements that can escape a
+ *      body-level filter when body has overflow-x: hidden) is covered.
+ *
+ * @param enable - True to add THEME_CLASS to <html>, false to remove it.
  */
 function _applyThemeClass(enable: boolean): void {
-    const body = document.body;
-
+    // Disconnect any pending body observer from a previous prime() call.
+    // (Kept for safety; the observer is no longer armed now that we target html.)
     if (_bodyObserver) {
         _bodyObserver.disconnect();
         _bodyObserver = null;
     }
 
-    if (body) {
-        if (enable) {
-            if (!body.classList.contains(THEME_CLASS)) {
-                body.classList.add(THEME_CLASS);
-                _log('applyThemeClass', 'Theme class applied to body.');
-            }
-        } else if (body.classList.contains(THEME_CLASS)) {
-            body.classList.remove(THEME_CLASS);
-            _log('applyThemeClass', 'Theme class removed from body.');
-        }
-        return;
-    }
-
+    const html = document.documentElement; // always present
     if (enable) {
-        _bodyObserver = new MutationObserver((mutations) => {
-            let bodyAdded = false;
-            for (const mutation of mutations) {
-                for (const node of mutation.addedNodes) {
-                    if (node === document.body) {
-                        bodyAdded = true;
-                        break;
-                    }
-                }
-                if (bodyAdded) {
-                    break;
-                }
-            }
-
-            if (!bodyAdded) {
-                return;
-            }
-
-            const currentBody = document.body;
-            if (!currentBody) {
-                return;
-            }
-
-            if (!currentBody.classList.contains(THEME_CLASS)) {
-                currentBody.classList.add(THEME_CLASS);
-                _log('applyThemeClass', 'Theme class applied on body creation.');
-            }
-
-            if (_bodyObserver) {
-                _bodyObserver.disconnect();
-                _bodyObserver = null;
-            }
-        });
-
-        _bodyObserver.observe(document.documentElement, { childList: true });
+        if (!html.classList.contains(THEME_CLASS)) {
+            html.classList.add(THEME_CLASS);
+            _log('applyThemeClass', 'Theme class applied to html.');
+        }
+    } else if (html.classList.contains(THEME_CLASS)) {
+        html.classList.remove(THEME_CLASS);
+        _log('applyThemeClass', 'Theme class removed from html.');
     }
 }
 
