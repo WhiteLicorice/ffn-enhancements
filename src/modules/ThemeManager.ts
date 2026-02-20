@@ -575,59 +575,42 @@ function _buildIframeCss(theme: ITheme): string {
  * @param css    - The CSS string to inject.
  */
 function _injectCssIntoIframe(iframe: HTMLIFrameElement, css: string): void {
-    // Abort any existing poll/guard for this iframe before re-arming.
+    // Abort any existing poll for this iframe before re-arming.
     _iframeListeners.get(iframe)?.abort();
     const controller = new AbortController();
     const { signal } = controller;
     _iframeListeners.set(iframe, controller);
 
-    /**
-     * Write our <style> tag into doc.head.
-     * @param doc       - The TinyMCE iframe's contentDocument.
-     * @param armGuard  - If true, arm a MutationObserver that re-injects once
-     *                    if TinyMCE removes our tag during its final init steps.
-     */
-    const doInject = (doc: Document, armGuard: boolean): void => {
-        if (signal.aborted || !doc.head) {
-            return;
-        }
-        try {
-            let styleTag = doc.getElementById(IFRAME_STYLE_TAG_ID) as HTMLStyleElement | null;
-            if (!styleTag) {
-                styleTag = doc.createElement('style');
-                styleTag.id = IFRAME_STYLE_TAG_ID;
-                doc.head.appendChild(styleTag);
-            }
-            styleTag.textContent = css;
-            _trackedIframes.add(iframe);
-            _log('injectCssIntoIframe', `CSS injected into iframe "${iframe.id}".`);
+    // Poll every 100 ms.
+    //
+    // WHY polling, not events or MutationObserver
+    // -------------------------------------------
+    // Tampermonkey's userscript sandbox silently drops addEventListener on
+    // iframe.contentWindow AND MutationObserver callbacks on cross-iframe nodes.
+    // No error is thrown; callbacks simply never fire.  The only mechanism that
+    // works from a userscript is synchronous DOM reads on iframe.contentDocument.
+    //
+    // TinyMCE 4 init sequence (two stages):
+    //   Stage 1 — <iframe> added to DOM, contentDocument is about:blank.
+    //   Stage 2 — TinyMCE calls document.open/write/close, then dynamically
+    //             appends skin <link> elements to <head> via JS.
+    //             After that it continues other init work (setting up plugins,
+    //             body classes, etc.) that may momentarily strip foreign tags.
+    //
+    // Strategy: once TinyMCE's skin <link> appears (stage 2 reached), start
+    // injecting/maintaining our <style> on every tick.  Stop only when it
+    // survives STABLE_THRESHOLD consecutive polls without being removed —
+    // i.e. TinyMCE is fully done touching the document.
+    //
+    // Timeout: MAX_POLL_ATTEMPTS × 100 ms = 10 s.
 
-            if (armGuard) {
-                // If TinyMCE strips our tag once more (final init step),
-                // re-inject exactly once without setting up another guard.
-                const guard = new MutationObserver(() => {
-                    if (signal.aborted) {
-                        guard.disconnect();
-                        return;
-                    }
-                    if (!doc.getElementById(IFRAME_STYLE_TAG_ID)) {
-                        guard.disconnect();
-                        doInject(doc, false);
-                    }
-                });
-                guard.observe(doc.head, { childList: true });
-            }
-        } catch (e) {
-            _log('injectCssIntoIframe', `Inject failed for iframe "${iframe.id}": ${e}`);
-        }
-    };
-
-    // Poll every 100 ms until TinyMCE has appended its skin <link> to <head>.
-    // TinyMCE 4 always adds at least one skin CSS <link> after document.close();
-    // its presence is the reliable "init complete" signal.
-    // Timeout: 100 polls × 100 ms = 10 s.
     let pollAttempts = 0;
     const MAX_POLL_ATTEMPTS = 100;
+
+    // Number of consecutive ticks where our style tag was present and unchanged.
+    let consecutiveSuccesses = 0;
+    const STABLE_THRESHOLD = 3; // 300 ms of stability → stop polling
+
     const poll = (): void => {
         if (signal.aborted) {
             return;
@@ -635,16 +618,44 @@ function _injectCssIntoIframe(iframe: HTMLIFrameElement, css: string): void {
         try {
             const doc = iframe.contentDocument;
             if (doc?.head?.querySelector('link')) {
-                doInject(doc, true);
+                // TinyMCE has started populating the head.  Ensure our tag exists.
+                let styleTag = doc.getElementById(IFRAME_STYLE_TAG_ID) as HTMLStyleElement | null;
+                if (!styleTag || styleTag.textContent !== css) {
+                    // Tag missing or stale — inject / re-inject.
+                    if (!styleTag) {
+                        styleTag = doc.createElement('style');
+                        styleTag.id = IFRAME_STYLE_TAG_ID;
+                        doc.head.appendChild(styleTag);
+                    }
+                    styleTag.textContent = css;
+                    _trackedIframes.add(iframe);
+                    _log('injectCssIntoIframe', `CSS (re-)injected into iframe "${iframe.id}".`);
+                    consecutiveSuccesses = 0; // reset stability counter
+                } else {
+                    consecutiveSuccesses++;
+                    if (consecutiveSuccesses >= STABLE_THRESHOLD) {
+                        // Style has survived unmodified for STABLE_THRESHOLD ticks.
+                        // TinyMCE is fully initialised — stop polling.
+                        _log('injectCssIntoIframe', `CSS stable in iframe "${iframe.id}" — poll complete.`);
+                        return;
+                    }
+                }
+                // Continue polling until stable (or timeout).
+                if (++pollAttempts < MAX_POLL_ATTEMPTS) {
+                    setTimeout(poll, 100);
+                } else {
+                    _log('injectCssIntoIframe', `Timed out stabilising CSS in iframe "${iframe.id}".`);
+                }
                 return;
             }
         } catch {
             // contentDocument inaccessible (cross-origin or not yet initialised).
         }
+        // TinyMCE skin link not yet present — keep waiting.
         if (++pollAttempts < MAX_POLL_ATTEMPTS) {
             setTimeout(poll, 100);
         } else {
-            _log('injectCssIntoIframe', `Timed out waiting for TinyMCE in iframe "${iframe.id}".`);
+            _log('injectCssIntoIframe', `Timed out waiting for TinyMCE init in iframe "${iframe.id}".`);
         }
     };
 
