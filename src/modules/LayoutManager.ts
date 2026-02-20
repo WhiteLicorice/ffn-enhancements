@@ -209,7 +209,7 @@ function _applyFluidClass(enable: boolean): void {
 
 /**
  * Removes the native FFN width toggle button/icon from the DOM.
- * We remove this because Fluid Mode supercedes manual margin controls.
+ * We remove this because Fluid Mode supersedes manual margin controls.
  */
 function _removeWidthControl(): void {
     const widthControl = LayoutManagerDelegate.getElement(Elements.STORY_WIDTH_CONTROL);
