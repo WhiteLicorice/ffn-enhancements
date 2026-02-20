@@ -106,8 +106,11 @@ export const LayoutManager = {
         }
     },
 
-    /** Returns the current Fluid Mode state. Note: call as isFluid(), not isFluid.
-     * We assert that _isFluid should never accessed or set as a property. */
+    /**
+     * Returns the current Fluid Mode state.
+     * @remarks Call as `isFluid()`, not `isFluid`. The internal `_isFluid` flag
+     * should never be accessed or set as a property.
+     */
     isFluid(): boolean {
         return _isFluid;
     }
