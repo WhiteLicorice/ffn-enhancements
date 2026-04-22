@@ -1,0 +1,10 @@
+version: 2
+updates:
+  - package-ecosystem: "pip" # For Python packages
+    directory: "/" # Location of the requirements.txt file
+    schedule:
+      interval: "weekly" # Weekly updates
+  - package-ecosystem: "docker" # For Docker images
+    directory: "/" # Location of the Dockerfile
+    schedule:
+      interval: "weekly" # Weekly updates

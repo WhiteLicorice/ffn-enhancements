@@ -1,3 +1,17 @@
+/old
+/old2
+/.venv
+/.history
+/.vscode
+/cache
+/output
+__pycache__
+.cursorignore
+/test.py
+.aider*
+*.egg-info
+.pytest_cache
+.ruff_cache
 # Logs
 logs
 *.log
