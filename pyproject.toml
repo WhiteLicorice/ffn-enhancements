@@ -2,7 +2,9 @@
 # For more information, see https://www.python.org/dev/peps/pep-0621/
 [project]
 name = "crawler-to-md"
-dynamic = ["version"]
+version="0.1.0"
+# This doesn't work because we're subtree-ing the repository.
+#dynamic = ["version"]
 description = "Convert web content to Markdown & JSON files to fuel your GPTs and agent AI!"
 readme = "README.md"
 requires-python = ">=3.10"
