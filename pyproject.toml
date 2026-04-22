@@ -27,7 +27,7 @@ dependencies = [
     "mdformat==0.7.22",
     "mdformat-gfm==0.4.1",
     "mdformat_footnote==0.1.1",
-    "mdformat_frontmatter==2.0.8",
+    "mdformat_frontmatter==2.0.10",
     "mdformat_tables==1.0.0",
     "requests[socks]==2.32.4",
     "tqdm==4.67.1",
