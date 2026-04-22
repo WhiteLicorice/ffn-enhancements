@@ -30,7 +30,7 @@ dependencies = [
     "mdformat_frontmatter==2.0.8",
     "mdformat_tables==1.0.0",
     "requests[socks]==2.32.4",
-    "tqdm==4.67.1",
+    "tqdm==4.67.3",
     "markitdown==0.1.2",
     "coloredlogs==15.0.1",
     "beautifulsoup4==4.13.4",
