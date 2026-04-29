@@ -4,6 +4,7 @@ import { Core } from './modules/Core';
 import { EarlyBoot } from './modules/EarlyBoot';
 import { SettingsManager } from './modules/SettingsManager';
 import { SettingsMenu } from './modules/SettingsMenu';
+import { SettingsPage } from './modules/SettingsPage';
 import { DocManager } from './modules/DocManager';
 import { DocEditor } from './modules/DocEditor';
 import { StoryReader } from './modules/StoryReader';
@@ -12,7 +13,7 @@ import { LayoutManager } from './modules/LayoutManager';
 
 /**
  * The Entry Point / Router.
- * * Responsibilities:
+ * Responsibilities:
  * 1. Identifies the current page path to determine the execution context.
  * 2. Configures the Core Delegate Strategy (Abstract Factory for DOM elements).
  * 3. Initializes the specific Feature Module corresponding to the active page.
@@ -49,12 +50,27 @@ const bootstrap = () => {
      */
     Core.startup(path);
 
-    // NOTE: The path includes the "/" and omits "https://www.fanfiction.net".
-    // If in doubt, check your browser.
-
     // Phase 2 — DOMContentLoaded.
     // Calls init() on every registered sitewide module now that the DOM is fully ready.
     EarlyBoot.init();
+
+    // ── Settings page intercept ──────────────────────────────────────────────
+    // The Tampermonkey menu command opens `fanfiction.net/?ffne_settings=1` in a
+    // new tab via GM_openInTab. We detect that query parameter here and render the
+    // settings UI in place of the normal page content.
+    //
+    // This MUST come before all other routing so page-specific modules
+    // (DocManager, DocEditor, StoryReader, etc.) do not run on the settings page.
+    //
+    // LayoutManager.init() has already run above (desirable — we want fluid mode
+    // applied to the settings page itself). No page-specific module is initialised.
+    if (window.location.search.includes('ffne_settings=1')) {
+        SettingsPage.render();
+        return;
+    }
+
+    // NOTE: The path includes the "/" and omits "https://www.fanfiction.net".
+    // If in doubt, check your browser.
 
     if (path === "/docs/docs.php") {
         /**
@@ -88,3 +104,4 @@ if (document.readyState === 'loading') {
 } else {
     bootstrap();
 }
+

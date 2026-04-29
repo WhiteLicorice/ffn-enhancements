@@ -8,6 +8,7 @@ import { DocManagerDelegate } from '../delegates/DocManagerDelegate';
 import { DocEditorDelegate } from '../delegates/DocEditorDelegate';
 import { GlobalDelegate } from '../delegates/GlobalDelegate';
 import { FFNLogger } from './FFNLogger';
+import { SettingsManager } from './SettingsManager';
 
 /**
  * Shared utility engine providing logging, DOM readiness, content parsing,
@@ -212,14 +213,14 @@ export const Core = {
      */
     _fetchDocPage: async function (docId: string, title: string, attempt: number = 1): Promise<Document | null> {
         const log = this.getLogger(this.MODULE_NAME, '_fetchDocPage');
-        const MAX_RETRIES = 3;
+        const MAX_RETRIES = SettingsManager.get('fetchMaxRetries');
 
         try {
             const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
 
             if (response.status === 429) {
                 if (attempt <= MAX_RETRIES) {
-                    const waitTime = attempt * 2000; // 2s, 4s, 6s...
+                    const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
                     log(`Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
                     await new Promise(r => setTimeout(r, waitTime));
                     return this._fetchDocPage(docId, title, attempt + 1);
@@ -301,7 +302,7 @@ export const Core = {
      */
     refreshPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<boolean> {
         const log = this.getLogger(this.MODULE_NAME, 'refreshPrivateDoc');
-        const MAX_RETRIES = 3;
+        const MAX_RETRIES = SettingsManager.get('fetchMaxRetries');
 
         try {
             log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId}, Attempt: ${attempt}/${MAX_RETRIES})`);
@@ -458,15 +459,16 @@ export const Core = {
                                 log(`[REFRESH] Clicking Save button...`);
                                 submitButton.click();
                                 
-                                // Timeout if no success after 10 seconds
+                                // Timeout if no success after configured iframeSaveTimeoutMs
+                                const saveTimeout = SettingsManager.get('iframeSaveTimeoutMs');
                                 setTimeout(() => {
                                     if (!submitCompleted) {
                                         clearInterval(checkSubmit);
-                                        log(`[REFRESH TIMEOUT] No confirmation received after 10s`);
+                                        log(`[REFRESH TIMEOUT] No confirmation received after ${saveTimeout}ms`);
                                         removeIframe();
                                         resolve(false);
                                     }
-                                }, 10000);
+                                }, saveTimeout);
                                 
                             } catch (e) {
                                 log(`[REFRESH ERROR] Error manipulating iframe: ${e}`);
@@ -482,18 +484,19 @@ export const Core = {
                     }
                 }, 100);
                 
-                // Timeout if iframe doesn't load after 30 seconds
+                // Timeout if iframe doesn't load after configured iframeLoadTimeoutMs
+                const loadTimeout = SettingsManager.get('iframeLoadTimeoutMs');
                 setTimeout(() => {
                     clearInterval(checkInterval);
-                    log(`[REFRESH TIMEOUT] Iframe didn't load after 30s`);
+                    log(`[REFRESH TIMEOUT] Iframe didn't load after ${loadTimeout}ms`);
                     removeIframe();
                     resolve(false);
-                }, 30000);
+                }, loadTimeout);
             });
             
             // Retry with exponential backoff if failed
             if (!saveSuccess && attempt < MAX_RETRIES) {
-                const waitTime = attempt * 2000; // 2s, 4s, 6s...
+                const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
                 log(`[REFRESH] Refresh failed for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
                 await new Promise(r => setTimeout(r, waitTime));
                 return this.refreshPrivateDoc(docId, title, attempt + 1);
@@ -507,7 +510,7 @@ export const Core = {
             
             // Retry with exponential backoff if failed
             if (attempt < MAX_RETRIES) {
-                const waitTime = attempt * 2000;
+                const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
                 log(`[REFRESH] Exception occurred. Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${MAX_RETRIES})`);
                 await new Promise(r => setTimeout(r, waitTime));
                 return this.refreshPrivateDoc(docId, title, attempt + 1);

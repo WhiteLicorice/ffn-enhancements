@@ -63,7 +63,8 @@ import { GM_xmlhttpRequest } from '$';
 Any new GM grant also needs to be added to the `grant` array in `vite.config.ts`.
 
 Current grants: `GM_xmlhttpRequest`, `GM_getValue`, `GM_setValue`,
-`GM_registerMenuCommand`, `GM_unregisterMenuCommand`.
+`GM_registerMenuCommand`, `GM_unregisterMenuCommand`, `GM_openInTab`,
+`GM_addValueChangeListener`.
 
 ---
 
@@ -187,13 +188,35 @@ SettingsManager.get('docDownloadFormat')      // → DocDownloadFormat
 SettingsManager.get('fluidMode')              // → boolean
 SettingsManager.set('docDownloadFormat', DocDownloadFormat.HTML)
 SettingsManager.set('fluidMode', false)
+
+// Subscribe to changes (returns unsubscribe fn)
+const unsub = SettingsManager.subscribe('fluidMode', (newVal, oldVal) => { ... });
+unsub(); // remove listener
 ```
+
+**`subscribe()` pub-sub API:**
+- `subscribe(key, cb)` returns an unsubscribe function. Store and call it to clean up.
+- Fires for **both** local changes (`set()`) and remote changes (cross-tab via
+  `GM_addValueChangeListener`).
+- Internal storage uses `Map<string, Set<(unknown, unknown)=>void>>`. Type safety is
+  enforced at the public API layer; internals use `unknown`.
+- Subscriber errors are caught individually — one bad subscriber can't block others.
+
+**Cross-tab sync (`GM_addValueChangeListener`):**
+- Registered in `prime()` for every setting key.
+- Fires when another browser tab writes a new value to GM storage.
+- The listener calls `_parseStoredValue()` then notifies all `subscribe()` callbacks.
+- **GOTCHA:** Some TM builds fire the listener for same-tab changes too (`remote=false`).
+  The `!remote` guard prevents double-applying updates already handled by `set()`.
+- Wrapped in `try/catch` so it degrades gracefully in non-TM environments.
 
 **To add a new setting:**
 1. Add field + type to `FFNSettings` interface.
 2. Add default to `DEFAULTS`.
 3. Add explicit load line in `_loadAll()` (explicit > generic for type safety).
-4. Add menu command in `SettingsMenu.ts`.
+4. Add `GM_addValueChangeListener` entry in `_registerValueListeners()` — or it's
+   automatic since `_registerValueListeners` iterates `Object.keys(DEFAULTS)`.
+5. Add a control row in `SettingsPage.ts` (see checklist §11).
 
 **GOTCHA:** `GM_getValue`/`GM_setValue` are synchronous in Tampermonkey but
 asynchronous in some MV3 extension runners. If you ever need to support those,
@@ -201,16 +224,69 @@ the entire load/save path needs to become async.
 
 ### 5.2 SettingsMenu (`src/modules/SettingsMenu.ts`)
 
-Registers Tampermonkey menu commands via `GM_registerMenuCommand`.
+Registers a **single** Tampermonkey menu command that opens the settings page in a
+new tab via `GM_openInTab`:
 
-- Each setting gets a `_xxxCmdId: number | null = null` module-level tracker.
-- To update a label (e.g., reflect current value), call `GM_unregisterMenuCommand(id)`
-  then re-register. The pattern is `_registerXxx()` calling itself recursively from
-  the click handler.
-- `GM_unregisterMenuCommand` requires Tampermonkey ≥ 4.x. Older versions may throw —
-  wrap in `try/catch`.
-- **To add a new setting to the menu:** add a `_xxxCmdId` tracker, write a
-  `_registerXxx()` function, and call it from `_registerAll()`.
+```typescript
+GM_registerMenuCommand('⚙️ FFN Enhancements Settings', () => {
+    GM_openInTab('https://www.fanfiction.net/?ffne_settings=1', { active: true });
+});
+```
+
+**Why not per-setting menu commands?**
+The old approach cycled labels via `GM_registerMenuCommand` / `GM_unregisterMenuCommand`.
+Two problems:
+1. TM closes the extension menu immediately on click — rapid-cycle UX is janky.
+2. With `autoClose: false`, labels re-sort alphabetically after each update, which is
+   disorienting.
+A dedicated settings page eliminates both issues and allows richer UI.
+
+`SettingsMenu.ts` itself does **not** need to change when new settings are added.
+Add settings UI in `SettingsPage.ts` instead.
+
+### 5.3 SettingsPage (`src/modules/SettingsPage.ts`)
+
+Full-page settings UI rendered at `https://www.fanfiction.net/?ffne_settings=1`.
+
+**Intercept mechanism:**
+`main.ts` detects `window.location.search.includes('ffne_settings=1')` inside
+`bootstrap()` (after `EarlyBoot.init()`) and calls `SettingsPage.render(); return;`,
+preventing any page-specific module from running.
+
+**Native appearance:**
+The page is hosted on `fanfiction.net`, so it inherits FFN's full layout shell
+(header, navigation, footer). Only `#content_wrapper_inner` is replaced.
+Styles use FFN's colour palette (`#336699` navy, `#f0f4f8` header bg) and Verdana/Arial.
+
+**Save-on-change UX:**
+Changes are persisted immediately via `SettingsManager.set()` on `input/change`
+events. A per-row "✓" flash indicator (`_flashSaved()`) confirms each save.
+
+**Cross-tab sync:**
+`_registerSubscriptions()` registers `SettingsManager.subscribe()` callbacks for
+every setting. When another tab changes a value, the corresponding control updates
+reactively without a page reload.
+
+**`NUMERIC_KEYS` constant:**
+Drives bulk wiring of numeric `<input type="number">` controls. Must stay in sync
+with numeric fields in `FFNSettings`. Adding a new numeric setting requires:
+1. Adding the key to `NUMERIC_KEYS` in `SettingsPage.ts`.
+2. The subscribe loop in `_registerSubscriptions()` then handles it automatically.
+
+**Sections:**
+| Section | Settings |
+|---|---|
+| Appearance | `fluidMode` |
+| Document Export | `docDownloadFormat` |
+| Reader | `scrollStep` |
+| Advanced (collapsible) | `fetchMaxRetries`, `fetchRetryBaseMs`, `iframeLoadTimeoutMs`, `iframeSaveTimeoutMs`, `bulkExportDelayMs`, `bulkCooldownMs`, `bulkRetryDelayMs` |
+
+**GOTCHA:** `SettingsPage.render()` must be called after `DOMContentLoaded` because
+it accesses `#content_wrapper_inner`. The guard in `main.ts` runs inside `bootstrap()`
+which is called at `DOMContentLoaded`.
+
+**GOTCHA:** `LayoutManager.init()` runs before `SettingsPage.render()` (via EarlyBoot).
+This is intentional — we want fluid mode applied to the settings page itself.
 
 ---
 
@@ -322,8 +398,9 @@ src/
     LayoutManagerDelegate.ts     — Fluid mode DOM targets
   modules/
     EarlyBoot.ts                 — Two-phase boot sequencer
-    SettingsManager.ts           — Persistent settings (GM storage + in-memory cache)
-    SettingsMenu.ts              — Tampermonkey menu commands
+    SettingsManager.ts           — Persistent settings (GM storage + in-memory cache + pub-sub)
+    SettingsMenu.ts              — Single Tampermonkey menu command → opens SettingsPage
+    SettingsPage.ts              — Full-page settings UI (fanfiction.net/?ffne_settings=1)
     LayoutManager.ts             — Fluid layout / viewport meta injection
     Core.ts                      — Delegate broker, logging, content parsing, fetch helpers
     FFNLogger.ts                 — Shared logger (used to avoid circular deps with Core)
@@ -376,14 +453,19 @@ tsconfig.json                    — Strict TypeScript config
    is reader-facing (EPUB/MOBI/PDF/etc.). `DocDownloadFormat` is author doc export only.
    They overlap on `HTML` and `MARKDOWN` but serve different contexts.
 
-8. **`GM_registerMenuCommand` returns `string | number`** — the return type varies
-   by Tampermonkey version. Store it as `string | number | null` and pass it to
-   `GM_unregisterMenuCommand` to update labels.
+8. **`GM_registerMenuCommand` return type** — returns `string | number`; varies by
+   Tampermonkey version. Store as `string | number | null` if you ever need to
+   unregister. The current `SettingsMenu.ts` does not store the return value.
 
 9. **`enableFluidMode()` / `disableFluidMode()`** on `LayoutManager` do NOT persist
    the preference — they are imperative helpers for internal use. Only
    `toggleFluidMode()` persists via `SettingsManager.set()`. If you add new
    explicit enable/disable public calls, make sure to persist there too.
+
+10. **`GM_addValueChangeListener` fires for same-tab changes in some TM builds** —
+    the `!remote` guard in `SettingsManager._registerValueListeners` prevents
+    double-applying changes already handled by `set()`. Always include this guard
+    when writing new GM_addValueChangeListener callbacks.
 
 ---
 
@@ -394,13 +476,18 @@ tsconfig.json                    — Strict TypeScript config
    - Add field + type to `FFNSettings`.
    - Add default to `DEFAULTS`.
    - Add explicit load line in `_loadAll()`.
-3. `src/modules/SettingsMenu.ts`:
-   - Add `_xxxCmdId: string | number | null = null` tracker.
-   - Write `_registerXxx()` helper.
-   - Call it from `_registerAll()`.
+   - `_registerValueListeners()` is automatic (iterates `Object.keys(DEFAULTS)`).
+3. `src/modules/SettingsPage.ts`:
+   - If numeric: add the key to `NUMERIC_KEYS`.
+   - Add a `_buildXxxRow(...)` call in `_buildHTML()` under the appropriate section.
+   - Add a `SettingsManager.subscribe(key, ...)` call in `_registerSubscriptions()`
+     (numeric keys are handled automatically by the `NUMERIC_KEYS` forEach loop).
 4. Wire up consuming module(s) to call `SettingsManager.get('yourKey')` at
    call time (not at init time), so changes take effect immediately without reload.
+   Use `SettingsManager.subscribe()` for live reactive updates.
 5. Add grants to `vite.config.ts` if new GM functions are needed.
+
+`SettingsMenu.ts` does **not** need to change when new settings are added.
 
 ---
 

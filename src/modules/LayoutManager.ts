@@ -79,6 +79,20 @@ export const LayoutManager = {
         // FFN lacks a viewport meta tag, which breaks zooming/reflow on many devices.
         // We inject it permanently to modernize the page behavior.
         _injectViewportMeta();
+
+        // Cross-tab sync: apply fluidMode changes made in any other tab immediately
+        // (e.g., user toggles the setting in the settings page tab).
+        // SettingsManager.subscribe() fires for both local set() calls AND remote
+        // GM_addValueChangeListener events, but LayoutManager.toggleFluidMode()
+        // already calls _setFluidMode + SettingsManager.set() for local changes,
+        // so we guard with a value check to avoid redundant DOM work.
+        SettingsManager.subscribe('fluidMode', (newVal) => {
+            if (newVal !== _isFluid) {
+                _isFluid = newVal;
+                _setFluidMode(newVal);
+                _log('init', `fluidMode synced from external tab: ${newVal}`);
+            }
+        });
     },
 
     /**

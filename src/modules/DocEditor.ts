@@ -20,6 +20,9 @@ export const DocEditor = {
     /** Reference to the editor iframe where content lives. */
     editorIframe: null as HTMLIFrameElement | null,
 
+    /** Reference to the injected download button (used for live tooltip updates). */
+    downloadBtn: null as HTMLElement | null,
+
     /**
      * Initializes the module by waiting for the DOM and observing for the TinyMCE instance.
      * Uses MutationObserver to react instantly when the toolbar is injected, preventing UI flicker.
@@ -33,27 +36,38 @@ export const DocEditor = {
             if (existingToolbar) {
                 log('TinyMCE found immediately.');
                 this.handleEditorFound(existingToolbar);
-                return;
+            } else {
+                // 2. Observer Strategy: Wait for injection
+                log('Setting up MutationObserver for TinyMCE...');
+                const observer = new MutationObserver((_mutations, obs) => {
+                    const toolbar = Core.getElement(Elements.EDITOR_TOOLBAR);
+                    if (toolbar) {
+                        log('TinyMCE detected via Observer.');
+                        obs.disconnect();
+                        this.handleEditorFound(toolbar);
+                    }
+                });
+
+                // Observe the body subtree because TinyMCE injects deep into the DOM
+                observer.observe(document.body, { childList: true, subtree: true });
+
+                // 3. Safety Timeout: Stop observing after 10s if it never loads
+                setTimeout(() => {
+                    observer.disconnect();
+                }, 10000);
             }
 
-            // 2. Observer Strategy: Wait for injection
-            log('Setting up MutationObserver for TinyMCE...');
-            const observer = new MutationObserver((_mutations, obs) => {
-                const toolbar = Core.getElement(Elements.EDITOR_TOOLBAR);
-                if (toolbar) {
-                    log('TinyMCE detected via Observer.');
-                    obs.disconnect(); // Stop observing to save resources
-                    this.handleEditorFound(toolbar);
+            // Cross-tab sync: update the download button tooltip when another tab
+            // changes docDownloadFormat via the settings page.
+            SettingsManager.subscribe('docDownloadFormat', (newVal) => {
+                if (this.downloadBtn) {
+                    const tooltip = newVal === DocDownloadFormat.HTML
+                        ? 'Export Document (HTML)'
+                        : 'Export Document (Markdown)';
+                    this.downloadBtn.title = tooltip;
+                    log(`Download button tooltip updated to: "${tooltip}"`);
                 }
             });
-
-            // Observe the body subtree because TinyMCE injects deep into the DOM
-            observer.observe(document.body, { childList: true, subtree: true });
-
-            // 3. Safety Timeout: Stop observing after 10s if it never loads
-            setTimeout(() => {
-                observer.disconnect();
-            }, 10000);
         });
     },
 
@@ -69,12 +83,8 @@ export const DocEditor = {
     /**
      * Sets up the toolbar buttons.
      * The download button tooltip reflects the current format setting at the
-     * time the editor toolbar is found (i.e., at page load).
-     *
-     * TODO: If you need the tooltip to update live when the user changes the format
-     * via the Tampermonkey menu without reloading, you would need to re-create the
-     * button on a settings-change event. For now, the format is applied at click time
-     * regardless of the label, so the export is always correct.
+     * time the editor toolbar is found. It updates live when the setting changes
+     * via the settings page (handled by the `docDownloadFormat` subscriber in init()).
      */
     setupButtons: function () {
         const format = SettingsManager.get('docDownloadFormat');
@@ -86,6 +96,8 @@ export const DocEditor = {
             () => this.exportCurrentDoc()
         );
 
+        // Store reference so the subscriber in init() can update the tooltip live.
+        this.downloadBtn = dlBtn;
         this.injectToolbarButton(dlBtn);
     },
 

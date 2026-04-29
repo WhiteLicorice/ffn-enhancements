@@ -19,6 +19,8 @@ export default defineConfig({
           'GM_setValue',
           'GM_registerMenuCommand',
           'GM_unregisterMenuCommand',
+          'GM_openInTab',
+          'GM_addValueChangeListener',
         ],
         license: 'GPL-3.0-or-later',
         updateURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',

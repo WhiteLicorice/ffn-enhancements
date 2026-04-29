@@ -427,8 +427,8 @@ export const DocManager = {
 
                 btn.innerText = `${i + 1}/${rows.length}`;
 
-                // Standard delay: 1000ms
-                await new Promise(r => setTimeout(r, 1000));
+                // Standard delay between requests
+                await new Promise(r => setTimeout(r, SettingsManager.get('bulkExportDelayMs')));
 
                 // Attempt Fetch
                 const content = format === DocDownloadFormat.HTML
@@ -451,15 +451,15 @@ export const DocManager = {
                 log(`Pass 1 complete. ${failedItems.length} items failed. Starting Cool Down...`);
                 btn.innerText = "Cooling...";
 
-                // Cool Down: 5 Seconds to let FFN servers breathe
-                await new Promise(r => setTimeout(r, 5000));
+                // Cool-down between passes
+                await new Promise(r => setTimeout(r, SettingsManager.get('bulkCooldownMs')));
 
                 for (let i = 0; i < failedItems.length; i++) {
                     const item = failedItems[i];
                     btn.innerText = `Retry ${i + 1}/${failedItems.length}`;
 
-                    // Extended Delay: 3000ms (Very polite)
-                    await new Promise(r => setTimeout(r, 3000));
+                    // Extended delay on retry pass
+                    await new Promise(r => setTimeout(r, SettingsManager.get('bulkRetryDelayMs')));
 
                     const content = format === DocDownloadFormat.HTML
                         ? await Core.fetchPrivateDocAsHtml(item.docId, item.title)
@@ -602,8 +602,8 @@ export const DocManager = {
                 row.style.backgroundColor = '#90EE90'; // Light green
                 row.style.transition = 'background-color 0.3s ease';
 
-                // Standard delay: 1000ms
-                await new Promise(r => setTimeout(r, 1000));
+                // Standard delay between requests
+                await new Promise(r => setTimeout(r, SettingsManager.get('bulkExportDelayMs')));
 
                 // Attempt Refresh
                 const success = await Core.refreshPrivateDoc(docId, title);
@@ -629,8 +629,8 @@ export const DocManager = {
                 log(`Pass 1 complete. ${failedItems.length} items failed. Starting Cool Down...`);
                 btn.innerText = "Cooling...";
 
-                // Cool Down: 5 Seconds to let FFN servers breathe
-                await new Promise(r => setTimeout(r, 5000));
+                // Cool-down between passes
+                await new Promise(r => setTimeout(r, SettingsManager.get('bulkCooldownMs')));
 
                 for (let i = 0; i < failedItems.length; i++) {
                     const item = failedItems[i];
@@ -641,8 +641,8 @@ export const DocManager = {
                     item.row.style.backgroundColor = '#90EE90'; // Light green
                     item.row.style.transition = 'background-color 0.3s ease';
 
-                    // Extended Delay: 3000ms (Very polite)
-                    await new Promise(r => setTimeout(r, 3000));
+                    // Extended delay on retry pass
+                    await new Promise(r => setTimeout(r, SettingsManager.get('bulkRetryDelayMs')));
 
                     const success = await Core.refreshPrivateDoc(item.docId, item.title);
 

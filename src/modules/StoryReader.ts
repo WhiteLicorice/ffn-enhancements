@@ -2,6 +2,7 @@
 
 import { Core } from './Core';
 import { Elements } from '../enums/Elements';
+import { SettingsManager } from './SettingsManager';
 
 /**
  * Module responsible for UX enhancements on Story pages (`/s/*`).
@@ -213,11 +214,11 @@ export const StoryReader = {
             }
             else if (e.key.toLowerCase() === 'w' || e.key === 'ArrowUp') {
                 log('Scrolling Up');
-                window.scrollBy({ top: -300, behavior: 'smooth' });
+                window.scrollBy({ top: -SettingsManager.get('scrollStep'), behavior: 'smooth' });
             }
             else if (e.key.toLowerCase() === 's' || e.key === 'ArrowDown') {
                 log('Scrolling Down');
-                window.scrollBy({ top: 300, behavior: 'smooth' });
+                window.scrollBy({ top: SettingsManager.get('scrollStep'), behavior: 'smooth' });
             }
         });
 
