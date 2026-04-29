@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'FFN Enhancements',
         namespace: 'http://tampermonkey.net/',
-        version: '13.2',
+        version: '14.0',
         author: 'WhiteLicorice',
         connect: ['fichub.net'],
         match: ['https://www.fanfiction.net/*'],
@@ -19,7 +19,6 @@ export default defineConfig({
           'GM_setValue',
           'GM_registerMenuCommand',
           'GM_unregisterMenuCommand',
-          'GM_openInTab',
           'GM_addValueChangeListener',
         ],
         license: 'GPL-3.0-or-later',

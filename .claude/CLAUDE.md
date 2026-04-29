@@ -224,12 +224,12 @@ the entire load/save path needs to become async.
 
 ### 5.2 SettingsMenu (`src/modules/SettingsMenu.ts`)
 
-Registers a **single** Tampermonkey menu command that opens the settings page in a
-new tab via `GM_openInTab`:
+Registers a **single** Tampermonkey menu command that opens the settings modal
+on the current page via `SettingsPage.openModal()`:
 
 ```typescript
 GM_registerMenuCommand('⚙️ FFN Enhancements Settings', () => {
-    GM_openInTab('https://www.fanfiction.net/?ffne_settings=1', { active: true });
+    SettingsPage.openModal();
 });
 ```
 
@@ -239,24 +239,30 @@ Two problems:
 1. TM closes the extension menu immediately on click — rapid-cycle UX is janky.
 2. With `autoClose: false`, labels re-sort alphabetically after each update, which is
    disorienting.
-A dedicated settings page eliminates both issues and allows richer UI.
+A modal eliminates both issues and allows richer UI.
+
+**Why a modal instead of a new tab?**
+Opening `https://www.fanfiction.net/?ffne_settings=1` made an unnecessary server
+request just to render our own UI. A modal runs in the same script context, needs
+no URL interception, and has direct GM storage access.
 
 `SettingsMenu.ts` itself does **not** need to change when new settings are added.
 Add settings UI in `SettingsPage.ts` instead.
 
 ### 5.3 SettingsPage (`src/modules/SettingsPage.ts`)
 
-Full-page settings UI rendered at `https://www.fanfiction.net/?ffne_settings=1`.
+Modal settings UI injected into `document.body` on the current FFN page.
+Opened via `SettingsPage.openModal()`, dismissed via `closeModal()` (× button,
+backdrop click, or ESC key).
 
-**Intercept mechanism:**
-`main.ts` detects `window.location.search.includes('ffne_settings=1')` inside
-`bootstrap()` (after `EarlyBoot.init()`) and calls `SettingsPage.render(); return;`,
-preventing any page-specific module from running.
+**No URL interception:**
+There is no `?ffne_settings=1` URL or routing intercept in `main.ts`. The modal
+runs entirely in the current tab's context — no server request, no navigation.
 
-**Native appearance:**
-The page is hosted on `fanfiction.net`, so it inherits FFN's full layout shell
-(header, navigation, footer). Only `#content_wrapper_inner` is replaced.
-Styles use FFN's colour palette (`#336699` navy, `#f0f4f8` header bg) and Verdana/Arial.
+**Styling:**
+Self-contained styles injected into `document.head` on first open (guarded by
+`#ffne-settings-styles` ID to prevent duplicates). Uses FFN's colour palette
+(`#336699` navy, `#f0f4f8` header bg) and Verdana/Arial for visual consistency.
 
 **Save-on-change UX:**
 Changes are persisted immediately via `SettingsManager.set()` on `input/change`
@@ -264,8 +270,8 @@ events. A per-row "✓" flash indicator (`_flashSaved()`) confirms each save.
 
 **Cross-tab sync:**
 `_registerSubscriptions()` registers `SettingsManager.subscribe()` callbacks for
-every setting. When another tab changes a value, the corresponding control updates
-reactively without a page reload.
+every setting and returns their unsubscribe functions. `closeModal()` calls all
+unsubscribers to prevent accumulation across multiple open/close cycles.
 
 **`NUMERIC_KEYS` constant:**
 Drives bulk wiring of numeric `<input type="number">` controls. Must stay in sync
@@ -281,12 +287,13 @@ with numeric fields in `FFNSettings`. Adding a new numeric setting requires:
 | Reader | `scrollStep` |
 | Advanced (collapsible) | `fetchMaxRetries`, `fetchRetryBaseMs`, `iframeLoadTimeoutMs`, `iframeSaveTimeoutMs`, `bulkExportDelayMs`, `bulkCooldownMs`, `bulkRetryDelayMs` |
 
-**GOTCHA:** `SettingsPage.render()` must be called after `DOMContentLoaded` because
-it accesses `#content_wrapper_inner`. The guard in `main.ts` runs inside `bootstrap()`
-which is called at `DOMContentLoaded`.
+**GOTCHA:** `openModal()` appends to `document.body` — safe to call any time after
+`DOMContentLoaded`. It must NOT be called from `prime()` (document-start, body may
+not exist). The TM menu command callback only fires after user interaction, which
+is always post-DOMContentLoaded, so this is naturally satisfied.
 
-**GOTCHA:** `LayoutManager.init()` runs before `SettingsPage.render()` (via EarlyBoot).
-This is intentional — we want fluid mode applied to the settings page itself.
+**GOTCHA:** Always call `closeModal()` to clean up subscriptions and the ESC key
+listener. Removing the backdrop element alone leaves listeners dangling.
 
 ---
 

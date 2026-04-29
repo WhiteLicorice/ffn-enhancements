@@ -1,37 +1,32 @@
 // modules/SettingsMenu.ts
 
-import { GM_registerMenuCommand, GM_openInTab } from '$';
+import { GM_registerMenuCommand } from '$';
 import { FFNLogger } from './FFNLogger';
 import { ISitewideModule } from '../interfaces/ISiteWideModule';
+import { SettingsPage } from './SettingsPage';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MODULE_NAME = 'SettingsMenu';
 
-/**
- * The URL of the dedicated settings page.
- * The `?ffne_settings=1` query parameter is detected by the routing guard in
- * `main.ts`, which intercepts the page load and renders the settings UI in place
- * of the normal page content. The page still inherits FFN's layout shell
- * (header, nav, footer) for a fully native appearance.
- */
-const SETTINGS_URL = 'https://www.fanfiction.net/?ffne_settings=1';
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * SettingsMenu
- * Registers a single Tampermonkey menu command that opens the settings page
- * in a new tab via `GM_openInTab`.
+ * Registers a single Tampermonkey menu command that opens the settings modal
+ * on the current page via `SettingsPage.openModal()`.
  *
- * **Why a dedicated page instead of `GM_registerMenuCommand` entries per setting?**
+ * **Why a modal instead of per-setting menu commands?**
  * The old approach registered one cycling menu command per setting. Two problems:
  * 1. Tampermonkey closes the extension menu immediately on click, making any
  *    rapid-cycle UX feel janky.
  * 2. With `autoClose: false`, the menu options visually re-sort themselves after
  *    each label update, which is disorienting.
- * A full settings page opened in a new tab eliminates both issues and allows for
- * richer UI (grouping, descriptions, number inputs, etc.).
+ *
+ * **Why a modal instead of a new tab?**
+ * Opening a new FFN tab just to host settings made an unnecessary server request.
+ * A modal runs in the same script context as all other modules, needs no URL
+ * interception, and has direct access to GM storage via SettingsManager.
  *
  * **Execution model:**
  * - Phase 1 (`prime`): Registers the single "Open Settings" menu command.
@@ -49,9 +44,9 @@ export const SettingsMenu: ISitewideModule = {
      * Registers the "Open Settings" Tampermonkey menu command.
      */
     prime(): void {
-        GM_registerMenuCommand('⚙️ FFN Enhancements Settings', () => {
-            FFNLogger.log(MODULE_NAME, 'openSettings', `Opening settings page: ${SETTINGS_URL}`);
-            GM_openInTab(SETTINGS_URL, { active: true });
+        GM_registerMenuCommand('FFN Enhancements', () => {
+            FFNLogger.log(MODULE_NAME, 'openSettings', 'Opening settings modal.');
+            SettingsPage.openModal();
         });
     },
 
@@ -60,4 +55,3 @@ export const SettingsMenu: ISitewideModule = {
      */
     init(): void { /* no-op */ },
 };
-

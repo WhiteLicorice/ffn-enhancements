@@ -7,7 +7,7 @@ import { FFNLogger } from './FFNLogger';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MODULE_NAME = 'SettingsPage';
-const PAGE_ID = 'ffne-settings-page';
+const MODAL_ID = 'ffne-settings-modal';
 const STYLES_ID = 'ffne-settings-styles';
 
 /**
@@ -25,24 +25,30 @@ const NUMERIC_KEYS: (keyof FFNSettings)[] = [
     'bulkRetryDelayMs',
 ];
 
+// ─── Module state ─────────────────────────────────────────────────────────────
+
+let _unsubscribers: (() => void)[] = [];
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * SettingsPage
- * Renders the full-page settings UI when the script detects `?ffne_settings=1`
- * in the current URL. The settings page is opened by SettingsMenu via
- * `GM_openInTab('https://www.fanfiction.net/?ffne_settings=1')`.
+ * Renders the settings UI as a modal overlay on the current page.
+ * Opened by SettingsMenu when the user clicks the Tampermonkey menu command.
  *
- * Because the page is hosted on `fanfiction.net`, it inherits FFN's layout
- * shell (header, navigation, footer) for a fully native appearance. Only
- * `#content_wrapper_inner` is replaced with our settings UI.
+ * Because the modal runs in the same script context as all other modules,
+ * it has direct access to GM storage via SettingsManager — no cross-tab
+ * communication or URL interception needed.
  *
  * **Settings are saved immediately on change** (no "Save" button). The flash
  * indicator ("✓") provides visual feedback per row.
  *
  * **Cross-tab sync:** `SettingsManager.subscribe()` fires via
  * `GM_addValueChangeListener` when another open FFN tab changes a value. The
- * UI controls update reactively without requiring a page reload.
+ * UI controls update reactively. Subscriptions are cleaned up on `closeModal()`
+ * to prevent accumulation across multiple open/close cycles.
+ *
+ * **Dismiss:** click the backdrop, press ESC, or click the × button.
  *
  * **Sections:**
  * - Appearance: fluidMode
@@ -53,45 +59,58 @@ const NUMERIC_KEYS: (keyof FFNSettings)[] = [
  * **To add a new setting to this page:**
  * 1. Add the field/default/loader to `SettingsManager.ts` (see checklist there).
  * 2. If numeric, add the key to `NUMERIC_KEYS` above.
- * 3. Add a `_buildXxxRow(...)` call in `_buildHTML()` under the appropriate section.
- * 4. Add a `SettingsManager.subscribe(key, ...)` call in `_registerSubscriptions()`.
+ * 3. Add a `_buildXxxRow(...)` call in `_buildModalHTML()` under the appropriate section.
+ * 4. Add a `SettingsManager.subscribe(key, ...)` push in `_registerSubscriptions()`.
  *    For numeric keys this happens automatically via `NUMERIC_KEYS`.
- *
- * **GOTCHA:** SettingsPage.render() must be called AFTER `DOMContentLoaded` because
- * it accesses `#content_wrapper_inner`. The routing guard in `main.ts` handles this
- * by calling `render()` inside the `bootstrap()` function.
- *
- * **GOTCHA:** LayoutManager.init() runs before SettingsPage.render() (via EarlyBoot),
- * which is intentional — we want fluid mode applied to the settings page itself.
- *
- * **GOTCHA:** Do NOT call page-specific modules (DocManager, DocEditor, StoryReader,
- * StoryDownloader) when on the settings page. The routing guard in main.ts returns
- * early after calling render() to prevent this.
  */
 export const SettingsPage = {
 
     /**
-     * Renders the settings UI into `#content_wrapper_inner`.
-     * Must be called after DOMContentLoaded (i.e., inside `bootstrap()` in main.ts).
+     * Injects the settings modal into `document.body`.
+     * No-ops if the modal is already open.
+     * Safe to call at any point after DOMContentLoaded.
      */
-    render(): void {
+    openModal(): void {
+        if (document.getElementById(MODAL_ID)) return;
+
         const log = (fn: string, msg: string) => FFNLogger.log(MODULE_NAME, fn, msg);
-
-        const container = document.getElementById('content_wrapper_inner');
-        if (!container) {
-            log('render', '#content_wrapper_inner not found — aborting settings page render.');
-            return;
-        }
-
-        log('render', 'Rendering settings page.');
+        log('openModal', 'Opening settings modal.');
 
         _injectStyles();
-        container.innerHTML = _buildHTML();
-        _wireHandlers(container, log);
-        _registerSubscriptions(container);
 
-        document.title = 'FFN Enhancements — Settings';
-        log('render', 'Settings page rendered successfully.');
+        const backdrop = document.createElement('div');
+        backdrop.id = MODAL_ID;
+        backdrop.innerHTML = _buildModalHTML();
+        document.body.appendChild(backdrop);
+
+        _wireHandlers(backdrop, log);
+        _unsubscribers = _registerSubscriptions(backdrop);
+
+        // Close on backdrop click (outside the panel).
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) SettingsPage.closeModal();
+        });
+
+        // ESC to close.
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') SettingsPage.closeModal();
+        };
+        document.addEventListener('keydown', onKeyDown);
+        _unsubscribers.push(() => document.removeEventListener('keydown', onKeyDown));
+
+        backdrop.querySelector<HTMLButtonElement>('#ffne-modal-close')
+            ?.addEventListener('click', () => SettingsPage.closeModal());
+
+        log('openModal', 'Settings modal opened.');
+    },
+
+    /**
+     * Removes the settings modal and cleans up all subscriptions and listeners.
+     */
+    closeModal(): void {
+        document.getElementById(MODAL_ID)?.remove();
+        _unsubscribers.forEach(fn => fn());
+        _unsubscribers = [];
     },
 };
 
@@ -103,31 +122,72 @@ function _injectStyles(): void {
     const style = document.createElement('style');
     style.id = STYLES_ID;
     style.textContent = `
-        /* ─── FFN Enhancements: Settings Page ─── */
+        /* ─── FFN Enhancements: Settings Modal ─── */
 
-        #${PAGE_ID} {
+        #${MODAL_ID} {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 999999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+
+        .ffne-modal-panel {
+            background: #fff;
+            border-radius: 5px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+            width: 100%;
+            max-width: 640px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
             font-family: Verdana, Arial, sans-serif;
             font-size: 13px;
             color: #333;
-            padding: 16px 0 32px;
+            overflow: hidden;
         }
 
-        /* ── Page header ── */
-        .ffne-settings-header {
+        .ffne-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #f0f4f8;
             border-bottom: 2px solid #336699;
-            padding-bottom: 12px;
-            margin-bottom: 20px;
+            flex-shrink: 0;
         }
-        .ffne-settings-header h1 {
-            font-size: 18px;
+
+        .ffne-modal-header h2 {
+            font-size: 16px;
             font-weight: bold;
             color: #336699;
-            margin: 0 0 4px 0;
+            margin: 0;
         }
-        .ffne-settings-header p {
+
+        .ffne-modal-close-btn {
+            background: none;
+            border: none;
+            font-size: 22px;
+            line-height: 1;
+            color: #666;
+            cursor: pointer;
+            padding: 0 2px;
+        }
+        .ffne-modal-close-btn:hover { color: #333; }
+
+        .ffne-modal-subtitle {
             color: #666;
             font-size: 11px;
-            margin: 0;
+            margin: 0 0 14px;
+        }
+
+        .ffne-modal-body {
+            overflow-y: auto;
+            padding: 16px 18px 20px;
+            flex: 1;
         }
 
         /* ── Section card ── */
@@ -146,7 +206,6 @@ function _injectStyles(): void {
             font-size: 13px;
             color: #336699;
         }
-        /* Advanced section summary acts as section header */
         details.ffne-settings-section > summary.ffne-settings-section-header {
             cursor: pointer;
             list-style: none;
@@ -266,122 +325,107 @@ function _injectStyles(): void {
             min-width: 14px;
         }
         .ffne-saved.visible { opacity: 1; }
-
-        /* ── Footer ── */
-        .ffne-settings-footer {
-            text-align: center;
-            color: #888;
-            font-size: 11px;
-            margin-top: 20px;
-            line-height: 1.8;
-        }
-        .ffne-settings-footer a { color: #336699; }
     `;
     document.head.appendChild(style);
 }
 
 // ─── HTML Builder ─────────────────────────────────────────────────────────────
 
-function _buildHTML(): string {
+function _buildModalHTML(): string {
     const s = SettingsManager;
     return `
-        <div id="${PAGE_ID}">
-
-            <div class="ffne-settings-header">
-                <h1>⚙️ FFN Enhancements — Settings</h1>
-                <p>Changes are saved automatically and sync to all open FanFiction.net tabs.</p>
+        <div class="ffne-modal-panel" role="dialog" aria-modal="true" aria-labelledby="ffne-modal-title">
+            <div class="ffne-modal-header">
+                <h2 id="ffne-modal-title">FFN Enhancements</h2>
+                <button id="ffne-modal-close" class="ffne-modal-close-btn" aria-label="Close settings">×</button>
             </div>
+            <div class="ffne-modal-body">
+                <p class="ffne-modal-subtitle">Changes saved automatically. Syncs to all open FanFiction.net tabs.</p>
 
-            ${_buildSection('Appearance', [
-                _buildToggleRow(
-                    'fluidMode',
-                    'Fluid Layout',
-                    'Removes FFN\'s fixed-width content column for a full-width reading experience, similar to AO3.',
-                    s.get('fluidMode')
-                ),
-            ])}
+                ${_buildSection('Appearance', [
+                    _buildToggleRow(
+                        'fluidMode',
+                        'Fluid Layout',
+                        'Removes FFN\'s fixed-width content column for a full-width reading experience, similar to AO3.',
+                        s.get('fluidMode')
+                    ),
+                ])}
 
-            ${_buildSection('Document Export', [
-                _buildSelectRow(
-                    'docDownloadFormat',
-                    'Download Format',
-                    'File format for exports from Doc Manager and Doc Editor. Does not affect story-page downloads (those always use FicHub).',
-                    [
-                        { value: DocDownloadFormat.MARKDOWN, label: 'Markdown (.md)' },
-                        { value: DocDownloadFormat.HTML,     label: 'HTML (.html)'   },
-                    ],
-                    s.get('docDownloadFormat')
-                ),
-            ])}
+                ${_buildSection('Document Export', [
+                    _buildSelectRow(
+                        'docDownloadFormat',
+                        'Download Format',
+                        'File format for exports from Doc Manager and Doc Editor. Does not affect story-page downloads (those always use FicHub).',
+                        [
+                            { value: DocDownloadFormat.MARKDOWN, label: 'Markdown (.md)' },
+                            { value: DocDownloadFormat.HTML,     label: 'HTML (.html)'   },
+                        ],
+                        s.get('docDownloadFormat')
+                    ),
+                ])}
 
-            ${_buildSection('Reader', [
-                _buildNumberRow(
-                    'scrollStep',
-                    'Keyboard Scroll Distance',
-                    'Pixels scrolled per keypress when using W / S / ↑ / ↓ on story pages.',
-                    s.get('scrollStep'),
-                    { min: 50, max: 1000, step: 50, unit: 'px' }
-                ),
-            ])}
+                ${_buildSection('Reader', [
+                    _buildNumberRow(
+                        'scrollStep',
+                        'Keyboard Scroll Distance',
+                        'Pixels scrolled per keypress when using W / S / ↑ / ↓ on story pages.',
+                        s.get('scrollStep'),
+                        { min: 50, max: 1000, step: 50, unit: 'px' }
+                    ),
+                ])}
 
-            ${_buildAdvancedSection([
-                _buildNumberRow(
-                    'fetchMaxRetries',
-                    'Fetch Retry Limit',
-                    'Maximum retry attempts when a document fetch fails (e.g. network error or HTTP 429).',
-                    s.get('fetchMaxRetries'),
-                    { min: 1, max: 10, step: 1 }
-                ),
-                _buildNumberRow(
-                    'fetchRetryBaseMs',
-                    'Fetch Retry Backoff Base',
-                    'Base delay between retries. Actual delay = attempt × this value (e.g. 2 s, 4 s, 6 s at 2000 ms).',
-                    s.get('fetchRetryBaseMs'),
-                    { min: 500, max: 10000, step: 500, unit: 'ms' }
-                ),
-                _buildNumberRow(
-                    'iframeLoadTimeoutMs',
-                    'Iframe Load Timeout',
-                    'How long to wait for the hidden iframe to reach readyState="complete" during doc refresh before giving up.',
-                    s.get('iframeLoadTimeoutMs'),
-                    { min: 5000, max: 120000, step: 5000, unit: 'ms' }
-                ),
-                _buildNumberRow(
-                    'iframeSaveTimeoutMs',
-                    'Save Confirmation Timeout',
-                    'How long to wait for the save-success panel to appear after clicking Save in the hidden iframe.',
-                    s.get('iframeSaveTimeoutMs'),
-                    { min: 1000, max: 60000, step: 1000, unit: 'ms' }
-                ),
-                _buildNumberRow(
-                    'bulkExportDelayMs',
-                    'Bulk Export Delay (Pass 1)',
-                    'Pause between each document request in the first pass of a bulk export or refresh. Increase if FFN rate-limits you.',
-                    s.get('bulkExportDelayMs'),
-                    { min: 200, max: 15000, step: 200, unit: 'ms' }
-                ),
-                _buildNumberRow(
-                    'bulkCooldownMs',
-                    'Bulk Export Cool-Down',
-                    'Waiting period between Pass 1 and the Pass 2 retry loop during bulk operations.',
-                    s.get('bulkCooldownMs'),
-                    { min: 1000, max: 30000, step: 1000, unit: 'ms' }
-                ),
-                _buildNumberRow(
-                    'bulkRetryDelayMs',
-                    'Bulk Export Delay (Pass 2)',
-                    'Pause between each document request in the retry pass of a bulk export or refresh.',
-                    s.get('bulkRetryDelayMs'),
-                    { min: 200, max: 15000, step: 200, unit: 'ms' }
-                ),
-            ])}
-
-            <div class="ffne-settings-footer">
-                Settings are saved automatically to Tampermonkey storage and persist across sessions.
-                <br>
-                <a href="https://www.fanfiction.net/">← Back to FanFiction.net</a>
+                ${_buildAdvancedSection([
+                    _buildNumberRow(
+                        'fetchMaxRetries',
+                        'Fetch Retry Limit',
+                        'Maximum retry attempts when a document fetch fails (e.g. network error or HTTP 429).',
+                        s.get('fetchMaxRetries'),
+                        { min: 1, max: 10, step: 1 }
+                    ),
+                    _buildNumberRow(
+                        'fetchRetryBaseMs',
+                        'Fetch Retry Backoff Base',
+                        'Base delay between retries. Actual delay = attempt × this value (e.g. 2 s, 4 s, 6 s at 2000 ms).',
+                        s.get('fetchRetryBaseMs'),
+                        { min: 500, max: 10000, step: 500, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'iframeLoadTimeoutMs',
+                        'Iframe Load Timeout',
+                        'How long to wait for the hidden iframe to reach readyState="complete" during doc refresh before giving up.',
+                        s.get('iframeLoadTimeoutMs'),
+                        { min: 5000, max: 120000, step: 5000, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'iframeSaveTimeoutMs',
+                        'Save Confirmation Timeout',
+                        'How long to wait for the save-success panel to appear after clicking Save in the hidden iframe.',
+                        s.get('iframeSaveTimeoutMs'),
+                        { min: 1000, max: 60000, step: 1000, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'bulkExportDelayMs',
+                        'Bulk Export Delay (Pass 1)',
+                        'Pause between each document request in the first pass of a bulk export or refresh. Increase if FFN rate-limits you.',
+                        s.get('bulkExportDelayMs'),
+                        { min: 200, max: 15000, step: 200, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'bulkCooldownMs',
+                        'Bulk Export Cool-Down',
+                        'Waiting period between Pass 1 and the Pass 2 retry loop during bulk operations.',
+                        s.get('bulkCooldownMs'),
+                        { min: 1000, max: 30000, step: 1000, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'bulkRetryDelayMs',
+                        'Bulk Export Delay (Pass 2)',
+                        'Pause between each document request in the retry pass of a bulk export or refresh.',
+                        s.get('bulkRetryDelayMs'),
+                        { min: 200, max: 15000, step: 200, unit: 'ms' }
+                    ),
+                ])}
             </div>
-
         </div>
     `;
 }
@@ -565,33 +609,36 @@ function _flashSaved(container: HTMLElement, key: string): void {
 
 /**
  * Registers `SettingsManager.subscribe()` callbacks for every setting so the UI
- * stays in sync when another tab changes a value via the settings page.
+ * stays in sync when another tab changes a value.
  *
- * Note: Subscriptions registered here are tied to this tab's page lifecycle.
- * There is no need to unsubscribe because the settings page is a full navigation.
+ * Returns an array of unsubscribe functions. Call them all in `closeModal()` to
+ * prevent subscription accumulation across multiple open/close cycles.
  */
-function _registerSubscriptions(container: HTMLElement): void {
+function _registerSubscriptions(container: HTMLElement): (() => void)[] {
+    const unsubscribers: (() => void)[] = [];
 
     // ── Boolean ──
-    SettingsManager.subscribe('fluidMode', newVal => {
+    unsubscribers.push(SettingsManager.subscribe('fluidMode', newVal => {
         const el = container.querySelector<HTMLInputElement>('[data-setting="fluidMode"]');
         if (el) el.checked = newVal;
         _flashSaved(container, 'fluidMode');
-    });
+    }));
 
     // ── Enum ──
-    SettingsManager.subscribe('docDownloadFormat', newVal => {
+    unsubscribers.push(SettingsManager.subscribe('docDownloadFormat', newVal => {
         const el = container.querySelector<HTMLSelectElement>('[data-setting="docDownloadFormat"]');
         if (el) el.value = newVal;
         _flashSaved(container, 'docDownloadFormat');
-    });
+    }));
 
     // ── Numeric (all handled uniformly) ──
     NUMERIC_KEYS.forEach(key => {
-        SettingsManager.subscribe(key, newVal => {
+        unsubscribers.push(SettingsManager.subscribe(key, newVal => {
             const el = container.querySelector<HTMLInputElement>(`[data-setting="${String(key)}"]`);
             if (el) el.value = String(newVal);
             _flashSaved(container, String(key));
-        });
+        }));
     });
+
+    return unsubscribers;
 }
