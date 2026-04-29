@@ -111,7 +111,7 @@ function _registerDocDownloadFormat(): void {
         _log('docDownloadFormat', `Changed to: ${next}`);
         // Re-register so the menu label reflects the new value immediately.
         _registerDocDownloadFormat();
-    });
+    }, { id: 'ffn-enhancements-doc-download-format', autoClose: false});
 }
 
 /**
@@ -138,5 +138,5 @@ function _registerFluidMode(): void {
         _log('fluidMode', `Toggled to: ${next}`);
         // Re-register with the updated label.
         _registerFluidMode();
-    });
+    }, { id: 'ffn-enhancements-fluid-mode', autoClose: false });
 }
