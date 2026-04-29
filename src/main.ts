@@ -2,6 +2,8 @@
 
 import { Core } from './modules/Core';
 import { EarlyBoot } from './modules/EarlyBoot';
+import { SettingsManager } from './modules/SettingsManager';
+import { SettingsMenu } from './modules/SettingsMenu';
 import { DocManager } from './modules/DocManager';
 import { DocEditor } from './modules/DocEditor';
 import { StoryReader } from './modules/StoryReader';
@@ -26,12 +28,16 @@ Core.log('Router', 'main', `Here at https://www.fanfiction.net${path}`, path);
 
 // Register all sitewide modules with EarlyBoot.
 // Order of registration determines execution order and CSS cascade layering.
-// Structural modules (layout, spacing) must be registered before theme modules (colors).
 //
-// Modules are registered directly with EarlyBoot. LayoutManager is registered first
-// so that structural layout and spacing are established before any theme-level styles.
-// This keeps layout concerns decoupled from higher-level visual customization.
+// CRITICAL ORDERING CONSTRAINTS:
+// 1. SettingsManager MUST be first — all downstream modules (including LayoutManager)
+//    read from its cache in their own prime() / init() calls.
+// 2. SettingsMenu MUST come after SettingsManager so menu labels reflect stored values.
+// 3. LayoutManager MUST come after SettingsManager so prime() can restore fluidMode
+//    preference before first paint, preventing FOUC.
 //
+EarlyBoot.register(SettingsManager);
+EarlyBoot.register(SettingsMenu);
 EarlyBoot.register(LayoutManager);
 EarlyBoot.prime();
 

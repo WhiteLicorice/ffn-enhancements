@@ -2,6 +2,8 @@
 
 import { Core } from './Core';
 import { Elements } from '../enums/Elements';
+import { DocDownloadFormat } from '../enums/DocDownloadFormat';
+import { SettingsManager } from './SettingsManager';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { DocIframeHandler } from './DocIframeHandler';
@@ -109,7 +111,7 @@ export const DocManager = {
 
         const btn = document.createElement('button');
         btn.innerText = "↓ All";
-        btn.title = "Download all documents as Markdown";
+        btn.title = "Download all documents (format set in Tampermonkey menu)";
         btn.style.cssText = `
             position: absolute; right: 50px; top: 50%; transform: translateY(-50%); z-index: 99;
             appearance: none; background: transparent; border: 0; outline: none; box-shadow: none;
@@ -275,6 +277,8 @@ export const DocManager = {
 
     /**
      * Handles the export of a single document given a DocID.
+     * The output format (Markdown or HTML) is read from SettingsManager at call time,
+     * so changes made via the Tampermonkey menu take effect on the next export.
      * @param btnElement - The button clicked (for UI feedback).
      * @param docId - The FFN Document ID.
      * @param title - The title of the document.
@@ -287,12 +291,18 @@ export const DocManager = {
         btnElement.style.color = "gray";
         btnElement.style.cursor = "wait";
 
-        log(`Starting export for ${title} (${docId})`);
-        const markdown = await Core.fetchAndConvertPrivateDoc(docId, title);
+        const format = SettingsManager.get('docDownloadFormat');
+        log(`Starting export for ${title} (${docId}) as ${format}`);
 
-        if (markdown) {
-            const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-            saveAs(blob, `${title}.md`);
+        const content = format === DocDownloadFormat.HTML
+            ? await Core.fetchPrivateDocAsHtml(docId, title)
+            : await Core.fetchAndConvertPrivateDoc(docId, title);
+
+        if (content) {
+            const mimeType = format === DocDownloadFormat.HTML
+                ? "text/html;charset=utf-8"
+                : "text/markdown;charset=utf-8";
+            saveAs(new Blob([content], { type: mimeType }), `${title}.${format}`);
             btnElement.innerText = "Done";
             setTimeout(() => {
                 btnElement.innerText = originalText;
@@ -351,6 +361,7 @@ export const DocManager = {
 
     /**
      * Handles the bulk export of all visible documents into a ZIP file.
+     * The output format (Markdown or HTML) is read from SettingsManager at call time.
      * Implements a robust Two-Pass System:
      * 1. Iterates through all rows.
      * 2. If any fail (due to rate limits), waits for a cool-down period.
@@ -382,6 +393,11 @@ export const DocManager = {
         btn.disabled = true;
         btn.style.cursor = "wait";
         btn.style.opacity = "1";
+
+        // Read the format once per bulk run so all files in the ZIP are consistent.
+        const format = SettingsManager.get('docDownloadFormat');
+        const ext = format; // DocDownloadFormat values are the file extension strings
+        log(`Bulk export format: ${format}`);
 
         // Store failed items for the second pass
         interface ExportItem { docId: string; title: string; }
@@ -415,10 +431,12 @@ export const DocManager = {
                 await new Promise(r => setTimeout(r, 1000));
 
                 // Attempt Fetch
-                const markdown = await Core.fetchAndConvertPrivateDoc(docId, title);
+                const content = format === DocDownloadFormat.HTML
+                    ? await Core.fetchPrivateDocAsHtml(docId, title)
+                    : await Core.fetchAndConvertPrivateDoc(docId, title);
 
-                if (markdown) {
-                    zip.file(`${title}.md`, markdown, { date: new Date() });
+                if (content) {
+                    zip.file(`${title}.${ext}`, content, { date: new Date() });
                     successCount++;
                 } else {
                     log(`Pass 1 Failed for ${title}. Queueing for retry.`);
@@ -443,10 +461,12 @@ export const DocManager = {
                     // Extended Delay: 3000ms (Very polite)
                     await new Promise(r => setTimeout(r, 3000));
 
-                    const markdown = await Core.fetchAndConvertPrivateDoc(item.docId, item.title);
+                    const content = format === DocDownloadFormat.HTML
+                        ? await Core.fetchPrivateDocAsHtml(item.docId, item.title)
+                        : await Core.fetchAndConvertPrivateDoc(item.docId, item.title);
 
-                    if (markdown) {
-                        zip.file(`${item.title}.md`, markdown, { date: new Date() });
+                    if (content) {
+                        zip.file(`${item.title}.${ext}`, content, { date: new Date() });
                         successCount++;
                     } else {
                         log(`Pass 2 Permanent Failure for ${item.title}`);

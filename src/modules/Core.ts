@@ -164,14 +164,14 @@ export const Core = {
     // ==========================================
 
     /**
-     * Extracts text from a private author-accessible document and converts it to Markdown.
-     * Used for both live page parsing and background fetch parsing.
+     * Extracts the raw HTML/text content from a private author-accessible document.
+     * Reads from the editor textarea value (plain-text HTML source) or its innerHTML.
      * @param doc - The document object to query.
      * @param title - The title of the content (for logging purposes).
-     * @returns The converted Markdown string, or null if selectors fail.
+     * @returns The raw HTML string, or null if the selector fails.
      */
-    parseContentFromPrivateDoc: function (doc: Document, title: string) {
-        const log = this.getLogger(this.MODULE_NAME, 'parseContentFromPrivateDoc');
+    parseHtmlFromPrivateDoc: function (doc: Document, title: string): string | null {
+        const log = this.getLogger(this.MODULE_NAME, 'parseHtmlFromPrivateDoc');
         const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc);
 
         if (!contentElement) {
@@ -179,52 +179,108 @@ export const Core = {
             return null;
         }
 
-        const rawValue = (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
-        return this.turndownService.turndown(rawValue);
+        return (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
     },
 
     /**
-     * Fetches a specific DocID of an author-accessible document and returns the Markdown content.
-     * Includes Exponential Backoff to handle FFN's rate limiting (429).
-     * @param docId - The internal FFN Document ID.
-     * @param title - The title of the document.
-     * @param attempt - (Internal) Current retry attempt number.
-     * @returns A promise resolving to the Markdown string or null.
+     * Extracts text from a private author-accessible document and converts it to Markdown.
+     * Wraps `parseHtmlFromPrivateDoc` with a Turndown conversion step.
+     * Used for both live page parsing and background fetch parsing.
+     * @param doc - The document object to query.
+     * @param title - The title of the content (for logging purposes).
+     * @returns The converted Markdown string, or null if selectors fail.
      */
-    fetchAndConvertPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<string | null> {
-        const log = this.getLogger(this.MODULE_NAME, 'fetchAndConvertPrivateDoc');
+    parseContentFromPrivateDoc: function (doc: Document, title: string): string | null {
+        const raw = this.parseHtmlFromPrivateDoc(doc, title);
+        if (!raw) return null;
+        return this.turndownService.turndown(raw);
+    },
+
+    /**
+     * @internal
+     * Fetches a Doc Edit page (`/docs/edit.php?docid=X`) and returns the parsed Document.
+     * Implements Exponential Backoff for HTTP 429 rate limiting.
+     *
+     * All other fetch-based doc methods delegate here to avoid duplicating
+     * the network/retry logic. Do NOT call this directly from outside Core —
+     * use the public `fetchAndConvertPrivateDoc` or `fetchPrivateDocAsHtml` instead.
+     *
+     * @param docId - The internal FFN Document ID.
+     * @param title - The title (for logging purposes).
+     * @param attempt - Current retry attempt (internal; starts at 1).
+     * @returns The parsed Document, or null on failure/rate-limit-exceeded.
+     */
+    _fetchDocPage: async function (docId: string, title: string, attempt: number = 1): Promise<Document | null> {
+        const log = this.getLogger(this.MODULE_NAME, '_fetchDocPage');
         const MAX_RETRIES = 3;
 
         try {
             const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
 
-            // --- Rate Limit Handling ---
             if (response.status === 429) {
                 if (attempt <= MAX_RETRIES) {
                     const waitTime = attempt * 2000; // 2s, 4s, 6s...
                     log(`Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
                     await new Promise(r => setTimeout(r, waitTime));
-                    return this.fetchAndConvertPrivateDoc(docId, title, attempt + 1);
+                    return this._fetchDocPage(docId, title, attempt + 1);
                 }
                 log(`Rate limit exceeded for "${title}". Please wait a moment.`);
                 return null;
             }
 
             if (!response.ok) {
-                log(`Network Error for ${docId}: ${response.status}`);
+                log(`Network error for "${docId}": HTTP ${response.status}`);
                 return null;
             }
 
             const text = await response.text();
-            const doc = new DOMParser().parseFromString(text, 'text/html');
-            const markdown = this.parseContentFromPrivateDoc(doc, title);
+            return new DOMParser().parseFromString(text, 'text/html');
 
-            if (markdown) {
-                log(`Content extracted for "${title}". Length: ${markdown.length}`);
-                return markdown;
-            }
         } catch (err) {
-            log(`Error processing ${title}`, err);
+            log(`Exception while fetching "${title}"`, err);
+            return null;
+        }
+    },
+
+    /**
+     * Fetches a private author document and returns its content as **Markdown**.
+     * @param docId - The internal FFN Document ID.
+     * @param title - The title of the document.
+     * @param attempt - (Internal) Current retry attempt number.
+     * @returns A promise resolving to the Markdown string, or null on failure.
+     */
+    fetchAndConvertPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<string | null> {
+        const log = this.getLogger(this.MODULE_NAME, 'fetchAndConvertPrivateDoc');
+
+        const doc = await this._fetchDocPage(docId, title, attempt);
+        if (!doc) return null;
+
+        const markdown = this.parseContentFromPrivateDoc(doc, title);
+        if (markdown) {
+            log(`Markdown extracted for "${title}". Length: ${markdown.length}`);
+            return markdown;
+        }
+        return null;
+    },
+
+    /**
+     * Fetches a private author document and returns its content as **raw HTML**.
+     * The HTML is the exact value from FFN's editor textarea — no conversion applied.
+     * @param docId - The internal FFN Document ID.
+     * @param title - The title of the document.
+     * @param attempt - (Internal) Current retry attempt number.
+     * @returns A promise resolving to the raw HTML string, or null on failure.
+     */
+    fetchPrivateDocAsHtml: async function (docId: string, title: string, attempt: number = 1): Promise<string | null> {
+        const log = this.getLogger(this.MODULE_NAME, 'fetchPrivateDocAsHtml');
+
+        const doc = await this._fetchDocPage(docId, title, attempt);
+        if (!doc) return null;
+
+        const html = this.parseHtmlFromPrivateDoc(doc, title);
+        if (html) {
+            log(`HTML extracted for "${title}". Length: ${html.length}`);
+            return html;
         }
         return null;
     },

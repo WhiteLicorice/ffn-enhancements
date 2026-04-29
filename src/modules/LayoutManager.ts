@@ -3,6 +3,7 @@
 import { Elements } from '../enums/Elements';
 import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
 import { FFNLogger } from './FFNLogger';
+import { SettingsManager } from './SettingsManager';
 
 // ─── Module-level Constants ────────────────────────────────────────────────────
 
@@ -48,11 +49,17 @@ export const LayoutManager = {
     /**
      * ISitewideModule Phase 1 — document-start.
      * Primes Fluid Mode styles before the first paint to prevent FOUC.
-     * Injects the stylesheet and arms the body class observer.
+     * Reads the persisted `fluidMode` preference from SettingsManager (which
+     * must be registered before LayoutManager in EarlyBoot so its prime()
+     * has already populated the cache by the time we reach this point).
      * Safe to call before the DOM is fully parsed.
      */
     prime(): void {
         _injectFluidStyles();
+        // Restore persisted preference. SettingsManager.prime() runs first
+        // (guaranteed by EarlyBoot registration order), so the stored value
+        // is already in cache — no async required.
+        _isFluid = SettingsManager.get('fluidMode');
         _applyFluidClass(_isFluid);
     },
 
@@ -64,8 +71,9 @@ export const LayoutManager = {
     init(): void {
         _log('init', 'Starting init sequence...');
 
-        // In the future, we will check StorageManager here to restore preference.
-        // For now, we default to true (Fluid/AO3-style Layout).
+        // _isFluid was already set from storage in prime().
+        // Call _setFluidMode to apply DOM mutations (width overrides, etc.)
+        // now that the DOM is fully available.
         _setFluidMode(_isFluid);
 
         // FFN lacks a viewport meta tag, which breaks zooming/reflow on many devices.
@@ -75,6 +83,7 @@ export const LayoutManager = {
 
     /**
      * Toggles the Full Width / Fluid Layout mode.
+     * Applies the change immediately AND persists it to SettingsManager.
      * @returns The new state of the layout (true = Fluid, false = Fixed).
      */
     toggleFluidMode(): boolean {
@@ -83,8 +92,7 @@ export const LayoutManager = {
         _log('toggleFluidMode', `Toggling Fluid Mode to ${_isFluid}`);
 
         _setFluidMode(_isFluid);
-
-        // TODO: Save this preference to StorageManager
+        SettingsManager.set('fluidMode', _isFluid);
 
         return _isFluid;
     },

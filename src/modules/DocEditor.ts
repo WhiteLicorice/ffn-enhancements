@@ -2,6 +2,8 @@
 
 import { Core } from './Core';
 import { Elements } from '../enums/Elements';
+import { DocDownloadFormat } from '../enums/DocDownloadFormat';
+import { SettingsManager } from './SettingsManager';
 import { saveAs } from 'file-saver';
 import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
 import { DocIframeHandler } from './DocIframeHandler';
@@ -66,12 +68,20 @@ export const DocEditor = {
 
     /**
      * Sets up the toolbar buttons.
+     * The download button tooltip reflects the current format setting at the
+     * time the editor toolbar is found (i.e., at page load).
+     *
+     * TODO: If you need the tooltip to update live when the user changes the format
+     * via the Tampermonkey menu without reloading, you would need to re-create the
+     * button on a settings-change event. For now, the format is applied at click time
+     * regardless of the label, so the export is always correct.
      */
     setupButtons: function () {
-        // Download Button
+        const format = SettingsManager.get('docDownloadFormat');
+        const tooltip = format === DocDownloadFormat.HTML ? 'Export Document (HTML)' : 'Export Document (Markdown)';
         const dlContent = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
         const dlBtn = TinyMCEButtonFactory.create(
-            'Download Markdown',
+            tooltip,
             dlContent,
             () => this.exportCurrentDoc()
         );
@@ -147,17 +157,27 @@ export const DocEditor = {
     },
 
     /**
-     * Orchestrates the export of the currently open document to Markdown.
+     * Orchestrates the export of the currently open document.
+     * The output format (Markdown or HTML) is read from SettingsManager at call time,
+     * so changes made via the Tampermonkey menu take effect on the next click.
      * Uses FileSaver to trigger the browser download.
      */
     exportCurrentDoc: function () {
         const log = Core.getLogger(this.MODULE_NAME, 'exportCurrentDoc');
         const title = this.getTitle();
+        const format = SettingsManager.get('docDownloadFormat');
 
         try {
-            const markdown = Core.parseContentFromPrivateDoc(document, title);
-            if (markdown) {
-                saveAs(new Blob([markdown], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
+            if (format === DocDownloadFormat.HTML) {
+                const html = Core.parseHtmlFromPrivateDoc(document, title);
+                if (html) {
+                    saveAs(new Blob([html], { type: "text/html;charset=utf-8" }), `${title}.html`);
+                }
+            } else {
+                const markdown = Core.parseContentFromPrivateDoc(document, title);
+                if (markdown) {
+                    saveAs(new Blob([markdown], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
+                }
             }
         } catch (e) {
             log('CRITICAL ERROR', e);
