@@ -376,8 +376,9 @@ tsconfig.json                    — Strict TypeScript config
    is reader-facing (EPUB/MOBI/PDF/etc.). `DocDownloadFormat` is author doc export only.
    They overlap on `HTML` and `MARKDOWN` but serve different contexts.
 
-8. **`GM_registerMenuCommand` returns a numeric ID** (Tampermonkey ≥ 4.x), not a string.
-   Store it and pass it to `GM_unregisterMenuCommand` to update labels.
+8. **`GM_registerMenuCommand` returns `string | number`** — the return type varies
+   by Tampermonkey version. Store it as `string | number | null` and pass it to
+   `GM_unregisterMenuCommand` to update labels.
 
 9. **`enableFluidMode()` / `disableFluidMode()`** on `LayoutManager` do NOT persist
    the preference — they are imperative helpers for internal use. Only
@@ -394,7 +395,7 @@ tsconfig.json                    — Strict TypeScript config
    - Add default to `DEFAULTS`.
    - Add explicit load line in `_loadAll()`.
 3. `src/modules/SettingsMenu.ts`:
-   - Add `_xxxCmdId: number | null = null` tracker.
+   - Add `_xxxCmdId: string | number | null = null` tracker.
    - Write `_registerXxx()` helper.
    - Call it from `_registerAll()`.
 4. Wire up consuming module(s) to call `SettingsManager.get('yourKey')` at
