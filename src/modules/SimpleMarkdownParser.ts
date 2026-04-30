@@ -98,14 +98,11 @@ export const SimpleMarkdownParser = {
     parse: function (text: string): string {
         const log = Core.getLogger(this.MODULE_NAME, 'parse');
 
-        // Configure marked for security and standard behavior
-        marked.setOptions({
+        log('Converting Markdown content to HTML...');
+        return marked.parse(text, {
             gfm: true,          // GitHub Flavored Markdown
             breaks: true,       // Convert \n to <br> (Essential for fiction line-breaks)
             silent: true        // Prevent crashing on malformed syntax
-        });
-
-        log('Converting Markdown content to HTML...');
-        return marked.parse(text) as string;
+        }) as string;
     }
 };
