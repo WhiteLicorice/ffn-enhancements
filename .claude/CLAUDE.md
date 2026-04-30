@@ -9,7 +9,7 @@
 
 ## Conventions
 
-Adhere to best software-engineering and UX/UI conventions. Favor modular, scalable, maintainable, readable, correct, and well-documented code. Fix bugs at the root. Implement features to be future-proof. Avoid bandaids or hacks unless genuinely constrained by the environment. Be liberal with GOTCHA's and TODO's in the codebase; these are for future developers.
+Adhere to best software-engineering and UX/UI conventions. Favor modular, scalable, maintainable, readable, correct, and well-documented code. Fix bugs at the root. Implement features to be future-proof. Avoid bandaids or hacks unless genuinely constrained by the environment. Be liberal with GOTCHA's and TODO's in the codebase; these are for future developers. Update tests as updates to the codebase are done.
 
 ---
 
