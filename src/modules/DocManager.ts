@@ -7,6 +7,113 @@ import { SettingsManager } from './SettingsManager';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { DocIframeHandler } from './DocIframeHandler';
+import { IBulkOperationConfig, IBulkItem } from '../interfaces/IBulkOperationConfig';
+
+/**
+ * Two-pass retry orchestrator for bulk operations.
+ * Handles: row extraction, progress UI, two-pass retry with delays, error handling, button reset.
+ * Operation-specific logic injected via callbacks.
+ */
+async function _runBulkOperation(e: MouseEvent, config: IBulkOperationConfig): Promise<void> {
+    const log = Core.getLogger(DocManager.MODULE_NAME, '_runBulkOperation');
+    const { verb, processItem, onItemSuccess, onPermanentFailure, preBatch, onFinalize } = config;
+
+    log(`${verb} initiated.`);
+    const btn = e.target as HTMLButtonElement;
+
+    if (!Core.getElement(Elements.DOC_TABLE)) {
+        log("Table not found.");
+        return;
+    }
+
+    const allRows = Core.getElements(Elements.DOC_TABLE_BODY_ROWS);
+
+    let items: IBulkItem[] = [];
+    for (const row of allRows) {
+        const editLink = row.querySelector('a[href*="docid="]') as HTMLAnchorElement;
+        if (!editLink) continue;
+        const match = editLink.href.match(/docid=(\d+)/);
+        if (!match) continue;
+        items.push({
+            docId: match[1],
+            title: (row as HTMLTableRowElement).cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-'),
+            row: row as HTMLTableRowElement,
+        });
+    }
+
+    if (config.filterRows) {
+        items = config.filterRows(items);
+    }
+
+    if (items.length === 0) {
+        log("No documents to process.");
+        return;
+    }
+
+    if (preBatch) preBatch(items.length);
+
+    const originalText = btn.innerText;
+    btn.disabled = true;
+    btn.style.cursor = "wait";
+    btn.style.opacity = "1";
+
+    let successCount = 0;
+    const retriedItems: IBulkItem[] = [];
+
+    try {
+        // PASS 1: Initial attempt
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            btn.innerText = `${i + 1}/${items.length}`;
+
+            await new Promise(r => setTimeout(r, SettingsManager.get('bulkExportDelayMs')));
+
+            if (await processItem(item)) {
+                successCount++;
+                if (onItemSuccess) onItemSuccess(item, 1);
+            } else {
+                retriedItems.push(item);
+            }
+        }
+
+        // PASS 2: Retry failures after cooldown
+        if (retriedItems.length > 0) {
+            log(`Pass 1 done. ${retriedItems.length} items failed. Cooling...`);
+            btn.innerText = "Cooling...";
+            await new Promise(r => setTimeout(r, SettingsManager.get('bulkCooldownMs')));
+
+            for (let i = 0; i < retriedItems.length; i++) {
+                const item = retriedItems[i];
+                btn.innerText = `Retry ${i + 1}/${retriedItems.length}`;
+
+                await new Promise(r => setTimeout(r, SettingsManager.get('bulkRetryDelayMs')));
+
+                if (await processItem(item)) {
+                    successCount++;
+                    if (onItemSuccess) onItemSuccess(item, 2);
+                } else {
+                    log(`Pass 2 Permanent Failure for ${item.title}`);
+                    if (onPermanentFailure) onPermanentFailure(item);
+                }
+            }
+        }
+
+        // Finalization
+        if (onFinalize) {
+            await onFinalize({ successCount, totalCount: items.length, retriedItems });
+        }
+    } catch (error) {
+        log(`Error during bulk ${verb}.`, error);
+        btn.innerText = "Error";
+    } finally {
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.disabled = false;
+            btn.style.cursor = "pointer";
+            btn.style.opacity = "0.6";
+        }, 3000);
+    }
+}
 
 /**
  * Module responsible for enhancing the Document Manager page (`/docs/docs.php`).
@@ -335,13 +442,13 @@ export const DocManager = {
         if (success) {
             btnElement.innerText = "✓";
             btnElement.style.color = "green";
-            
+
             // Update the Life column to show 365 days
             const row = btnElement.closest('tr') as HTMLTableRowElement;
             if (row) {
                 this.updateLifeColumn(row, `single refresh: ${title}`);
             }
-            
+
             setTimeout(() => {
                 btnElement.innerText = originalText;
                 btnElement.style.color = "";
@@ -361,335 +468,107 @@ export const DocManager = {
 
     /**
      * Handles the bulk export of all visible documents into a ZIP file.
+     * Delegates to _runBulkOperation for the two-pass retry orchestration.
      * The output format (Markdown or HTML) is read from SettingsManager at call time.
-     * Implements a robust Two-Pass System:
-     * 1. Iterates through all rows.
-     * 2. If any fail (due to rate limits), waits for a cool-down period.
-     * 3. Retries the failed items with a longer delay.
-     * @param e - The mouse event from the bulk button.
      */
     runBulkExport: async function (e: MouseEvent) {
         const log = Core.getLogger(this.MODULE_NAME, 'runBulkExport');
-
-        log('Export initiated.');
-        const btn = e.target as HTMLButtonElement;
-
-        if (!Core.getElement(Elements.DOC_TABLE)) {
-            log("Table not found.");
-            return;
-        }
-
-        const allRows = Core.getElements(Elements.DOC_TABLE_BODY_ROWS);
-
-        // Filter for rows that actually contain documents
-        const rows = allRows.filter(row => row.querySelector('a[href*="docid="]'));
-
-        if (rows.length === 0) {
-            log("No documents to export.");
-            return;
-        }
-
-        const originalText = btn.innerText;
-        btn.disabled = true;
-        btn.style.cursor = "wait";
-        btn.style.opacity = "1";
-
-        // Read the format once per bulk run so all files in the ZIP are consistent.
         const format = SettingsManager.get('docDownloadFormat');
-        const ext = format; // DocDownloadFormat values are the file extension strings
         log(`Bulk export format: ${format}`);
+        const zip = new JSZip();
 
-        // Store failed items for the second pass
-        interface ExportItem { docId: string; title: string; }
-        let failedItems: ExportItem[] = [];
-
-        try {
-            const zip = new JSZip();
-            let successCount = 0;
-
-            // ============================================================
-            // PASS 1: Main Iteration
-            // ============================================================
-            for (let i = 0; i < rows.length; i++) {
-                const row = rows[i] as HTMLTableRowElement;
-                const editLink = row.querySelector('a[href*="docid="]') as HTMLAnchorElement;
-                if (!editLink) continue;
-
-                // Safe ID Extraction
-                const match = editLink.href.match(/docid=(\d+)/);
-                if (!match) {
-                    log('Could not extract ID from row', row);
-                    continue;
-                }
-                const docId = match[1];
-
-                const title = row.cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
-
-                btn.innerText = `${i + 1}/${rows.length}`;
-
-                // Standard delay between requests
-                await new Promise(r => setTimeout(r, SettingsManager.get('bulkExportDelayMs')));
-
-                // Attempt Fetch
+        await _runBulkOperation(e, {
+            verb: 'Export',
+            processItem: async (item) => {
                 const content = format === DocDownloadFormat.HTML
-                    ? await Core.fetchPrivateDocAsHtml(docId, title)
-                    : await Core.fetchAndConvertPrivateDoc(docId, title);
-
+                    ? await Core.fetchPrivateDocAsHtml(item.docId, item.title)
+                    : await Core.fetchAndConvertPrivateDoc(item.docId, item.title);
                 if (content) {
-                    zip.file(`${title}.${ext}`, content, { date: new Date() });
-                    successCount++;
+                    zip.file(`${item.title}.${format}`, content, { date: new Date() });
+                    return true;
+                }
+                return false;
+            },
+            onPermanentFailure: (item) => {
+                zip.file(`ERROR_${item.title}.txt`, `Failed to retrieve content for DocID ${item.docId} after multiple attempts.`);
+            },
+            onFinalize: async ({ successCount, retriedItems }) => {
+                const btn = e.target as HTMLButtonElement;
+                if (successCount > 0 || retriedItems.length > 0) {
+                    btn.innerText = "Zipping...";
+                    log(`Zipping ${successCount} documents`);
+                    const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+                    const timestamp = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 19);
+                    saveAs(blob, `ffn_${timestamp}.zip`);
+                    btn.innerText = "Done";
                 } else {
-                    log(`Pass 1 Failed for ${title}. Queueing for retry.`);
-                    failedItems.push({ docId, title });
+                    btn.innerText = "Empty";
                 }
-            }
-
-            // ============================================================
-            // PASS 2: Retry Logic for Skipped Items
-            // ============================================================
-            if (failedItems.length > 0) {
-                log(`Pass 1 complete. ${failedItems.length} items failed. Starting Cool Down...`);
-                btn.innerText = "Cooling...";
-
-                // Cool-down between passes
-                await new Promise(r => setTimeout(r, SettingsManager.get('bulkCooldownMs')));
-
-                for (let i = 0; i < failedItems.length; i++) {
-                    const item = failedItems[i];
-                    btn.innerText = `Retry ${i + 1}/${failedItems.length}`;
-
-                    // Extended delay on retry pass
-                    await new Promise(r => setTimeout(r, SettingsManager.get('bulkRetryDelayMs')));
-
-                    const content = format === DocDownloadFormat.HTML
-                        ? await Core.fetchPrivateDocAsHtml(item.docId, item.title)
-                        : await Core.fetchAndConvertPrivateDoc(item.docId, item.title);
-
-                    if (content) {
-                        zip.file(`${item.title}.${ext}`, content, { date: new Date() });
-                        successCount++;
-                    } else {
-                        log(`Pass 2 Permanent Failure for ${item.title}`);
-                        // Create a placeholder file so the user knows it failed
-                        zip.file(`ERROR_${item.title}.txt`, `Failed to retrieve content for DocID ${item.docId} after multiple attempts.`);
-                    }
-                }
-            }
-
-            // ============================================================
-            // Finalization
-            // ============================================================
-            if (successCount > 0 || failedItems.length > 0) {
-                btn.innerText = "Zipping...";
-                log(`Zipping ${successCount} documents`);
-
-                // Generate 'blob' directly instead of 'uint8array', because TS is being strict about this
-                const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
-                const timestamp = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 19);
-                saveAs(blob, `ffn_${timestamp}.zip`);
-                btn.innerText = "Done";
-            } else {
-                btn.innerText = "Empty";
-            }
-
-        } catch (error) {
-            log('An error occurred during bulk export. Check console for details.', error);
-            btn.innerText = "Error";
-        } finally {
-            // Always reset the button state, even if an error occurs
-            setTimeout(() => {
-                btn.innerText = originalText;
-                btn.disabled = false;
-                btn.style.cursor = "pointer";
-                btn.style.opacity = "0.6";
-            }, 3000);
-        }
+            },
+        });
     },
 
     /**
      * Handles the bulk refresh of all visible documents.
-     * Implements a robust Two-Pass System similar to bulk export:
-     * 1. Iterates through all rows.
-     * 2. If any fail (due to rate limits), waits for a cool-down period.
-     * 3. Retries the failed items with a longer delay.
-     * @param e - The mouse event from the bulk button.
+     * Delegates to _runBulkOperation for the two-pass retry orchestration.
      */
     runBulkRefresh: async function (e: MouseEvent) {
         const log = Core.getLogger(this.MODULE_NAME, 'runBulkRefresh');
 
-        log('Bulk refresh initiated.');
-        const btn = e.target as HTMLButtonElement;
-
-        if (!Core.getElement(Elements.DOC_TABLE)) {
-            log("Table not found.");
-            return;
-        }
-
-        const allRows = Core.getElements(Elements.DOC_TABLE_BODY_ROWS);
-
-        // Filter for rows that actually contain documents
-        let rows = allRows.filter(row => row.querySelector('a[href*="docid="]'));
-
-        // Optimization: Filter out documents that already have 365 days life remaining
-        // Life column is at index 5 (6th column: Title | Size | Updated | Life | Export | Refresh)
-        const rowsBeforeFilter = rows.length;
-        rows = rows.filter(row => {
-            const lifeCell = (row as HTMLTableRowElement).cells[this.LIFE_COL_IDX];
-            if (lifeCell) {
-                const lifeText = lifeCell.innerText.trim();
-                // Skip if already at max life (365 days)
-                if (lifeText === '365 days') {
-                    return false;
+        await _runBulkOperation(e, {
+            verb: 'Refresh',
+            filterRows: (items) => {
+                const before = items.length;
+                const filtered = items.filter(item => {
+                    const lifeCell = item.row.cells[DocManager.LIFE_COL_IDX];
+                    return !lifeCell || lifeCell.innerText.trim() !== '365 days';
+                });
+                const skipped = before - filtered.length;
+                if (skipped > 0) {
+                    log(`Skipped ${skipped} document(s) already at 365 days.`);
                 }
-            }
-            return true;
-        });
-
-        const skippedCount = rowsBeforeFilter - rows.length;
-        if (skippedCount > 0) {
-            log(`Skipped ${skippedCount} document(s) that already have 365 days life remaining.`);
-        }
-
-        if (rows.length === 0) {
-            log("No documents need refreshing (all already have 365 days).");
-            alert('All documents already have 365 days life remaining. No refresh needed!');
-            return;
-        }
-
-        // ============================================================
-        // UX: Remind user not to close the page during bulk refresh
-        // ============================================================
-        alert(
-            `Bulk Refresh will start for ${rows.length} document(s).\n\n` +
-            'Please DO NOT CLOSE this tab until the refresh is complete.\n\n' +
-            'The refresh runs silently in the background — you will be notified when it is done.'
-        );
-
-        const originalText = btn.innerText;
-        btn.disabled = true;
-        btn.style.cursor = "wait";
-        btn.style.opacity = "1";
-
-        // Store failed items for the second pass
-        interface RefreshItem { docId: string; title: string; row: HTMLTableRowElement; }
-        let failedItems: RefreshItem[] = [];
-
-        try {
-            let successCount = 0;
-
-            // ============================================================
-            // PASS 1: Main Iteration
-            // ============================================================
-            for (let i = 0; i < rows.length; i++) {
-                const row = rows[i] as HTMLTableRowElement;
-                const editLink = row.querySelector('a[href*="docid="]') as HTMLAnchorElement;
-                if (!editLink) continue;
-
-                // Safe ID Extraction
-                const match = editLink.href.match(/docid=(\d+)/);
-                if (!match) {
-                    log('Could not extract ID from row', row);
-                    continue;
+                if (filtered.length === 0) {
+                    log("No documents need refreshing (all already have 365 days).");
+                    alert('All documents already have 365 days life remaining. No refresh needed!');
                 }
-                const docId = match[1];
+                return filtered;
+            },
+            preBatch: (totalCount) => {
+                alert(
+                    `Bulk Refresh will start for ${totalCount} document(s).\n\n` +
+                    'Please DO NOT CLOSE this tab until the refresh is complete.\n\n' +
+                    'The refresh runs silently in the background — you will be notified when it is done.'
+                );
+            },
+            processItem: async (item) => {
+                const originalBg = item.row.style.backgroundColor;
+                item.row.style.backgroundColor = '#90EE90';
+                item.row.style.transition = 'background-color 0.3s ease';
 
-                const title = row.cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
+                const success = await Core.refreshPrivateDoc(item.docId, item.title);
 
-                btn.innerText = `${i + 1}/${rows.length}`;
-
-                // UX: Highlight current row being processed
-                const originalBgColor = row.style.backgroundColor;
-                row.style.backgroundColor = '#90EE90'; // Light green
-                row.style.transition = 'background-color 0.3s ease';
-
-                // Standard delay between requests
-                await new Promise(r => setTimeout(r, SettingsManager.get('bulkExportDelayMs')));
-
-                // Attempt Refresh
-                const success = await Core.refreshPrivateDoc(docId, title);
-
-                if (success) {
-                    successCount++;
-                    
-                    // Update the Life column to show 365 days
-                    this.updateLifeColumn(row, `bulk pass 1: ${title}`);
+                item.row.style.backgroundColor = originalBg;
+                return success;
+            },
+            onItemSuccess: (item, pass) => {
+                DocManager.updateLifeColumn(item.row, `bulk pass ${pass}: ${item.title}`);
+            },
+            onFinalize: ({ successCount, totalCount, retriedItems: _retriedItems }) => {
+                const btn = e.target as HTMLButtonElement;
+                if (successCount === totalCount) {
+                    btn.innerText = "All Done!";
+                    log(`Successfully refreshed all ${successCount} documents`);
+                    alert(`Bulk Refresh complete! All ${successCount} document(s) refreshed successfully.`);
+                } else if (successCount > 0) {
+                    btn.innerText = `${successCount}/${totalCount}`;
+                    log(`Refreshed ${successCount} of ${totalCount} documents`);
+                    alert(`Bulk Refresh complete. ${successCount} of ${totalCount} document(s) refreshed successfully.\n\nSome documents could not be refreshed — check the console for details.`);
                 } else {
-                    log(`Pass 1 Failed for ${title}. Queueing for retry.`);
-                    failedItems.push({ docId, title, row });
+                    btn.innerText = "Failed";
+                    log(`Failed to refresh any documents`);
+                    alert(`Bulk Refresh failed. No documents could be refreshed.\n\nPlease check the console for details and try again.`);
                 }
-
-                // UX: Remove highlight after processing
-                row.style.backgroundColor = originalBgColor;
-            }
-
-            // ============================================================
-            // PASS 2: Retry Logic for Failed Items
-            // ============================================================
-            if (failedItems.length > 0) {
-                log(`Pass 1 complete. ${failedItems.length} items failed. Starting Cool Down...`);
-                btn.innerText = "Cooling...";
-
-                // Cool-down between passes
-                await new Promise(r => setTimeout(r, SettingsManager.get('bulkCooldownMs')));
-
-                for (let i = 0; i < failedItems.length; i++) {
-                    const item = failedItems[i];
-                    btn.innerText = `Retry ${i + 1}/${failedItems.length}`;
-
-                    // UX: Highlight current row being processed (retry)
-                    const originalBgColor = item.row.style.backgroundColor;
-                    item.row.style.backgroundColor = '#90EE90'; // Light green
-                    item.row.style.transition = 'background-color 0.3s ease';
-
-                    // Extended delay on retry pass
-                    await new Promise(r => setTimeout(r, SettingsManager.get('bulkRetryDelayMs')));
-
-                    const success = await Core.refreshPrivateDoc(item.docId, item.title);
-
-                    if (success) {
-                        successCount++;
-                        
-                        // Update the Life column to show 365 days
-                        this.updateLifeColumn(item.row, `bulk pass 2: ${item.title}`);
-                    } else {
-                        log(`Pass 2 Permanent Failure for ${item.title}`);
-                    }
-
-                    // UX: Remove highlight after processing
-                    item.row.style.backgroundColor = originalBgColor;
-                }
-            }
-
-            // ============================================================
-            // Finalization
-            // ============================================================
-            const totalAttempts = rows.length;
-
-            if (successCount === totalAttempts) {
-                btn.innerText = "All Done!";
-                log(`Successfully refreshed all ${successCount} documents`);
-                alert(`Bulk Refresh complete! All ${successCount} document(s) refreshed successfully.`);
-            } else if (successCount > 0) {
-                btn.innerText = `${successCount}/${totalAttempts}`;
-                log(`Refreshed ${successCount} of ${totalAttempts} documents`);
-                alert(`Bulk Refresh complete. ${successCount} of ${totalAttempts} document(s) refreshed successfully.\n\nSome documents could not be refreshed — check the console for details.`);
-            } else {
-                btn.innerText = "Failed";
-                log(`Failed to refresh any documents`);
-                alert(`Bulk Refresh failed. No documents could be refreshed.\n\nPlease check the console for details and try again.`);
-            }
-
-        } catch (error) {
-            log('An error occurred during bulk refresh. Check console for details.', error);
-            btn.innerText = "Error";
-        } finally {
-            // Always reset the button state, even if an error occurs
-            setTimeout(() => {
-                btn.innerText = originalText;
-                btn.disabled = false;
-                btn.style.cursor = "pointer";
-                btn.style.opacity = "0.6";
-            }, 3000);
-        }
+            },
+        });
     }
 };
