@@ -7,6 +7,12 @@
 
 ---
 
+## Conventions
+
+Adhere to best software-engineering and UX/UI conventions. Favor modular, scalable, maintainable, readable, correct, and well-documented code. Fix bugs at the root. Implement features to be future-proof. Avoid bandaids or hacks unless genuinely constrained by the environment. Be liberal with GOTCHA's and TODO's in the codebase; these are for future developers.
+
+---
+
 ## 1. What This Project Is
 
 A **Tampermonkey userscript** that enhances FanFiction.net's interface for both
