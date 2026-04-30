@@ -54,19 +54,43 @@ export const StoryReader = {
     },
 
     /**
-     * Fixes a native FFN bug where the cover art modal fails to display the image.
-     * Manually handles the backdrop, image source swapping, and centering to 
-     * ensure it works even when FFN's native jQuery plugins fail.
+     * Fixes native FFN bug where cover art modal fails to display image.
+     *
+     * Expected FFN DOM structure (assumed by this fix):
+     *   - Trigger: `#profile_top span[onclick*="img_large"]` — inline onclick
+     *     calls `img_large(...)` with image path. No modern event listener.
+     *   - Modal: `div#img_large.modal.hide.fade` — Bootstrap 2 modal container.
+     *   - Inner: `div.modal-body > img[data-original]` — lazy-loaded cover art;
+     *     `data-original` holds high-res URL, `src` holds thumbnail.
+     *
+     * FFN's own jQuery-based modal.show() breaks because TinyMCE or other
+     * script conflicts prevent the Bootstrap plugin from transitioning the
+     * image correctly. This fix bypasses FFN's handler entirely and manually
+     * positions the modal, swaps the high-res image, and manages a backdrop.
+     *
+     * If expected structure missing — bails out early with log. No broken UI.
      */
     fixCoverArtModal: function () {
         const log = Core.getLogger(this.MODULE_NAME, 'fixCoverArtModal');
 
-        // Find the specific span trigger and the modal container
+        // Step 1: Locate trigger + modal by FFN-specific selectors
         const trigger = document.querySelector('#profile_top span[onclick*="img_large"]');
         const modal = document.getElementById('img_large');
 
         if (!trigger || !modal) {
             log('Cover art trigger or modal not found. Skipping fix.');
+            return;
+        }
+
+        // Step 2: Validate expected internal structure before applying fix
+        const img = modal.querySelector('img') as HTMLImageElement | null;
+        if (!img) {
+            log('Modal has no <img>. Unexpected structure. Skipping fix.');
+            return;
+        }
+        // data-original holds high-res URL; without it we cannot swap
+        if (!img.getAttribute('data-original')) {
+            log('Cover <img> missing data-original attribute. Skipping fix.');
             return;
         }
 
