@@ -232,18 +232,21 @@ export const StoryDownloader = {
             this.processDownload(formatId, 'fichub');
         };
 
-        try {
-            const jq = (window as any).$ || (window as any).jQuery || (window as any).unsafeWindow?.$ || (window as any).unsafeWindow?.jQuery;
+        // Show modal
+        m.classList.remove('hide');
+        m.style.display = 'block';
+        // Force reflow so CSS transition (top: -25% → 10%, opacity: 0 → 1) plays
+        void m.offsetHeight;
+        m.classList.add('in');
 
-            if (jq) {
-                jq("#ffe-download-modal").modal('show');
-            } else {
-                m.classList.remove('hide');
-                m.classList.add('in');
-                m.style.display = 'block';
-            }
-        } catch (e) {
-            log('Failed to trigger modal.', e);
+        // Backdrop (Bootstrap 2.x style)
+        if (!document.getElementById('ffe-modal-backdrop')) {
+            const backdrop = document.createElement('div');
+            backdrop.className = 'modal-backdrop fade';
+            backdrop.id = 'ffe-modal-backdrop';
+            document.body.appendChild(backdrop);
+            void backdrop.offsetHeight;
+            backdrop.classList.add('in');
         }
     },
 
@@ -261,17 +264,16 @@ export const StoryDownloader = {
             document.body.focus();
         }
 
-        try {
-            const jq = (window as any).$ || (window as any).jQuery || (window as any).unsafeWindow?.$ || (window as any).unsafeWindow?.jQuery;
+        m.classList.remove('in');
+        m.classList.add('hide');
+        m.style.display = 'none';
 
-            if (jq) {
-                jq("#ffe-download-modal").modal('hide');
-            } else {
-                m.classList.remove('in');
-                m.classList.add('hide');
-                m.style.display = 'none';
-            }
-        } catch (e) { /* ignore */ }
+        // Remove backdrop with fade-out
+        const backdrop = document.getElementById('ffe-modal-backdrop');
+        if (backdrop) {
+            backdrop.classList.remove('in');
+            setTimeout(() => backdrop.remove(), 150);
+        }
     },
 
     /**
