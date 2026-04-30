@@ -258,12 +258,34 @@ function _fetchBlob(url: string): Promise<Blob> {
  * Injects the cover image into the EPUB structure using JSZip.
  * Supports "Naked" EPUBs (FicHub default) by creating the necessary XML structure.
  * Only injects the thumbnail; does not create a cover page.
+ *
+ * Orchestrates: find OPF path → parse OPF → detect existing cover → replace or inject.
  */
 async function _injectCoverIntoEpub(epubBlob: Blob, coverBlob: Blob): Promise<Blob> {
     const log = Core.getLogger(MODULE_NAME, 'injectCover');
     const zip = await JSZip.loadAsync(epubBlob);
 
-    // 1. Find the OPF file location from container.xml
+    const { opfPath, opfDir } = await _findOpfPath(zip);
+    const opfDoc = await _parseOpfDocument(zip, opfPath);
+
+    const existingHref = _findExistingCoverHref(opfDoc);
+
+    if (existingHref) {
+        log("Existing cover metadata found. Replacing file.");
+        zip.file(_resolveFullPath(opfDir, existingHref), coverBlob);
+    } else {
+        log("No existing cover found. Injecting image and metadata.");
+        _injectCoverMetadata(zip, opfPath, opfDir, coverBlob, opfDoc);
+    }
+
+    // Note: We deliberately do not add a cover page to the spine or guide,
+    // to preserve the original reading order of the FicHub file.
+
+    return await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
+}
+
+/** Reads container.xml to locate the OPF file path within the EPUB ZIP. */
+async function _findOpfPath(zip: JSZip): Promise<{ opfPath: string; opfDir: string }> {
     const containerFile = zip.file("META-INF/container.xml");
     if (!containerFile) throw new Error("Invalid EPUB: Missing container.xml");
 
@@ -273,81 +295,76 @@ async function _injectCoverIntoEpub(epubBlob: Blob, coverBlob: Blob): Promise<Bl
 
     const opfPath = opfPathMatch[1];
     const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/'));
+    return { opfPath, opfDir };
+}
 
-    // 2. Parse OPF
+/** Parses the OPF XML file from the ZIP into a DOM Document. */
+async function _parseOpfDocument(zip: JSZip, opfPath: string): Promise<Document> {
     const opfFile = zip.file(opfPath);
     if (!opfFile) throw new Error(`Invalid EPUB: Missing OPF file at ${opfPath}`);
 
     const opfContent = await opfFile.async("text");
     const parser = new DOMParser();
-    const doc = parser.parseFromString(opfContent, "application/xml");
+    return parser.parseFromString(opfContent, "application/xml");
+}
 
-    const opfNamespace = "http://www.idpf.org/2007/opf";
+/**
+ * Returns the href of an existing cover image in the OPF manifest, or null.
+ * Looks for <meta name="cover"> → content attribute → <item id="..."> → href.
+ */
+function _findExistingCoverHref(opfDoc: Document): string | null {
+    const coverMeta = opfDoc.querySelector('meta[name="cover"]');
+    if (!coverMeta) return null;
 
-    // 3. Determine if a cover already exists
-    let coverMeta = doc.querySelector('meta[name="cover"]');
+    const coverId = coverMeta.getAttribute("content");
+    if (!coverId) return null;
 
-    if (coverMeta) {
-        // --- SCENARIO A: Cover Exists (Replace it) ---
-        log("Existing cover metadata found. Replacing file.");
-        const coverId = coverMeta.getAttribute("content");
-        if (coverId) {
-            const item = doc.getElementById(coverId) || doc.querySelector(`item[id="${coverId}"]`);
-            if (item) {
-                const href = item.getAttribute("href");
-                if (href) {
-                    const fullPath = opfDir ? `${opfDir}/${href}` : href;
-                    zip.file(fullPath, coverBlob);
-                    // Return early, job done (metadata is already correct)
-                    return await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
-                }
-            }
-        }
-    }
+    const item = opfDoc.getElementById(coverId) || opfDoc.querySelector(`item[id="${coverId}"]`);
+    if (!item) return null;
 
-    // --- SCENARIO B: No Cover (Create Metadata & Inject Image) ---
-    log("No existing cover found. Injecting image and metadata.");
+    return item.getAttribute("href");
+}
 
-    // Constants for new items
+/** Resolves a manifest href (relative to OPF directory) to a full ZIP path. */
+function _resolveFullPath(opfDir: string, href: string): string {
+    return opfDir ? `${opfDir}/${href}` : href;
+}
+
+/** Adds a cover image to the ZIP and updates OPF metadata + manifest for EPUB 3 compliance. */
+function _injectCoverMetadata(
+    zip: JSZip,
+    opfPath: string,
+    opfDir: string,
+    coverBlob: Blob,
+    opfDoc: Document
+): void {
+    const OPF_NS = "http://www.idpf.org/2007/opf";
     const COVER_IMAGE_ID = "cover-image";
     const COVER_IMG_FILENAME = "images/cover.jpg";
 
-    // A. Add the Image File to Zip
-    // If opf is in "EPUB/", file goes to "EPUB/images/cover.jpg"
     const fullImgPath = opfDir ? `${opfDir}/${COVER_IMG_FILENAME}` : COVER_IMG_FILENAME;
     zip.file(fullImgPath, coverBlob);
 
-    // B. Modify OPF: Metadata
-    const metadata = doc.getElementsByTagNameNS(opfNamespace, "metadata")[0];
+    const metadata = opfDoc.getElementsByTagNameNS(OPF_NS, "metadata")[0];
     if (metadata) {
-        const metaEl = doc.createElementNS(opfNamespace, "meta");
+        const metaEl = opfDoc.createElementNS(OPF_NS, "meta");
         metaEl.setAttribute("name", "cover");
         metaEl.setAttribute("content", COVER_IMAGE_ID);
         metadata.appendChild(metaEl);
     }
 
-    // C. Modify OPF: Manifest
-    const manifest = doc.getElementsByTagNameNS(opfNamespace, "manifest")[0];
+    const manifest = opfDoc.getElementsByTagNameNS(OPF_NS, "manifest")[0];
     if (manifest) {
-        // Item: Image
-        const itemImg = doc.createElementNS(opfNamespace, "item");
+        const itemImg = opfDoc.createElementNS(OPF_NS, "item");
         itemImg.setAttribute("id", COVER_IMAGE_ID);
         itemImg.setAttribute("href", COVER_IMG_FILENAME);
         itemImg.setAttribute("media-type", "image/jpeg");
-        // Add "cover-image" property for EPUB 3 compliance
         itemImg.setAttribute("properties", "cover-image");
         manifest.appendChild(itemImg);
     }
 
-    // Note: We deliberately do not add a cover page to the spine or guide,
-    // to preserve the original reading order of the FicHub file.
-
-    // 4. Save modified OPF back to zip
     const serializer = new XMLSerializer();
-    const newOpfContent = serializer.serializeToString(doc);
-    zip.file(opfPath, newOpfContent);
-
-    return await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
+    zip.file(opfPath, serializer.serializeToString(opfDoc));
 }
 
 /**

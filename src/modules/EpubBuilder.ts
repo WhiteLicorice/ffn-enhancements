@@ -6,6 +6,16 @@ import { saveAs } from 'file-saver';
 import { StoryMetadata } from '../interfaces/StoryMetadata';
 import { ChapterData } from '../interfaces/ChapterData';
 
+/** Serializes a DOM Document to an OPF XML string with the EPUB-required XML declaration. */
+function _serializeOpfDocument(doc: Document): string {
+    const serializer = new XMLSerializer();
+    let xml = serializer.serializeToString(doc);
+    if (!xml.startsWith('<?xml')) {
+        xml = '<?xml version="1.0" encoding="utf-8"?>\n' + xml;
+    }
+    return xml;
+}
+
 /**
  * A client-side EPUB generator that creates valid EPUB v2 files.
  * Designed to have parity with FicHub's output structure.
@@ -209,60 +219,118 @@ export const EpubBuilder = {
     },
 
     generateOPF: function (meta: StoryMetadata, chapters: ChapterData[], coverMime: string): string {
-        const uuid = `urn:uuid:${meta.id}`;
-        const ext = coverMime.includes('png') ? 'png' : 'jpg';
+        const OPF_NS = "http://www.idpf.org/2007/opf";
+        const DC_NS  = "http://purl.org/dc/elements/1.1/";
 
-        // MAGIC ID: We give the image the ID 'cover'. 
-        // This is a common heuristic used by readers to find the thumbnail.
-        const coverImageItem = meta.coverBlob
-            ? `<item id="cover" href="cover.${ext}" media-type="${coverMime}"/>`
-            : '';
+        const doc = document.implementation.createDocument(OPF_NS, "package", null);
+        const pkg = doc.documentElement!;
+        pkg.setAttribute("unique-identifier", "BookId");
+        pkg.setAttribute("version", "2.0");
 
-        // The XHTML wrapper gets a distinct ID to avoid collision
-        const coverPageItem = meta.coverBlob
-            ? '<item id="cover-page" href="cover.xhtml" media-type="application/xhtml+xml"/>'
-            : '';
+        // --- <metadata> ---
+        const metadata = doc.createElementNS(OPF_NS, "metadata");
+        metadata.setAttribute("xmlns:dc", DC_NS);
+        metadata.setAttribute("xmlns:opf", OPF_NS);
 
-        // The meta tag MUST point to the ID of the IMAGE, not the xhtml page.
-        const coverMeta = meta.coverBlob
-            ? '<meta name="cover" content="cover" />'
-            : '';
+        function addDc(name: string, value: string) {
+            const el = doc.createElementNS(DC_NS, "dc:" + name);
+            el.textContent = value;
+            metadata.appendChild(el);
+        }
 
-        const coverSpine = meta.coverBlob ? '<itemref idref="cover-page"/>' : '';
+        addDc("title", meta.title);
 
-        return `<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0">
-    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
-        <dc:title>${this.escape(meta.title)}</dc:title>
-        <dc:creator opf:role="aut">${this.escape(meta.author)}</dc:creator>
-        <dc:language>${meta.language ? meta.language.substr(0, 2).toLowerCase() : 'en'}</dc:language>
-        <dc:description>${this.escape(meta.description)}</dc:description>
-        <dc:subject>${this.escape(meta.genre)}</dc:subject>
-        <dc:identifier id="BookId" opf:scheme="UUID">${uuid}</dc:identifier>
-        ${coverMeta}
-    </metadata>
-    <manifest>
-        <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
-        <item id="style" href="style.css" media-type="text/css"/>
-        <item id="titlepage" href="title.xhtml" media-type="application/xhtml+xml"/>
-        <item id="toc" href="toc.xhtml" media-type="application/xhtml+xml"/>
-        ${coverImageItem}
-        ${coverPageItem}
-        ${chapters.map((chap) => `<item id="chap${chap.number}" href="chapter_${chap.number}.xhtml" media-type="application/xhtml+xml"/>`).join('\n')}
-    </manifest>
-    <spine toc="ncx">
-        ${coverSpine}
-        <itemref idref="titlepage"/>
-        <itemref idref="toc"/>
-        ${chapters.map((chap) => `<itemref idref="chap${chap.number}"/>`).join('\n')}
-    </spine>
-    <guide>
-        ${meta.coverBlob ? '<reference type="cover" title="Cover" href="cover.xhtml"/>' : ''}
-        <reference type="title-page" title="Title Page" href="title.xhtml"/>
-        <reference type="toc" title="Table of Contents" href="toc.xhtml"/>
-        <reference type="text" title="Start" href="chapter_1.xhtml"/>
-    </guide>
-</package>`;
+        const creator = doc.createElementNS(DC_NS, "dc:creator");
+        creator.setAttribute("opf:role", "aut");
+        creator.textContent = meta.author;
+        metadata.appendChild(creator);
+
+        const language = doc.createElementNS(DC_NS, "dc:language");
+        language.textContent = meta.language ? meta.language.slice(0, 2).toLowerCase() : 'en';
+        metadata.appendChild(language);
+
+        addDc("description", meta.description || '');
+        addDc("subject", meta.genre || '');
+
+        const identifier = doc.createElementNS(DC_NS, "dc:identifier");
+        identifier.setAttribute("id", "BookId");
+        identifier.setAttribute("opf:scheme", "UUID");
+        identifier.textContent = `urn:uuid:${meta.id}`;
+        metadata.appendChild(identifier);
+
+        if (meta.coverBlob) {
+            const coverMeta = doc.createElementNS(OPF_NS, "meta");
+            coverMeta.setAttribute("name", "cover");
+            coverMeta.setAttribute("content", "cover");
+            metadata.appendChild(coverMeta);
+        }
+
+        pkg.appendChild(metadata);
+
+        // --- <manifest> ---
+        const manifest = doc.createElementNS(OPF_NS, "manifest");
+
+        function addItem(id: string, href: string, mediaType: string) {
+            const item = doc.createElementNS(OPF_NS, "item");
+            item.setAttribute("id", id);
+            item.setAttribute("href", href);
+            item.setAttribute("media-type", mediaType);
+            manifest.appendChild(item);
+        }
+
+        addItem("ncx", "toc.ncx", "application/x-dtbncx+xml");
+        addItem("style", "style.css", "text/css");
+        addItem("titlepage", "title.xhtml", "application/xhtml+xml");
+        addItem("toc", "toc.xhtml", "application/xhtml+xml");
+
+        if (meta.coverBlob) {
+            const ext = coverMime.includes('png') ? 'png' : 'jpg';
+            addItem("cover", `cover.${ext}`, coverMime);
+            addItem("cover-page", "cover.xhtml", "application/xhtml+xml");
+        }
+
+        chapters.forEach(chap =>
+            addItem(`chap${chap.number}`, `chapter_${chap.number}.xhtml`, "application/xhtml+xml")
+        );
+
+        pkg.appendChild(manifest);
+
+        // --- <spine> ---
+        const spine = doc.createElementNS(OPF_NS, "spine");
+        spine.setAttribute("toc", "ncx");
+
+        function addSpineRef(idref: string) {
+            const ref = doc.createElementNS(OPF_NS, "itemref");
+            ref.setAttribute("idref", idref);
+            spine.appendChild(ref);
+        }
+
+        if (meta.coverBlob) addSpineRef("cover-page");
+        addSpineRef("titlepage");
+        addSpineRef("toc");
+        chapters.forEach(chap => addSpineRef(`chap${chap.number}`));
+
+        pkg.appendChild(spine);
+
+        // --- <guide> ---
+        const guide = doc.createElementNS(OPF_NS, "guide");
+
+        function addRef(type: string, title: string, href: string) {
+            const ref = doc.createElementNS(OPF_NS, "reference");
+            ref.setAttribute("type", type);
+            ref.setAttribute("title", title);
+            ref.setAttribute("href", href);
+            guide.appendChild(ref);
+        }
+
+        if (meta.coverBlob) addRef("cover", "Cover", "cover.xhtml");
+        addRef("title-page", "Title Page", "title.xhtml");
+        addRef("toc", "Table of Contents", "toc.xhtml");
+        addRef("text", "Start", "chapter_1.xhtml");
+
+        pkg.appendChild(guide);
+
+        return _serializeOpfDocument(doc);
     },
 
     generateNCX: function (meta: StoryMetadata, chapters: ChapterData[]): string {
@@ -344,6 +412,11 @@ export const EpubBuilder = {
     },
 
     escape: function (str: string | undefined): string {
-        return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        if (!str) return '';
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
     }
 };
