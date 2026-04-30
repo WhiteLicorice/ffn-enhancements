@@ -346,7 +346,7 @@ function _registerValueListeners(): void {
  * into the correct typed FFNSettings value.
  * Returns `undefined` if the raw value is invalid or corrupt.
  */
-function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unknown): FFNSettings[K] | undefined {
+export function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unknown): FFNSettings[K] | undefined {
     const defaultVal = DEFAULTS[key];
 
     if (typeof defaultVal === 'boolean') {

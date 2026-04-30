@@ -312,7 +312,7 @@ async function _parseOpfDocument(zip: JSZip, opfPath: string): Promise<Document>
  * Returns the href of an existing cover image in the OPF manifest, or null.
  * Looks for <meta name="cover"> → content attribute → <item id="..."> → href.
  */
-function _findExistingCoverHref(opfDoc: Document): string | null {
+export function _findExistingCoverHref(opfDoc: Document): string | null {
     const coverMeta = opfDoc.querySelector('meta[name="cover"]');
     if (!coverMeta) return null;
 
@@ -326,7 +326,7 @@ function _findExistingCoverHref(opfDoc: Document): string | null {
 }
 
 /** Resolves a manifest href (relative to OPF directory) to a full ZIP path. */
-function _resolveFullPath(opfDir: string, href: string): string {
+export function _resolveFullPath(opfDir: string, href: string): string {
     return opfDir ? `${opfDir}/${href}` : href;
 }
 
@@ -383,6 +383,6 @@ function _saveBlob(blob: Blob, filename: string): void {
     }, 100);
 }
 
-function _sanitizeFilename(name: string): string {
+export function _sanitizeFilename(name: string): string {
     return name.replace(/[<>:"/\\|?*]/g, "").trim();
 }
