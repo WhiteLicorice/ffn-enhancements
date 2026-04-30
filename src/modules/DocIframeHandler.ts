@@ -13,6 +13,12 @@ export const DocIframeHandler = {
     /** * Stores the specific event listener function attached to a specific DOM element.
      * This allows us to retrieve and remove the exact anonymous function later.
      */
+    /**
+     * WeakMap<HTMLElement, EventListener> tracking paste listeners per iframe body.
+     * WeakMap — not Map — so when TinyMCE replaces the iframe body (which it does
+     * during editor re-init), the old body + its listener entry are GC-able. A Map
+     * would leak the old body until explicitly deleted.
+     */
     _listeners: new WeakMap<HTMLElement, EventListener>(),
 
     /**
@@ -72,6 +78,10 @@ export const DocIframeHandler = {
 
             const parsedHtml = SimpleMarkdownParser.parse(text);
             if (iframe.contentDocument) {
+                // Note: execCommand('insertHTML') is deprecated but no practical
+                // replacement exists for inserting HTML at cursor in a contenteditable.
+                // ClipboardEvent-based approaches lose cursor position; Clipboard API
+                // promises break on mixed content. Keep until browsers remove it.
                 iframe.contentDocument.execCommand('insertHTML', false, parsedHtml);
             }
         }
