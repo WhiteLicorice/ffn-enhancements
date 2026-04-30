@@ -122,7 +122,29 @@ async function _runBulkOperation(e: MouseEvent, config: IBulkOperationConfig): P
 export const DocManager = {
     MODULE_NAME: 'doc-manager',
 
-    LIFE_COL_IDX: 5,
+    /** Cache for dynamically-resolved Life column index. null = not resolved yet. */
+    _lifeColIdx: null as number | null,
+
+    /**
+     * Scans table header for "Life" cell to resolve column index dynamically.
+     * Falls back to hardcoded 5 if header not found or no match.
+     * Cache per page load — no re-scan after first call.
+     */
+    _resolveLifeColIdx: function (): number {
+        if (this._lifeColIdx !== null) return this._lifeColIdx;
+        const headerRow = Core.getElement(Elements.DOC_TABLE_HEAD_ROW);
+        if (headerRow) {
+            const cells = headerRow.querySelectorAll('th, td');
+            for (let i = 0; i < cells.length; i++) {
+                if (cells[i].textContent?.trim() === 'Life') {
+                    this._lifeColIdx = i;
+                    return i;
+                }
+            }
+        }
+        this._lifeColIdx = 5; // fallback
+        return 5;
+    },
 
     /**
      * Initializes the module by checking for the document table and observing for the Copy-N-Paste editor.
@@ -371,9 +393,7 @@ export const DocManager = {
     updateLifeColumn: function (row: HTMLTableRowElement, context: string = 'refresh') {
         const log = Core.getLogger(this.MODULE_NAME, 'updateLifeColumn');
         try {
-            // Life column is the 6th column (index 5)
-            // Structure: Title | Size | Updated | Life | Export | Refresh
-            const lifeCell = row.cells[this.LIFE_COL_IDX];
+            const lifeCell = row.cells[this._resolveLifeColIdx()];
             if (lifeCell) {
                 lifeCell.innerText = '365 days';
                 log(`Updated Life column to "365 days" (${context})`);
@@ -521,7 +541,7 @@ export const DocManager = {
             filterRows: (items) => {
                 const before = items.length;
                 const filtered = items.filter(item => {
-                    const lifeCell = item.row.cells[DocManager.LIFE_COL_IDX];
+                    const lifeCell = item.row.cells[DocManager._resolveLifeColIdx()];
                     return !lifeCell || lifeCell.innerText.trim() !== '365 days';
                 });
                 const skipped = before - filtered.length;
