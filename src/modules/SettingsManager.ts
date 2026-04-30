@@ -13,7 +13,7 @@ import { ISitewideModule } from '../interfaces/ISiteWideModule';
  * To add a new setting:
  *   1. Add the field here with its type.
  *   2. Add its default to `DEFAULTS` below.
- *   3. Add an explicit load line in `_loadAll()`.
+ *   3. Add one-liner in `_loadAll()`: `_loadBool(key)` / `_loadEnum(key, EnumObj)` / `_loadPositiveNumber(key)`.
  *   4. Add a GM_addValueChangeListener entry in `_registerValueListeners()`.
  *   5. Add a control row to `SettingsPage.ts`.
  */
@@ -249,27 +249,12 @@ export const SettingsManager: ISitewideModule & {
  * Reads every known setting from GM storage into the in-memory cache.
  * Falls back to `DEFAULTS` for any key not found in storage.
  *
- * NOTE: Each key must be listed explicitly so TypeScript can verify the
- * assignment types. Using `Object.keys(DEFAULTS)` with a generic cast works
- * but loses type safety — prefer explicit assignments when adding new settings.
+ * Uses generic type-dispatched helpers (_loadBool, _loadEnum, _loadPositiveNumber)
+ * so adding a new setting usually needs just one line here + a DEFAULTS entry.
  */
 function _loadAll(): void {
-    // docDownloadFormat — stored as a string (DocDownloadFormat enum value)
-    const storedFormat = GM_getValue(STORAGE_PREFIX + 'docDownloadFormat') as string | undefined;
-    if (storedFormat !== undefined) {
-        const knownFormats = Object.values(DocDownloadFormat) as string[];
-        if (knownFormats.includes(storedFormat)) {
-            _cache.docDownloadFormat = storedFormat as DocDownloadFormat;
-        }
-    }
-
-    // fluidMode — stored as a boolean
-    const storedFluid = GM_getValue(STORAGE_PREFIX + 'fluidMode') as boolean | undefined;
-    if (storedFluid !== undefined) {
-        _cache.fluidMode = Boolean(storedFluid);
-    }
-
-    // Numeric settings — positive finite numbers only
+    _loadEnum('docDownloadFormat', DocDownloadFormat);
+    _loadBool('fluidMode');
     _loadPositiveNumber('scrollStep');
     _loadPositiveNumber('fetchMaxRetries');
     _loadPositiveNumber('fetchRetryBaseMs');
@@ -292,6 +277,32 @@ function _loadPositiveNumber(key: keyof FFNSettings): void {
         if (Number.isFinite(n) && n > 0) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (_cache as Record<string, any>)[key] = n;
+        }
+    }
+}
+
+/**
+ * Loads a single boolean setting from GM storage into the cache.
+ * Falls back to `DEFAULTS.fluidMode` if no value is stored.
+ */
+function _loadBool(key: keyof FFNSettings): void {
+    const stored = GM_getValue(STORAGE_PREFIX + key) as boolean | undefined;
+    if (stored !== undefined) {
+        (_cache as Record<string, any>)[key] = Boolean(stored);
+    }
+}
+
+/**
+ * Loads a single string-enum setting from GM storage into the cache.
+ * Validates the stored value against the enum's known values to guard
+ * against stale or corrupt storage entries. Falls back to DEFAULTS on mismatch.
+ */
+function _loadEnum(key: keyof FFNSettings, enumObj: Record<string, string>): void {
+    const stored = GM_getValue(STORAGE_PREFIX + key) as string | undefined;
+    if (stored !== undefined) {
+        const known = Object.values(enumObj) as string[];
+        if (known.includes(stored)) {
+            (_cache as Record<string, any>)[key] = stored;
         }
     }
 }

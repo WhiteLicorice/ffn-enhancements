@@ -231,7 +231,7 @@ unsub(); // remove listener
 **To add a new setting:**
 1. Add field + type to `FFNSettings` interface.
 2. Add default to `DEFAULTS`.
-3. Add explicit load line in `_loadAll()` (explicit > generic for type safety).
+3. Add one-liner in `_loadAll()` using generic helper: `_loadBool(key)` for booleans, `_loadEnum(key, EnumObj)` for string enums, `_loadPositiveNumber(key)` for numbers.
 4. Add `GM_addValueChangeListener` entry in `_registerValueListeners()` — or it's
    automatic since `_registerValueListeners` iterates `Object.keys(DEFAULTS)`.
 5. Add a control row in `SettingsPage.ts` (see checklist §11).
@@ -507,7 +507,7 @@ tsconfig.json                    — Strict TypeScript config
 2. `src/modules/SettingsManager.ts`:
    - Add field + type to `FFNSettings`.
    - Add default to `DEFAULTS`.
-   - Add explicit load line in `_loadAll()`.
+   - Add one-liner in `_loadAll()`: `_loadBool(key)` / `_loadEnum(key, EnumObj)` / `_loadPositiveNumber(key)`.
    - `_registerValueListeners()` is automatic (iterates `Object.keys(DEFAULTS)`).
 3. `src/modules/SettingsPage.ts`:
    - If numeric: add the key to `NUMERIC_KEYS`.
