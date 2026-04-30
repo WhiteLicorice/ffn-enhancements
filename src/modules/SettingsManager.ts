@@ -97,6 +97,14 @@ const DEFAULTS: FFNSettings = {
     bulkRetryDelayMs: 3000,
 };
 
+/**
+ * Registry of enum-backed settings for validation in _parseStoredValue.
+ * Maps setting key → enum object. Add new enum settings here.
+ */
+const ENUM_SETTINGS: Partial<Record<keyof FFNSettings, Record<string, string>>> = {
+    docDownloadFormat: DocDownloadFormat,
+};
+
 // ─── Internal State ───────────────────────────────────────────────────────────
 
 /**
@@ -361,8 +369,9 @@ export function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unkn
 
     if (typeof defaultVal === 'string') {
         // Validate enum values to guard against stale/corrupt storage entries.
-        if (key === 'docDownloadFormat') {
-            const known = Object.values(DocDownloadFormat) as string[];
+        const enumMap = ENUM_SETTINGS[key];
+        if (enumMap) {
+            const known = Object.values(enumMap) as string[];
             if (known.includes(String(raw))) return raw as FFNSettings[K];
             return undefined;
         }

@@ -76,7 +76,10 @@ async function _fetchChapter(storyId: string, chapterNum: number, onProgress?: C
             return contentEl?.innerHTML || "<p>Error: Content missing</p>";
         },
         onError: (resp) => {
-            throw new Error(`Network error: ${resp.status}`);
+            const msg = resp.status === 429
+                ? `Download aborted: Too many rate limit errors.`
+                : `Download aborted: HTTP ${resp.status} — not retryable.`;
+            throw new Error(msg);
         },
         onRetry: (_attempt, delay) => {
             const msg = `Rate limit hit (429). Cooling down for ${delay / 1000}s...`;
@@ -85,10 +88,7 @@ async function _fetchChapter(storyId: string, chapterNum: number, onProgress?: C
         },
     });
 
-    if (result === null) {
-        throw new Error("Download aborted: Too many rate limit errors.");
-    }
-    return result;
+    return result!;
 }
 
 /**

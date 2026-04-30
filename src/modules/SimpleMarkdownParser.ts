@@ -1,7 +1,7 @@
 // modules/SimpleMarkdownParser.ts
 
 import { Core } from './Core';
-import { marked } from 'marked';
+import { marked, Token } from 'marked';
 
 /**
  * Robust Markdown Parser powered by the 'marked' library.
@@ -27,7 +27,7 @@ export const SimpleMarkdownParser = {
          * Recursive helper to scan tokens for "High Confidence" Markdown signals.
          * We ignore ambiguous signs (like URLs or dashes) to avoid breaking standard document pastes.
          */
-        const hasIntentionalFormatting = (tokenList: any[]): boolean => {
+        const hasIntentionalFormatting = (tokenList: Token[]): boolean => {
             return tokenList.some(token => {
                 // 1. Content Baseline
                 // These are ignored as triggers because they appear constantly in standard prose.
@@ -35,7 +35,7 @@ export const SimpleMarkdownParser = {
                 // We exclude 'html' to allow native browser handling of raw HTML snippets.
                 if (['paragraph', 'text', 'space', 'hr', 'br', 'html'].includes(token.type)) {
                     // Check children (inlines) of paragraphs
-                    if (token.tokens && hasIntentionalFormatting(token.tokens)) return true;
+                    if ('tokens' in token && token.tokens && hasIntentionalFormatting(token.tokens)) return true;
                     return false;
                 }
 

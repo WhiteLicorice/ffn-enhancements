@@ -20,7 +20,7 @@ async function _runBulkOperation(e: MouseEvent, config: IBulkOperationConfig): P
     const { verb, processItem, onItemSuccess, onPermanentFailure, preBatch, onFinalize } = config;
 
     log(`${verb} initiated.`);
-    const btn = e.target as HTMLButtonElement;
+    const btn = e.currentTarget as HTMLButtonElement;
 
     if (!Core.getElement(Elements.DOC_TABLE)) {
         log("Table not found.");
@@ -358,7 +358,7 @@ export const DocManager = {
             exportLink.style.whiteSpace = "nowrap";
             exportLink.onclick = (e) => {
                 e.preventDefault();
-                this.runSingleExport(e.target as HTMLElement, docId, title);
+                this.runSingleExport(e.currentTarget as HTMLElement, docId, title);
             };
             exportTd.appendChild(exportLink);
             row.appendChild(exportTd);
@@ -376,7 +376,7 @@ export const DocManager = {
             refreshLink.style.whiteSpace = "nowrap";
             refreshLink.onclick = (e) => {
                 e.preventDefault();
-                this.runSingleRefresh(e.target as HTMLElement, docId, title);
+                this.runSingleRefresh(e.currentTarget as HTMLElement, docId, title);
             };
             refreshTd.appendChild(refreshLink);
             row.appendChild(refreshTd);
@@ -514,7 +514,7 @@ export const DocManager = {
                 zip.file(`ERROR_${item.title}.txt`, `Failed to retrieve content for DocID ${item.docId} after multiple attempts.`);
             },
             onFinalize: async ({ successCount, retriedItems }) => {
-                const btn = e.target as HTMLButtonElement;
+                const btn = e.currentTarget as HTMLButtonElement;
                 if (successCount > 0 || retriedItems.length > 0) {
                     btn.innerText = "Zipping...";
                     log(`Zipping ${successCount} documents`);
@@ -575,7 +575,7 @@ export const DocManager = {
                 DocManager.updateLifeColumn(item.row, `bulk pass ${pass}: ${item.title}`);
             },
             onFinalize: ({ successCount, totalCount, retriedItems: _retriedItems }) => {
-                const btn = e.target as HTMLButtonElement;
+                const btn = e.currentTarget as HTMLButtonElement;
                 if (successCount === totalCount) {
                     btn.innerText = "All Done!";
                     log(`Successfully refreshed all ${successCount} documents`);

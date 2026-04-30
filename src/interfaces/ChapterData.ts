@@ -1,5 +1,5 @@
 export interface ChapterData {
     title: string;
-    number: Number;
+    number: number;
     content: string;
 }

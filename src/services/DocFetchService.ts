@@ -103,14 +103,27 @@ export const DocFetchService = {
             // ============================================================
             log(`[REFRESH] Verifying document has content...`);
 
-            const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
-            if (!response.ok) {
-                log(`[REFRESH ERROR] Failed to fetch document for verification: ${response.status}`);
+            const doc = await fetchWithBackoff<Document>({
+                url: `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
+                maxRetries: SettingsManager.get('fetchMaxRetries'),
+                getDelay: (attempt) => attempt * SettingsManager.get('fetchRetryBaseMs'),
+                onSuccess: async (resp) => {
+                    const text = await resp.text();
+                    return new DOMParser().parseFromString(text, 'text/html');
+                },
+                onError: (resp) => {
+                    log(`[REFRESH ERROR] Failed to fetch document for verification: ${resp.status}`);
+                    return null;
+                },
+                onRetry: (attempt, waitTime) => {
+                    log(`[REFRESH] Verification fetch failed. Retrying in ${waitTime}ms... (Attempt ${attempt})`);
+                },
+            });
+
+            if (!doc) {
                 return false;
             }
 
-            const text = await response.text();
-            const doc = new DOMParser().parseFromString(text, 'text/html');
             const contentElement = Core.getElement(Elements.EDITOR_TEXT_AREA, doc);
 
             if (!contentElement) {
@@ -155,10 +168,16 @@ export const DocFetchService = {
 
                 // Helper: Cleans up the iframe from the DOM
                 const removeIframe = () => {
+                    clearPageHide();
                     if (iframe.parentNode) {
                         iframe.parentNode.removeChild(iframe);
                     }
                 };
+
+                // Cleanup on page navigation to prevent detached DOM accumulation
+                const onPageHide = () => removeIframe();
+                window.addEventListener('pagehide', onPageHide);
+                const clearPageHide = () => window.removeEventListener('pagehide', onPageHide);
 
                 // Helper function to wait for the save button to appear in the iframe's DOM
                 const waitForSaveButton = (maxAttempts: number = 50): Promise<HTMLElement | null> => {

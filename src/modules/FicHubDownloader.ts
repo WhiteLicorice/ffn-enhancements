@@ -330,7 +330,7 @@ export function _resolveFullPath(opfDir: string, href: string): string {
     return opfDir ? `${opfDir}/${href}` : href;
 }
 
-/** Adds a cover image to the ZIP and updates OPF metadata + manifest for EPUB 3 compliance. */
+/** Adds a cover image to the ZIP and updates OPF metadata + manifest. */
 function _injectCoverMetadata(
     zip: JSZip,
     opfPath: string,
@@ -353,13 +353,20 @@ function _injectCoverMetadata(
         metadata.appendChild(metaEl);
     }
 
+    // Check OPF version — `properties` attr is EPUB 3+ only
+    const packageEl = opfDoc.documentElement;
+    const opfVersion = packageEl?.getAttribute('version') || '2.0';
+    const isEpub3 = opfVersion.startsWith('3');
+
     const manifest = opfDoc.getElementsByTagNameNS(OPF_NS, "manifest")[0];
     if (manifest) {
         const itemImg = opfDoc.createElementNS(OPF_NS, "item");
         itemImg.setAttribute("id", COVER_IMAGE_ID);
         itemImg.setAttribute("href", COVER_IMG_FILENAME);
         itemImg.setAttribute("media-type", "image/jpeg");
-        itemImg.setAttribute("properties", "cover-image");
+        if (isEpub3) {
+            itemImg.setAttribute("properties", "cover-image");
+        }
         manifest.appendChild(itemImg);
     }
 

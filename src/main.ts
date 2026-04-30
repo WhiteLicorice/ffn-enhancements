@@ -41,6 +41,19 @@ EarlyBoot.register(SettingsMenu);
 EarlyBoot.register(LayoutManager);
 EarlyBoot.prime();
 
+// Global error boundary — logs unhandled exceptions without breaking script
+window.addEventListener('error', (e) => {
+    Core.log('main', 'globalError', 'Unhandled runtime error:', e.error || e.message);
+});
+
+const safeInit = (name: string, fn: () => void) => {
+    try {
+        fn();
+    } catch (e) {
+        Core.log('main', 'safeInit', `Error initializing ${name}:`, e);
+    }
+};
+
 const bootstrap = () => {
     /**
      * Bootstraps the Core system.
@@ -61,14 +74,14 @@ const bootstrap = () => {
          * Route: Document Manager (List View)
          * Features: Bulk Download, Export Column
          */
-        DocManager.init();
+        safeInit('DocManager', () => DocManager.init());
     }
     else if (path.includes("/docs/edit.php")) {
         /**
          * Route: Document Editor (TinyMCE)
          * Features: Single Document Download button in Toolbar
          */
-        DocEditor.init();
+        safeInit('DocEditor', () => DocEditor.init());
     }
     else if (path.startsWith("/s/")) {
         /**
@@ -78,8 +91,8 @@ const bootstrap = () => {
          * - StoryDownloader: Fichub integration for EPUB/MOBI downloads.
          */
         // Matches /s/1234569420/1/Story-Title
-        StoryReader.init();
-        StoryDownloader.init();
+        safeInit('StoryReader', () => StoryReader.init());
+        safeInit('StoryDownloader', () => StoryDownloader.init());
     }
 };
 

@@ -139,8 +139,13 @@ export const StoryReader = {
         // Initialize hidden state
         applyVisibleStyles(false);
 
-        // Replace the buggy inline onclick with a robust manual handler
-        (trigger as HTMLElement).onclick = (e: MouseEvent) => {
+        // Clone and replace trigger to strip existing jQuery/JS event listeners
+        const triggerEl = trigger as HTMLElement;
+        const triggerClone = triggerEl.cloneNode(true) as HTMLElement;
+        triggerEl.parentNode?.replaceChild(triggerClone, triggerEl);
+
+        // Assign manual handler on clone
+        triggerClone.onclick = (e: MouseEvent) => {
             e.preventDefault();
             e.stopPropagation();
 

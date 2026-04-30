@@ -21,7 +21,20 @@ export async function fetchWithBackoff<T>(options: FetchWithBackoffOptions<T>): 
     const { url, maxRetries, getDelay, onSuccess, onError, onRetry } = options;
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-        const response = await fetch(url);
+        let response: Response;
+        try {
+            response = await fetch(url);
+        } catch (err) {
+            // Network-level error (DNS failure, connection reset, etc.) — retry if budget left
+            if (attempt <= maxRetries) {
+                const delay = getDelay(attempt);
+                onRetry?.(attempt, delay);
+                await new Promise(r => setTimeout(r, delay));
+                continue;
+            }
+            // Retry budget exhausted for network errors — propagate
+            throw err;
+        }
 
         if (response.ok) {
             return onSuccess(response);

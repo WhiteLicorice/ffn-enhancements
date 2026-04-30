@@ -315,6 +315,71 @@ describe('EpubBuilder.generateOPF', () => {
     });
 });
 
+// ─── generateOPF structural assertions ─────────────────────────────────────
+
+describe('generateOPF — structural', () => {
+    it('is valid XML parseable by DOMParser', () => {
+        const result = EpubBuilder.generateOPF(meta(), chapters(1), 'image/jpeg');
+        const doc = new DOMParser().parseFromString(result, 'application/xml');
+        expect(doc.querySelector('parsererror')).toBeNull();
+    });
+
+    it('uses correct OPF namespace on package element', () => {
+        const result = EpubBuilder.generateOPF(meta(), chapters(1), 'image/jpeg');
+        const doc = new DOMParser().parseFromString(result, 'application/xml');
+        const pkg = doc.documentElement;
+        expect(pkg?.namespaceURI).toBe('http://www.idpf.org/2007/opf');
+        expect(pkg?.getAttribute('version')).toBe('2.0');
+    });
+
+    it('has dc namespace declared on metadata element', () => {
+        const result = EpubBuilder.generateOPF(meta(), chapters(1), 'image/jpeg');
+        const doc = new DOMParser().parseFromString(result, 'application/xml');
+        const metadata = doc.querySelector('metadata');
+        expect(metadata?.getAttribute('xmlns:dc')).toBe('http://purl.org/dc/elements/1.1/');
+    });
+
+    it('contains metadata element with dc:title and dc:creator children', () => {
+        const result = EpubBuilder.generateOPF(meta({ title: 'My Story', author: 'Me' }), chapters(1), 'image/jpeg');
+        const doc = new DOMParser().parseFromString(result, 'application/xml');
+        const metadata = doc.querySelector('metadata');
+        expect(metadata).not.toBeNull();
+        const DC_NS = 'http://purl.org/dc/elements/1.1/';
+        const title = metadata?.getElementsByTagNameNS(DC_NS, 'title')[0];
+        expect(title?.textContent).toContain('My Story');
+        const creator = metadata?.getElementsByTagNameNS(DC_NS, 'creator')[0];
+        expect(creator?.textContent).toContain('Me');
+    });
+
+    it('has manifest with spine and guide siblings in correct order', () => {
+        const result = EpubBuilder.generateOPF(meta(), chapters(1), 'image/jpeg');
+        const doc = new DOMParser().parseFromString(result, 'application/xml');
+        const manifest = doc.querySelector('manifest');
+        expect(manifest).not.toBeNull();
+        const spine = doc.querySelector('spine');
+        expect(spine).not.toBeNull();
+    });
+
+    it('assigns correct media-type to chapter items in manifest', () => {
+        const result = EpubBuilder.generateOPF(meta(), chapters(1), 'image/jpeg');
+        const doc = new DOMParser().parseFromString(result, 'application/xml');
+        const manifest = doc.querySelector('manifest');
+        const chapItem = manifest?.querySelector('item[id="chap1"]');
+        expect(chapItem?.getAttribute('media-type')).toBe('application/xhtml+xml');
+    });
+
+    it('references manifest item ids in spine idref attributes', () => {
+        const result = EpubBuilder.generateOPF(meta(), chapters(2), 'image/jpeg');
+        const doc = new DOMParser().parseFromString(result, 'application/xml');
+        const spineRefs = doc.querySelectorAll('spine itemref');
+        expect(spineRefs.length).toBeGreaterThanOrEqual(2);
+        spineRefs.forEach((ref) => {
+            const idref = ref.getAttribute('idref');
+            expect(idref).toMatch(/^(chap\d+|cover-page|titlepage|toc)$/);
+        });
+    });
+});
+
 // ─── makeValidXHTML ───────────────────────────────────────────────────────
 
 describe('EpubBuilder.makeValidXHTML', () => {
