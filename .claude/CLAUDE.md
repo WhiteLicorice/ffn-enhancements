@@ -452,6 +452,9 @@ src/
   services/
     ContentParser.ts             — Turndown setup, HTML/Markdown parsing from doc pages
     DocFetchService.ts           — Doc page fetch, content extraction, hidden-iframe refresh
+  styles/
+    fluid-mode.css               — Fluid layout overrides (injected via LayoutManager)
+    settings-modal.css            — Settings modal UI (injected via SettingsPage)
   utils/
     fetchWithBackoff.ts          — Generic HTTP retry/backoff utility for 429 handling
 vite.config.ts                   — Build config; GM grants; CDN requires; externalGlobals

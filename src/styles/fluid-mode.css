@@ -1,0 +1,103 @@
+/* --- FFN Enhancements: Fluid Mode Overrides --- */
+
+/* 0. ROOT LEVEL FIXES
+   FFN puts a min-width on body (approx 1000px).
+   This kills text wrapping when zooming in (as viewport shrinks below 1000px). */
+body.__FLUID_CLASS__ {
+    min-width: 0 !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+}
+
+/* 1. Override the main wrapper width.
+   FFN usually sets this to 1000px-1250px via inline style. */
+body.__FLUID_CLASS__ #content_wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* 2. Override the inner wrapper padding. */
+body.__FLUID_CLASS__ #content_wrapper_inner {
+    padding: 0 15px !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+}
+
+/* 3. Override the Story Text container.
+   FFN injects ".storytext { width: 75% ... }" via JS.
+   We force this to fill the available space. */
+body.__FLUID_CLASS__ .storytext,
+body.__FLUID_CLASS__ #storytext,
+body.__FLUID_CLASS__ #storytextp {
+    width: auto !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+
+    float: none !important;
+    display: block !important;
+    text-align: left !important;
+
+    box-sizing: border-box !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* 4. Fix Top Navigation and Menu Bars. */
+body.__FLUID_CLASS__ .menulink {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: 15px !important;
+    padding-right: 15px !important;
+    box-sizing: border-box !important;
+}
+
+body.__FLUID_CLASS__ #zmenu {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: 15px !important;
+    padding-right: 15px !important;
+    box-sizing: border-box !important;
+}
+
+body.__FLUID_CLASS__ #zmenu table {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* 5. Generic .maxwidth override. */
+body.__FLUID_CLASS__ .maxwidth {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* 6. Ensure Top Navigation Container expands. */
+body.__FLUID_CLASS__ .z-top-container {
+    max-width: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+}
+
+/* 7. Fix Review Section centering.
+   FFN uses a table layout with a huge left spacer (width=336)
+   to position the review box. We remove this spacer and center
+   the actual review container. */
+body.__FLUID_CLASS__ #review table td[width="336"],
+body.__FLUID_CLASS__ #review table td[width="10"] {
+    display: none !important;
+}
+
+body.__FLUID_CLASS__ #review table td {
+    display: block !important;
+    width: 100% !important;
+    text-align: center !important;
+}
+
+body.__FLUID_CLASS__ #review table td > div {
+    margin: 0 auto !important;
+    text-align: left !important;
+}

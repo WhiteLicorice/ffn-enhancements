@@ -4,6 +4,7 @@ import { Elements } from '../enums/Elements';
 import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
 import { FFNLogger } from './FFNLogger';
 import { SettingsManager } from './SettingsManager';
+import fluidStyles from '../styles/fluid-mode.css?raw';
 
 // ─── Module-level Constants ────────────────────────────────────────────────────
 
@@ -275,133 +276,9 @@ function _injectFluidStyles(): void {
         return; // Styles already injected
     }
 
-    const css = `
-        /* --- FFN Enhancements: Fluid Mode Overrides --- */
-        /* 0. ROOT LEVEL FIXES
-           FFN puts a min-width on body (approx 1000px). 
-           This kills text wrapping when zooming in (as viewport shrinks below 1000px).
-        */
-        body.${FLUID_CLASS} {
-            min-width: 0 !important;
-            width: 100% !important;
-            overflow-x: hidden !important; /* Prevent horizontal scroll triggers */
-        }
-
-        /* 1. Override the main wrapper width.
-           FFN usually sets this to 1000px-1250px via inline style.
-        */
-        body.${FLUID_CLASS} #content_wrapper {
-            width: 100% !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-            box-sizing: border-box !important;
-            border: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-
-        /* 2. Override the inner wrapper padding.
-           Gives the text a little breathing room from the edge of the screen.
-        */
-        body.${FLUID_CLASS} #content_wrapper_inner {
-            padding: 0 15px !important;
-            box-sizing: border-box !important;
-            min-width: 0 !important;
-        }
-
-        /* 3. Override the Story Text container.
-           FFN injects ".storytext { width: 75% ... }" via JS.
-           We force this to fill the available space.
-           1. Changed width from 100% to auto to prevent overflow at high zoom.
-           2. Reset text-align to override 'align=center' attribute on parent.
-           3. Added float: none to prevent side-stacking issues.
-        */
-        body.${FLUID_CLASS} .storytext,
-        body.${FLUID_CLASS} #storytext, 
-        body.${FLUID_CLASS} #storytextp {
-            width: auto !important;
-            max-width: 100% !important;
-            min-width: 0 !important;
-            
-            float: none !important;
-            display: block !important;
-            text-align: left !important;
-            
-            box-sizing: border-box !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-
-        /* 4. Fix Top Navigation and Menu Bars.
-           FFN uses .maxwidth and inline styles (width: 975px) on #top .menulink and #zmenu.
-           We need to force them to 100% width and add padding so content touches the edges comfortably.
-        */
-        body.${FLUID_CLASS} .menulink {
-            width: 100% !important;
-            max-width: 100% !important;
-            padding-left: 15px !important;
-            padding-right: 15px !important;
-            box-sizing: border-box !important;
-        }
-
-        body.${FLUID_CLASS} #zmenu {
-            width: 100% !important;
-            max-width: 100% !important;
-            padding-left: 15px !important;
-            padding-right: 15px !important;
-            box-sizing: border-box !important;
-        }
-
-        /* The internal table for the menu also needs to expand */
-        body.${FLUID_CLASS} #zmenu table {
-            width: 100% !important;
-            max-width: 100% !important;
-        }
-
-        /* 5. Generic .maxwidth override.
-           FFN uses this helper class to center content. We disable it for fluid mode.
-        */
-        body.${FLUID_CLASS} .maxwidth {
-            width: 100% !important;
-            max-width: 100% !important;
-        }
-
-        /*
-           6. Ensure Top Navigation Container expands.
-        */
-        body.${FLUID_CLASS} .z-top-container {
-            max-width: 100% !important;
-            width: 100% !important;
-            min-width: 0 !important;
-        }
-
-        /* 7. Fix Review Section centering.
-           FFN uses a table layout with a huge left spacer (width=336) to position the review box.
-           We remove this spacer and center the actual review container.
-        */
-        /* Hide the spacer cells */
-        body.${FLUID_CLASS} #review table td[width="336"],
-        body.${FLUID_CLASS} #review table td[width="10"] {
-            display: none !important;
-        }
-
-        /* Make the content cell behave like a block and full width */
-        body.${FLUID_CLASS} #review table td {
-            display: block !important;
-            width: 100% !important;
-            text-align: center !important; /* Helps center inline-block children */
-        }
-
-        /* Target the inner div that holds the inputs. It has a max-width inline style. */
-        body.${FLUID_CLASS} #review table td > div {
-            margin: 0 auto !important; /* Centers the block element */
-            text-align: left !important; /* Reset text alignment for the form content */
-        }
-    `;
-
     const style = document.createElement('style');
     style.id = STYLE_TAG_ID;
-    style.textContent = css;
+    style.textContent = fluidStyles.replace(/__FLUID_CLASS__/g, FLUID_CLASS);
     if (document.head) {
         document.head.appendChild(style);
     } else {
