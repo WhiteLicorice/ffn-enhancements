@@ -9,6 +9,7 @@ import { DocEditorDelegate } from '../delegates/DocEditorDelegate';
 import { GlobalDelegate } from '../delegates/GlobalDelegate';
 import { FFNLogger } from './FFNLogger';
 import { SettingsManager } from './SettingsManager';
+import { fetchWithBackoff } from '../utils/fetchWithBackoff';
 
 /**
  * Shared utility engine providing logging, DOM readiness, content parsing,
@@ -200,60 +201,43 @@ export const Core = {
     /**
      * @internal
      * Fetches a Doc Edit page (`/docs/edit.php?docid=X`) and returns the parsed Document.
-     * Implements Exponential Backoff for HTTP 429 rate limiting.
+     * Delegates retry/backoff logic to the shared `fetchWithBackoff` utility.
      *
-     * All other fetch-based doc methods delegate here to avoid duplicating
-     * the network/retry logic. Do NOT call this directly from outside Core —
-     * use the public `fetchAndConvertPrivateDoc` or `fetchPrivateDocAsHtml` instead.
-     *
-     * @param docId - The internal FFN Document ID.
-     * @param title - The title (for logging purposes).
-     * @param attempt - Current retry attempt (internal; starts at 1).
-     * @returns The parsed Document, or null on failure/rate-limit-exceeded.
+     * All other fetch-based doc methods delegate here. Do NOT call this directly
+     * from outside Core — use `fetchAndConvertPrivateDoc` or `fetchPrivateDocAsHtml`.
      */
-    _fetchDocPage: async function (docId: string, title: string, attempt: number = 1): Promise<Document | null> {
+    _fetchDocPage: async function (docId: string, title: string): Promise<Document | null> {
         const log = this.getLogger(this.MODULE_NAME, '_fetchDocPage');
-        const MAX_RETRIES = SettingsManager.get('fetchMaxRetries');
 
-        try {
-            const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
-
-            if (response.status === 429) {
-                if (attempt <= MAX_RETRIES) {
-                    const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
-                    log(`Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
-                    await new Promise(r => setTimeout(r, waitTime));
-                    return this._fetchDocPage(docId, title, attempt + 1);
+        return fetchWithBackoff<Document>({
+            url: `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
+            maxRetries: SettingsManager.get('fetchMaxRetries'),
+            getDelay: (attempt) => attempt * SettingsManager.get('fetchRetryBaseMs'),
+            onSuccess: async (resp) => {
+                const text = await resp.text();
+                return new DOMParser().parseFromString(text, 'text/html');
+            },
+            onError: (resp) => {
+                if (resp.status === 429) {
+                    log(`Rate limit exceeded for "${title}". Please wait a moment.`);
+                } else {
+                    log(`Network error for "${docId}": HTTP ${resp.status}`);
                 }
-                log(`Rate limit exceeded for "${title}". Please wait a moment.`);
                 return null;
-            }
-
-            if (!response.ok) {
-                log(`Network error for "${docId}": HTTP ${response.status}`);
-                return null;
-            }
-
-            const text = await response.text();
-            return new DOMParser().parseFromString(text, 'text/html');
-
-        } catch (err) {
-            log(`Exception while fetching "${title}"`, err);
-            return null;
-        }
+            },
+            onRetry: (attempt, waitTime) => {
+                log(`Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
+            },
+        });
     },
 
     /**
      * Fetches a private author document and returns its content as **Markdown**.
-     * @param docId - The internal FFN Document ID.
-     * @param title - The title of the document.
-     * @param attempt - (Internal) Current retry attempt number.
-     * @returns A promise resolving to the Markdown string, or null on failure.
      */
-    fetchAndConvertPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<string | null> {
+    fetchAndConvertPrivateDoc: async function (docId: string, title: string): Promise<string | null> {
         const log = this.getLogger(this.MODULE_NAME, 'fetchAndConvertPrivateDoc');
 
-        const doc = await this._fetchDocPage(docId, title, attempt);
+        const doc = await this._fetchDocPage(docId, title);
         if (!doc) return null;
 
         const markdown = this.parseContentFromPrivateDoc(doc, title);
@@ -267,15 +251,11 @@ export const Core = {
     /**
      * Fetches a private author document and returns its content as **raw HTML**.
      * The HTML is the exact value from FFN's editor textarea — no conversion applied.
-     * @param docId - The internal FFN Document ID.
-     * @param title - The title of the document.
-     * @param attempt - (Internal) Current retry attempt number.
-     * @returns A promise resolving to the raw HTML string, or null on failure.
      */
-    fetchPrivateDocAsHtml: async function (docId: string, title: string, attempt: number = 1): Promise<string | null> {
+    fetchPrivateDocAsHtml: async function (docId: string, title: string): Promise<string | null> {
         const log = this.getLogger(this.MODULE_NAME, 'fetchPrivateDocAsHtml');
 
-        const doc = await this._fetchDocPage(docId, title, attempt);
+        const doc = await this._fetchDocPage(docId, title);
         if (!doc) return null;
 
         const html = this.parseHtmlFromPrivateDoc(doc, title);
@@ -306,44 +286,44 @@ export const Core = {
 
         try {
             log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId}, Attempt: ${attempt}/${MAX_RETRIES})`);
-            
+
             // ============================================================
             // SAFETY GUARDRAIL: Check if document has content
             // ============================================================
             log(`[REFRESH] Verifying document has content...`);
-            
+
             const response = await fetch(`https://www.fanfiction.net/docs/edit.php?docid=${docId}`);
             if (!response.ok) {
                 log(`[REFRESH ERROR] Failed to fetch document for verification: ${response.status}`);
                 return false;
             }
-            
+
             const text = await response.text();
             const doc = new DOMParser().parseFromString(text, 'text/html');
             const contentElement = this.getElement(Elements.EDITOR_TEXT_AREA, doc);
-            
+
             if (!contentElement) {
                 log(`[REFRESH ERROR] Could not find content textarea for "${title}"`);
                 return false;
             }
-            
+
             const rawValue = (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
             const trimmedContent = rawValue.trim();
-            
+
             // If content is empty or just whitespace, abort to prevent data loss
             if (!trimmedContent || trimmedContent.length === 0) {
                 log(`[REFRESH BLOCKED] Document "${title}" appears to be empty. Aborting refresh to prevent data loss.`);
                 console.warn(`⚠️ REFRESH BLOCKED: Document "${title}" (DocID: ${docId}) has no content. Skipping to prevent accidental deletion.`);
                 return false;
             }
-            
+
             log(`[REFRESH] Content verified (${trimmedContent.length} chars). Proceeding with refresh...`);
-            
+
             // ============================================================
             // Proceed with refresh via hidden iframe (no popup required)
             // ============================================================
             log(`[REFRESH] Loading document in hidden iframe...`);
-            
+
             const saveSuccess = await new Promise<boolean>((resolve) => {
                 // Create a hidden, off-screen iframe so the save runs in the background.
                 // This avoids needing popup permissions while still performing a real
@@ -359,16 +339,16 @@ export const Core = {
                 iframe.style.visibility = 'hidden';
                 document.body.appendChild(iframe);
                 iframe.src = `https://www.fanfiction.net/docs/edit.php?docid=${docId}`;
-                
+
                 log(`[REFRESH] Hidden iframe created, waiting for page load...`);
-                
+
                 // Helper: Cleans up the iframe from the DOM
                 const removeIframe = () => {
                     if (iframe.parentNode) {
                         iframe.parentNode.removeChild(iframe);
                     }
                 };
-                
+
                 // Helper function to wait for the save button to appear in the iframe's DOM
                 const waitForSaveButton = (maxAttempts: number = 50): Promise<HTMLElement | null> => {
                     return new Promise((resolveBtn) => {
@@ -382,10 +362,10 @@ export const Core = {
                                     resolveBtn(null);
                                     return;
                                 }
-                                
+
                                 // Check if document has actual content (not just empty structure)
                                 const hasContent = iframeDoc.body && iframeDoc.body.children.length > 0;
-                                
+
                                 if (hasContent) {
                                     const submitButton = this.getElement(Elements.SAVE_BUTTON, iframeDoc);
                                     if (submitButton) {
@@ -395,7 +375,7 @@ export const Core = {
                                         return;
                                     }
                                 }
-                                
+
                                 if (attempts >= maxAttempts) {
                                     clearInterval(checkForButton);
                                     log(`[REFRESH ERROR] Save button not found after ${maxAttempts * 200}ms`);
@@ -409,7 +389,7 @@ export const Core = {
                         }, 200);
                     });
                 };
-                
+
                 // Wait for iframe to reach complete state AND have content
                 const checkInterval = setInterval(async () => {
                     try {
@@ -417,20 +397,20 @@ export const Core = {
                         // Check if iframe loaded and has the document
                         if (iframeDoc && iframeDoc.readyState === 'complete') {
                             clearInterval(checkInterval);
-                            
+
                             try {
                                 log(`[REFRESH] Page readyState complete, waiting for content to load...`);
-                                
+
                                 // Wait for the save button to actually appear in the DOM
                                 const submitButton = await waitForSaveButton();
-                                
+
                                 if (!submitButton) {
                                     log(`[REFRESH ERROR] Could not find Submit button in hidden iframe`);
                                     removeIframe();
                                     resolve(false);
                                     return;
                                 }
-                                
+
                                 // Listen for page navigation (submit completion)
                                 let submitCompleted = false;
                                 const checkSubmit = setInterval(() => {
@@ -453,12 +433,12 @@ export const Core = {
                                         clearInterval(checkSubmit);
                                     }
                                 }, 200);
-                                
+
                                 // Click the Save button (this triggers sec-fetch-dest: "document")
                                 // FFN will preserve the existing content when we submit without changes
                                 log(`[REFRESH] Clicking Save button...`);
                                 submitButton.click();
-                                
+
                                 // Timeout if no success after configured iframeSaveTimeoutMs
                                 const saveTimeout = SettingsManager.get('iframeSaveTimeoutMs');
                                 setTimeout(() => {
@@ -469,7 +449,7 @@ export const Core = {
                                         resolve(false);
                                     }
                                 }, saveTimeout);
-                                
+
                             } catch (e) {
                                 log(`[REFRESH ERROR] Error manipulating iframe: ${e}`);
                                 removeIframe();
@@ -483,7 +463,7 @@ export const Core = {
                         resolve(false);
                     }
                 }, 100);
-                
+
                 // Timeout if iframe doesn't load after configured iframeLoadTimeoutMs
                 const loadTimeout = SettingsManager.get('iframeLoadTimeoutMs');
                 setTimeout(() => {
@@ -493,7 +473,7 @@ export const Core = {
                     resolve(false);
                 }, loadTimeout);
             });
-            
+
             // Retry with exponential backoff if failed
             if (!saveSuccess && attempt < MAX_RETRIES) {
                 const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
@@ -501,13 +481,13 @@ export const Core = {
                 await new Promise(r => setTimeout(r, waitTime));
                 return this.refreshPrivateDoc(docId, title, attempt + 1);
             }
-            
+
             return saveSuccess;
-            
+
         } catch (err) {
             log(`[REFRESH ERROR] Exception during refresh:`, err);
             console.error(`REFRESH FAILED for document ${docId}:`, err);
-            
+
             // Retry with exponential backoff if failed
             if (attempt < MAX_RETRIES) {
                 const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
@@ -515,172 +495,11 @@ export const Core = {
                 await new Promise(r => setTimeout(r, waitTime));
                 return this.refreshPrivateDoc(docId, title, attempt + 1);
             }
-            
+
             return false;
         }
     },
 
-    /**
-     * Exports all author documents from Doc Manager in bulk.
-     * Shows progress in the button text and handles failures gracefully.
-     */
-    bulkExportPrivateDocs: async function () {
-        const log = this.getLogger(this.MODULE_NAME, 'bulkExportPrivateDocs');
-        
-        // Find all export links
-        const exportLinks = Array.from(document.querySelectorAll('a[href*="docs/export.php"]'));
-        
-        if (exportLinks.length === 0) {
-            log('No documents to export');
-            return;
-        }
-        
-        log(`Found ${exportLinks.length} documents to export`);
-        const button = document.querySelector('[data-action="bulk-export"]') as HTMLElement;
-        
-        // First pass - attempt all exports
-        const results = [];
-        for (let i = 0; i < exportLinks.length; i++) {
-            const link = exportLinks[i] as HTMLAnchorElement;
-            const row = link.closest('tr');
-            if (!row) continue;
-            
-            const titleCell = row.cells[0];
-            const title = titleCell?.textContent?.trim() || 'Unknown';
-            const docId = link.href.match(/docid=(\d+)/)?.[1];
-            
-            if (!docId) continue;
-            
-            if (button) button.textContent = `↓ ${i + 1}/${exportLinks.length}`;
-            
-            const markdown = await this.fetchAndConvertPrivateDoc(docId, title);
-            results.push({ docId, title, markdown, element: link });
-            
-            // Add small delay between requests
-            await new Promise(r => setTimeout(r, 1000));
-        }
-        
-        // Second pass - retry failures
-        if (button) button.textContent = 'Cooling...';
-        await new Promise(r => setTimeout(r, 5000));
-        
-        const failures = results.filter(r => !r.markdown);
-        if (failures.length > 0) {
-            log(`Retrying ${failures.length} failed exports`);
-            for (let i = 0; i < failures.length; i++) {
-                const { docId, title } = failures[i];
-                if (button) button.textContent = `Retry ${i + 1}/${failures.length}`;
-                
-                const markdown = await this.fetchAndConvertPrivateDoc(docId, title);
-                if (markdown) {
-                    failures[i].markdown = markdown;
-                }
-                await new Promise(r => setTimeout(r, 3000));
-            }
-        }
-        
-        // Show results
-        const successCount = results.filter(r => r.markdown).length;
-        log(`Export complete: ${successCount}/${results.length} successful`);
-        
-        // Update UI
-        results.forEach(({ markdown, element }) => {
-            const cell = element.closest('td');
-            if (cell) {
-                if (markdown) {
-                    cell.innerHTML += ' <span style="color:green">✓</span>';
-                } else {
-                    cell.innerHTML += ' <span style="color:red">✗</span>';
-                }
-            }
-        });
-        
-        if (button) button.textContent = `All Done!`;
-        setTimeout(() => {
-            if (button) button.textContent = '↓ All';
-        }, 3000);
-    },
-
-    /**
-     * Refreshes all author documents from Doc Manager in bulk.
-     * Shows progress in the button text and handles failures gracefully.
-     */
-    bulkRefreshPrivateDocs: async function () {
-        const log = this.getLogger(this.MODULE_NAME, 'bulkRefreshPrivateDocs');
-        
-        // Find all refresh links
-        const refreshLinks = Array.from(document.querySelectorAll('a[data-action="refresh-doc"]'));
-        
-        if (refreshLinks.length === 0) {
-            log('No documents to refresh');
-            return;
-        }
-        
-        log(`Found ${refreshLinks.length} documents to refresh`);
-        const button = document.querySelector('[data-action="bulk-refresh"]') as HTMLElement;
-        
-        // First pass - attempt all refreshes
-        const results = [];
-        for (let i = 0; i < refreshLinks.length; i++) {
-            const link = refreshLinks[i] as HTMLAnchorElement;
-            const row = link.closest('tr');
-            if (!row) continue;
-            
-            const titleCell = row.cells[0];
-            const title = titleCell?.textContent?.trim() || 'Unknown';
-            const docId = link.getAttribute('data-docid');
-            
-            if (!docId) continue;
-            
-            if (button) button.textContent = `↻ ${i + 1}/${refreshLinks.length}`;
-            
-            const success = await this.refreshPrivateDoc(docId, title);
-            results.push({ docId, title, success, element: link });
-            
-            // Add small delay between requests
-            await new Promise(r => setTimeout(r, 1000));
-        }
-        
-        // Second pass - retry failures
-        if (button) button.textContent = 'Cooling...';
-        await new Promise(r => setTimeout(r, 5000));
-        
-        const failures = results.filter(r => !r.success);
-        if (failures.length > 0) {
-            log(`Retrying ${failures.length} failed refreshes`);
-            for (let i = 0; i < failures.length; i++) {
-                const { docId, title } = failures[i];
-                if (button) button.textContent = `Retry ${i + 1}/${failures.length}`;
-                
-                const success = await this.refreshPrivateDoc(docId, title);
-                if (success) {
-                    failures[i].success = success;
-                }
-                await new Promise(r => setTimeout(r, 3000));
-            }
-        }
-        
-        // Show results
-        const successCount = results.filter(r => r.success).length;
-        log(`Refresh complete: ${successCount}/${results.length} successful`);
-        
-        // Update UI
-        results.forEach(({ success, element }) => {
-            const cell = element.closest('td');
-            if (cell) {
-                if (success) {
-                    cell.innerHTML += ' <span style="color:green">✓</span>';
-                } else {
-                    cell.innerHTML += ' <span style="color:red">✗</span>';
-                }
-            }
-        });
-        
-        if (button) button.textContent = `All Done!`;
-        setTimeout(() => {
-            if (button) button.textContent = '↻ All';
-        }, 3000);
-    },
 };
 
 export default Core;

@@ -315,12 +315,18 @@ Author documents (from the FFN doc manager/editor) can be exported as either
    TinyMCE `<textarea>` (`Elements.EDITOR_TEXT_AREA`). Returns `string | null`.
 2. `Core.parseContentFromPrivateDoc(doc, title)` — calls `parseHtmlFromPrivateDoc`,
    then converts via Turndown. Returns Markdown `string | null`.
-3. `Core._fetchDocPage(docId, title, attempt)` — **internal** shared fetch helper
-   with retry logic. Returns `Document | null`.
-4. `Core.fetchAndConvertPrivateDoc(docId, title, attempt)` — fetches a doc page
+3. `Core._fetchDocPage(docId, title)` — **internal** shared fetch helper
+   that delegates to the generic `fetchWithBackoff` utility for retry/backoff.
+   Returns `Document | null`.
+4. `Core.fetchAndConvertPrivateDoc(docId, title)` — fetches a doc page
    and returns Markdown.
-5. `Core.fetchPrivateDocAsHtml(docId, title, attempt)` — fetches a doc page and
+5. `Core.fetchPrivateDocAsHtml(docId, title)` — fetches a doc page and
    returns raw HTML.
+
+**Note:** The shared `fetchWithBackoff(url, options)` utility lives in
+`src/utils/fetchWithBackoff.ts` and is used by both `Core._fetchDocPage` and
+`NativeDownloader._fetchChapter`. Centralizes retry count, delay strategy, and
+429 handling in one place.
 
 ### Format-aware download in modules
 
@@ -431,6 +437,8 @@ src/
     FicHubMetadataSerializer.ts  — Parses FicHub API response for EPUB metadata
   factories/
     TinyMCEButtonFactory.ts      — Creates native-looking TinyMCE 4 toolbar buttons
+  utils/
+    fetchWithBackoff.ts          — Generic HTTP retry/backoff utility for 429 handling
 vite.config.ts                   — Build config; GM grants; CDN requires; externalGlobals
 tsconfig.json                    — Strict TypeScript config
 ```
@@ -454,28 +462,24 @@ tsconfig.json                    — Strict TypeScript config
    a new CDN dependency, you must add both a `require` entry (the CDN URL) and an
    `externalGlobals` entry (the global variable name) in `vite.config.ts`.
 
-5. **Dead code in `Core.ts`** — `bulkExportPrivateDocs` and `bulkRefreshPrivateDocs`
-   exist but are never called externally. They are from an older design iteration.
-   Do not call them; consider removing them if they cause confusion.
-
-6. **`Core.refreshPrivateDoc`** exists and fetches the same URL as `_fetchDocPage`
+5. **`Core.refreshPrivateDoc`** exists and fetches the same URL as `_fetchDocPage`
    but uses completely different logic (iframe form submission). It was deliberately
    NOT refactored to use `_fetchDocPage`.
 
-7. **`SupportedFormats` vs `DocDownloadFormat`** — keep them separate. `SupportedFormats`
+6. **`SupportedFormats` vs `DocDownloadFormat`** — keep them separate. `SupportedFormats`
    is reader-facing (EPUB/MOBI/PDF/etc.). `DocDownloadFormat` is author doc export only.
    They overlap on `HTML` and `MARKDOWN` but serve different contexts.
 
-8. **`GM_registerMenuCommand` return type** — returns `string | number`; varies by
+7. **`GM_registerMenuCommand` return type** — returns `string | number`; varies by
    Tampermonkey version. Store as `string | number | null` if you ever need to
    unregister. The current `SettingsMenu.ts` does not store the return value.
 
-9. **`enableFluidMode()` / `disableFluidMode()`** on `LayoutManager` do NOT persist
+8. **`enableFluidMode()` / `disableFluidMode()`** on `LayoutManager` do NOT persist
    the preference — they are imperative helpers for internal use. Only
    `toggleFluidMode()` persists via `SettingsManager.set()`. If you add new
    explicit enable/disable public calls, make sure to persist there too.
 
-10. **`GM_addValueChangeListener` fires for same-tab changes in some TM builds** —
+9. **`GM_addValueChangeListener` fires for same-tab changes in some TM builds** —
     the `!remote` guard in `SettingsManager._registerValueListeners` prevents
     double-applying changes already handled by `set()`. Always include this guard
     when writing new GM_addValueChangeListener callbacks.

@@ -1,6 +1,7 @@
 // modules/NativeDownloader.ts
 
 import { Core } from './Core';
+import { fetchWithBackoff } from '../utils/fetchWithBackoff';
 import { IFanficDownloader } from '../interfaces/IFanficDownloader';
 import { EpubBuilder } from './EpubBuilder';
 import { ChapterData } from '../interfaces/ChapterData';
@@ -57,41 +58,37 @@ export const NativeDownloader: IFanficDownloader = {
 /**
  * Fetches and parses a single chapter.
  * Uses the Core Delegate to identify the content container within the fetched HTML.
- * IMPLEMENTS: Exponential Backoff for HTTP 429 (Rate Limiting).
+ * Delegates retry/backoff logic to the shared `fetchWithBackoff` utility.
  */
 async function _fetchChapter(storyId: string, chapterNum: number, onProgress?: CallableFunction): Promise<string> {
     const url = `/s/${storyId}/${chapterNum}/`;
     const log = Core.getLogger(MODULE_NAME, 'fetchChapter');
-    let attempt = 0;
-    const maxRetries = 5;
-    let backoffDelay = 5000;
+    const backoffBase = 5000;
 
-    while (attempt <= maxRetries) {
-        const resp = await fetch(url);
-        if (resp.ok) {
+    const result = await fetchWithBackoff<string>({
+        url,
+        maxRetries: 5,
+        getDelay: (attempt) => backoffBase * Math.pow(2, attempt - 1),
+        onSuccess: async (resp) => {
             const text = await resp.text();
             const doc = new DOMParser().parseFromString(text, 'text/html');
             const contentEl = Core.getElement(Elements.STORY_TEXT, doc);
             return contentEl?.innerHTML || "<p>Error: Content missing</p>";
-        }
-
-        if (resp.status === 429) {
-            attempt++;
-            if (attempt > maxRetries) {
-                log(`Max retries (${maxRetries}) exceeded.`);
-                throw new Error("Download aborted: Too many rate limit errors.");
-            }
-            const waitSeconds = backoffDelay / 1000;
-            const msg = `Rate limit hit (429). Cooling down for ${waitSeconds}s...`;
+        },
+        onError: (resp) => {
+            throw new Error(`Network error: ${resp.status}`);
+        },
+        onRetry: (_attempt, delay) => {
+            const msg = `Rate limit hit (429). Cooling down for ${delay / 1000}s...`;
             log(msg);
             if (onProgress) onProgress(msg);
-            await new Promise(resolve => setTimeout(resolve, backoffDelay));
-            backoffDelay *= 2;
-        } else {
-            throw new Error(`Network error: ${resp.status}`);
-        }
+        },
+    });
+
+    if (result === null) {
+        throw new Error("Download aborted: Too many rate limit errors.");
     }
-    throw new Error("Unknown error in fetch loop.");
+    return result;
 }
 
 /**
