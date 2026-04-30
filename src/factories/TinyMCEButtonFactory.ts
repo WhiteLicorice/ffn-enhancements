@@ -72,51 +72,38 @@ export const TinyMCEButtonFactory = {
         let tooltipEl: HTMLElement | null = null;
 
         element.addEventListener('mouseenter', () => {
-            if (tooltipEl) return;
+            if (!tooltipEl) {
+                // First hover: create and cache tooltip DOM
+                tooltipEl = document.createElement('div');
+                tooltipEl.className = 'mce-widget mce-tooltip mce-tooltip-n';
+                tooltipEl.style.position = 'absolute';
+                tooltipEl.style.zIndex = '100100';
+                tooltipEl.innerHTML = `
+                    <div class="mce-tooltip-arrow"></div>
+                    <div class="mce-tooltip-inner">${text}</div>
+                `;
+                document.body.appendChild(tooltipEl);
+            } else {
+                // Subsequent hover: just show cached element
+                tooltipEl.style.display = 'block';
+            }
 
-            // 1. Create the outer container with native classes
-            // 'mce-tooltip-n' means the arrow points North (so the tooltip is below)
-            tooltipEl = document.createElement('div');
-            tooltipEl.className = 'mce-widget mce-tooltip mce-tooltip-n';
-            tooltipEl.style.position = 'absolute';
-            tooltipEl.style.zIndex = '100100'; // Higher than toolbar
-            tooltipEl.style.display = 'block';
-
-            // 2. Create the internal structure required by the theme CSS
-            // <div class="mce-tooltip-arrow"></div>
-            // <div class="mce-tooltip-inner">Text</div>
-            tooltipEl.innerHTML = `
-                <div class="mce-tooltip-arrow"></div>
-                <div class="mce-tooltip-inner">${text}</div>
-            `;
-
-            document.body.appendChild(tooltipEl);
-
-            // 3. Position Calculation
+            // Re-position on every hover (page may have scrolled)
             const rect = element.getBoundingClientRect();
             const tooltipRect = tooltipEl.getBoundingClientRect();
-
-            // Center horizontally relative to button.
-            // We MUST add window.scrollX because we are absolute positioning relative 
-            // to the document body, not the viewport.
             const left = rect.left + (rect.width / 2) - (tooltipRect.width / 2) + window.scrollX;
-
-            // Place below the button.
-            // We MUST add window.scrollY to account for the user's scroll position.
             const top = rect.bottom + window.scrollY;
-
             tooltipEl.style.left = `${left}px`;
             tooltipEl.style.top = `${top}px`;
         });
 
-        const removeTooltip = () => {
+        const hideTooltip = () => {
             if (tooltipEl) {
-                tooltipEl.remove();
-                tooltipEl = null;
+                tooltipEl.style.display = 'none';
             }
         };
 
-        element.addEventListener('mouseleave', removeTooltip);
-        element.addEventListener('click', removeTooltip);
+        element.addEventListener('mouseleave', hideTooltip);
+        element.addEventListener('click', hideTooltip);
     }
 };
