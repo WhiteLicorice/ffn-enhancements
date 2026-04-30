@@ -501,6 +501,9 @@ export const DocManager = {
     runBulkExport: async function (e: MouseEvent) {
         const log = Core.getLogger(this.MODULE_NAME, 'runBulkExport');
         const format = SettingsManager.get('docDownloadFormat');
+        // Has to be immediately available inside this scope
+        // not in the async-inside-sync blocks below
+        const btn = e.currentTarget as HTMLButtonElement;
         log(`Bulk export format: ${format}`);
         const zip = new JSZip();
 
@@ -525,7 +528,6 @@ export const DocManager = {
                 zip.file(`ERROR_${item.title}.txt`, `Failed to retrieve content for DocID ${item.docId} after multiple attempts.`);
             },
             onFinalize: async ({ successCount, retriedItems }) => {
-                const btn = e.currentTarget as HTMLButtonElement;
                 if (successCount > 0 || retriedItems.length > 0) {
                     btn.innerText = "Zipping...";
                     log(`Zipping ${successCount} documents`);
@@ -546,6 +548,7 @@ export const DocManager = {
      */
     runBulkRefresh: async function (e: MouseEvent) {
         const log = Core.getLogger(this.MODULE_NAME, 'runBulkRefresh');
+        const btn = e.currentTarget as HTMLButtonElement;
 
         await _runBulkOperation(e, {
             verb: 'Refresh',
@@ -586,7 +589,6 @@ export const DocManager = {
                 DocManager.updateLifeColumn(item.row, `bulk pass ${pass}: ${item.title}`);
             },
             onFinalize: ({ successCount, totalCount, retriedItems: _retriedItems }) => {
-                const btn = e.currentTarget as HTMLButtonElement;
                 if (successCount === totalCount) {
                     btn.innerText = "All Done!";
                     log(`Successfully refreshed all ${successCount} documents`);
@@ -602,5 +604,8 @@ export const DocManager = {
                 }
             },
         });
-    }
+    },
+
+    // Exported for tests — verifies button-reference lifecycle in onFinalize callbacks.
+    _runBulkOperation,
 };
