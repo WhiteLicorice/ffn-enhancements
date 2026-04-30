@@ -173,6 +173,18 @@ else if (path.startsWith("/s/"))          { StoryReader.init(); StoryDownloader.
 Page-specific modules do **not** implement `ISitewideModule`. They have a single
 `init()` entry point and are called directly.
 
+### 4.5 Services Layer
+
+Doc-related network and parsing concerns were extracted from `Core` into focused
+services in `src/services/`:
+
+- **`ContentParser`** — TurndownService instance, `parseHtmlFromPrivateDoc()`,
+  `parseContentFromPrivateDoc()`. Consumed by `DocEditor` and `DocFetchService`.
+- **`DocFetchService`** — `_fetchDocPage()`, `fetchAndConvertPrivateDoc()`,
+  `fetchPrivateDocAsHtml()`, `refreshPrivateDoc()`. Consumed by `DocManager`.
+
+Both services import `Core` for `getElement`/`getLogger` — no circular deps.
+
 ---
 
 ## 5. Settings System
@@ -311,20 +323,20 @@ Author documents (from the FFN doc manager/editor) can be exported as either
 
 ### Content extraction flow
 
-1. `Core.parseHtmlFromPrivateDoc(doc, title)` — reads the raw HTML from the
+1. `ContentParser.parseHtmlFromPrivateDoc(doc, title)` — reads the raw HTML from the
    TinyMCE `<textarea>` (`Elements.EDITOR_TEXT_AREA`). Returns `string | null`.
-2. `Core.parseContentFromPrivateDoc(doc, title)` — calls `parseHtmlFromPrivateDoc`,
+2. `ContentParser.parseContentFromPrivateDoc(doc, title)` — calls `parseHtmlFromPrivateDoc`,
    then converts via Turndown. Returns Markdown `string | null`.
-3. `Core._fetchDocPage(docId, title)` — **internal** shared fetch helper
+3. `DocFetchService._fetchDocPage(docId, title)` — **internal** shared fetch helper
    that delegates to the generic `fetchWithBackoff` utility for retry/backoff.
    Returns `Document | null`.
-4. `Core.fetchAndConvertPrivateDoc(docId, title)` — fetches a doc page
+4. `DocFetchService.fetchAndConvertPrivateDoc(docId, title)` — fetches a doc page
    and returns Markdown.
-5. `Core.fetchPrivateDocAsHtml(docId, title)` — fetches a doc page and
+5. `DocFetchService.fetchPrivateDocAsHtml(docId, title)` — fetches a doc page and
    returns raw HTML.
 
 **Note:** The shared `fetchWithBackoff(url, options)` utility lives in
-`src/utils/fetchWithBackoff.ts` and is used by both `Core._fetchDocPage` and
+`src/utils/fetchWithBackoff.ts` and is used by both `DocFetchService._fetchDocPage` and
 `NativeDownloader._fetchChapter`. Centralizes retry count, delay strategy, and
 429 handling in one place.
 
@@ -336,10 +348,10 @@ Both `DocManager.runSingleExport`, `DocManager.runBulkExport`, and
 ```typescript
 const format = SettingsManager.get('docDownloadFormat');
 if (format === DocDownloadFormat.HTML) {
-    const html = Core.parseHtmlFromPrivateDoc(doc, title);   // or fetchPrivateDocAsHtml
+    const html = ContentParser.parseHtmlFromPrivateDoc(doc, title);   // or DocFetchService.fetchPrivateDocAsHtml
     saveAs(new Blob([html], { type: "text/html;charset=utf-8" }), `${title}.html`);
 } else {
-    const md = Core.parseContentFromPrivateDoc(doc, title);  // or fetchAndConvertPrivateDoc
+    const md = ContentParser.parseContentFromPrivateDoc(doc, title);  // or DocFetchService.fetchAndConvertPrivateDoc
     saveAs(new Blob([md], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
 }
 ```
@@ -421,7 +433,7 @@ src/
     SettingsMenu.ts              — Single Tampermonkey menu command → opens SettingsPage
     SettingsPage.ts              — Full-page settings UI (fanfiction.net/?ffne_settings=1)
     LayoutManager.ts             — Fluid layout / viewport meta injection
-    Core.ts                      — Delegate broker, logging, content parsing, fetch helpers
+    Core.ts                      — Delegate broker, logging, DOM readiness
     FFNLogger.ts                 — Shared logger (used to avoid circular deps with Core)
     DocManager.ts                — /docs/docs.php: bulk export, export column injection
     DocEditor.ts                 — /docs/edit.php: single-doc export button in TinyMCE toolbar
@@ -437,6 +449,9 @@ src/
     FicHubMetadataSerializer.ts  — Parses FicHub API response for EPUB metadata
   factories/
     TinyMCEButtonFactory.ts      — Creates native-looking TinyMCE 4 toolbar buttons
+  services/
+    ContentParser.ts             — Turndown setup, HTML/Markdown parsing from doc pages
+    DocFetchService.ts           — Doc page fetch, content extraction, hidden-iframe refresh
   utils/
     fetchWithBackoff.ts          — Generic HTTP retry/backoff utility for 429 handling
 vite.config.ts                   — Build config; GM grants; CDN requires; externalGlobals
@@ -462,9 +477,9 @@ tsconfig.json                    — Strict TypeScript config
    a new CDN dependency, you must add both a `require` entry (the CDN URL) and an
    `externalGlobals` entry (the global variable name) in `vite.config.ts`.
 
-5. **`Core.refreshPrivateDoc`** exists and fetches the same URL as `_fetchDocPage`
-   but uses completely different logic (iframe form submission). It was deliberately
-   NOT refactored to use `_fetchDocPage`.
+5. **`DocFetchService.refreshPrivateDoc`** exists and uses different logic
+   (iframe form submission) than `_fetchDocPage`. They were deliberately
+   NOT unified.
 
 6. **`SupportedFormats` vs `DocDownloadFormat`** — keep them separate. `SupportedFormats`
    is reader-facing (EPUB/MOBI/PDF/etc.). `DocDownloadFormat` is author doc export only.

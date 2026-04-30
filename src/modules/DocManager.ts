@@ -1,6 +1,7 @@
 // modules/DocManager.ts
 
 import { Core } from './Core';
+import { DocFetchService } from '../services/DocFetchService';
 import { Elements } from '../enums/Elements';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
 import { SettingsManager } from './SettingsManager';
@@ -402,8 +403,8 @@ export const DocManager = {
         log(`Starting export for ${title} (${docId}) as ${format}`);
 
         const content = format === DocDownloadFormat.HTML
-            ? await Core.fetchPrivateDocAsHtml(docId, title)
-            : await Core.fetchAndConvertPrivateDoc(docId, title);
+            ? await DocFetchService.fetchPrivateDocAsHtml(docId, title)
+            : await DocFetchService.fetchAndConvertPrivateDoc(docId, title);
 
         if (content) {
             const mimeType = format === DocDownloadFormat.HTML
@@ -437,7 +438,7 @@ export const DocManager = {
         btnElement.style.cursor = "wait";
 
         log(`Starting refresh for ${title} (${docId})`);
-        const success = await Core.refreshPrivateDoc(docId, title);
+        const success = await DocFetchService.refreshPrivateDoc(docId, title);
 
         if (success) {
             btnElement.innerText = "✓";
@@ -481,8 +482,8 @@ export const DocManager = {
             verb: 'Export',
             processItem: async (item) => {
                 const content = format === DocDownloadFormat.HTML
-                    ? await Core.fetchPrivateDocAsHtml(item.docId, item.title)
-                    : await Core.fetchAndConvertPrivateDoc(item.docId, item.title);
+                    ? await DocFetchService.fetchPrivateDocAsHtml(item.docId, item.title)
+                    : await DocFetchService.fetchAndConvertPrivateDoc(item.docId, item.title);
                 if (content) {
                     zip.file(`${item.title}.${format}`, content, { date: new Date() });
                     return true;
@@ -545,7 +546,7 @@ export const DocManager = {
                 item.row.style.backgroundColor = '#90EE90';
                 item.row.style.transition = 'background-color 0.3s ease';
 
-                const success = await Core.refreshPrivateDoc(item.docId, item.title);
+                const success = await DocFetchService.refreshPrivateDoc(item.docId, item.title);
 
                 item.row.style.backgroundColor = originalBg;
                 return success;

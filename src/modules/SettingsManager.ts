@@ -36,8 +36,8 @@ export interface FFNSettings {
     scrollStep: number;
 
     /**
-     * Maximum retry attempts for failed document fetch operations in `Core._fetchDocPage`
-     * and `Core.refreshPrivateDoc`.
+     * Maximum retry attempts for failed document fetch operations in `DocFetchService._fetchDocPage`
+     * and `DocFetchService.refreshPrivateDoc`.
      */
     fetchMaxRetries: number;
 

@@ -1,6 +1,7 @@
 // modules/DocEditor.ts
 
 import { Core } from './Core';
+import { ContentParser } from '../services/ContentParser';
 import { Elements } from '../enums/Elements';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
 import { SettingsManager } from './SettingsManager';
@@ -181,12 +182,12 @@ export const DocEditor = {
 
         try {
             if (format === DocDownloadFormat.HTML) {
-                const html = Core.parseHtmlFromPrivateDoc(document, title);
+                const html = ContentParser.parseHtmlFromPrivateDoc(document, title);
                 if (html) {
                     saveAs(new Blob([html], { type: "text/html;charset=utf-8" }), `${title}.html`);
                 }
             } else {
-                const markdown = Core.parseContentFromPrivateDoc(document, title);
+                const markdown = ContentParser.parseContentFromPrivateDoc(document, title);
                 if (markdown) {
                     saveAs(new Blob([markdown], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
                 }
