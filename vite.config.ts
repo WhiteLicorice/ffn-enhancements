@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'FFN Enhancements',
         namespace: 'http://tampermonkey.net/',
-        version: '14.0',
+        version: '15.0',
         author: 'WhiteLicorice',
         connect: ['fichub.net'],
         match: ['https://www.fanfiction.net/*'],
