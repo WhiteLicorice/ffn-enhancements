@@ -17,4 +17,6 @@ export enum DocDownloadFormat {
     MARKDOWN = 'md',
     /** Raw HTML content, as-is from the FFN editor textarea. */
     HTML = 'html',
+    /** HTML content converted to OOXML and packaged as a .docx archive. */
+    DOCX = 'docx',
 }

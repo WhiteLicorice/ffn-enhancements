@@ -156,6 +156,7 @@ function _buildModalHTML(): string {
                         [
                             { value: DocDownloadFormat.MARKDOWN, label: 'Markdown (.md)' },
                             { value: DocDownloadFormat.HTML,     label: 'HTML (.html)'   },
+                            { value: DocDownloadFormat.DOCX,     label: 'DOCX (.docx)'   },
                         ],
                         s.get('docDownloadFormat')
                     ),

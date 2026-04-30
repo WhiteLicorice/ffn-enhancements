@@ -4,6 +4,7 @@ import { Core } from './Core';
 import { DocFetchService } from '../services/DocFetchService';
 import { Elements } from '../enums/Elements';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
+import { DocxBuilder } from './DocxBuilder';
 import { SettingsManager } from './SettingsManager';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -422,15 +423,20 @@ export const DocManager = {
         const format = SettingsManager.get('docDownloadFormat');
         log(`Starting export for ${title} (${docId}) as ${format}`);
 
-        const content = format === DocDownloadFormat.HTML
+        const content = format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML
             ? await DocFetchService.fetchPrivateDocAsHtml(docId, title)
             : await DocFetchService.fetchAndConvertPrivateDoc(docId, title);
 
         if (content) {
-            const mimeType = format === DocDownloadFormat.HTML
-                ? "text/html;charset=utf-8"
-                : "text/markdown;charset=utf-8";
-            saveAs(new Blob([content], { type: mimeType }), `${title}.${format}`);
+            if (format === DocDownloadFormat.DOCX) {
+                const docxBlob = await DocxBuilder.build(content, title);
+                saveAs(docxBlob, `${title}.docx`);
+            } else {
+                const mimeType = format === DocDownloadFormat.HTML
+                    ? "text/html;charset=utf-8"
+                    : "text/markdown;charset=utf-8";
+                saveAs(new Blob([content], { type: mimeType }), `${title}.${format}`);
+            }
             btnElement.innerText = "Done";
             setTimeout(() => {
                 btnElement.innerText = originalText;
@@ -501,11 +507,16 @@ export const DocManager = {
         await _runBulkOperation(e, {
             verb: 'Export',
             processItem: async (item) => {
-                const content = format === DocDownloadFormat.HTML
+                const content = format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML
                     ? await DocFetchService.fetchPrivateDocAsHtml(item.docId, item.title)
                     : await DocFetchService.fetchAndConvertPrivateDoc(item.docId, item.title);
                 if (content) {
-                    zip.file(`${item.title}.${format}`, content, { date: new Date() });
+                    if (format === DocDownloadFormat.DOCX) {
+                        const docxBlob = await DocxBuilder.build(content, item.title);
+                        zip.file(`${item.title}.docx`, docxBlob, { date: new Date() });
+                    } else {
+                        zip.file(`${item.title}.${format}`, content, { date: new Date() });
+                    }
                     return true;
                 }
                 return false;

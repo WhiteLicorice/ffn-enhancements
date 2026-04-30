@@ -4,6 +4,7 @@ import { Core } from './Core';
 import { ContentParser } from '../services/ContentParser';
 import { Elements } from '../enums/Elements';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
+import { DocxBuilder } from './DocxBuilder';
 import { SettingsManager } from './SettingsManager';
 import { saveAs } from 'file-saver';
 import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
@@ -62,9 +63,11 @@ export const DocEditor = {
             // changes docDownloadFormat via the settings page.
             SettingsManager.subscribe('docDownloadFormat', (newVal) => {
                 if (this.downloadBtn) {
-                    const tooltip = newVal === DocDownloadFormat.HTML
-                        ? 'Export Document (HTML)'
-                        : 'Export Document (Markdown)';
+                    const tooltip = newVal === DocDownloadFormat.DOCX
+                        ? 'Export Document (DOCX)'
+                        : newVal === DocDownloadFormat.HTML
+                            ? 'Export Document (HTML)'
+                            : 'Export Document (Markdown)';
                     this.downloadBtn.title = tooltip;
                     log(`Download button tooltip updated to: "${tooltip}"`);
                 }
@@ -89,7 +92,11 @@ export const DocEditor = {
      */
     setupButtons: function () {
         const format = SettingsManager.get('docDownloadFormat');
-        const tooltip = format === DocDownloadFormat.HTML ? 'Export Document (HTML)' : 'Export Document (Markdown)';
+        const tooltip = format === DocDownloadFormat.DOCX
+            ? 'Export Document (DOCX)'
+            : format === DocDownloadFormat.HTML
+                ? 'Export Document (HTML)'
+                : 'Export Document (Markdown)';
         const dlContent = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
         const dlBtn = TinyMCEButtonFactory.create(
             tooltip,
@@ -175,13 +182,19 @@ export const DocEditor = {
      * so changes made via the Tampermonkey menu take effect on the next click.
      * Uses FileSaver to trigger the browser download.
      */
-    exportCurrentDoc: function () {
+    exportCurrentDoc: async function () {
         const log = Core.getLogger(this.MODULE_NAME, 'exportCurrentDoc');
         const title = this.getTitle();
         const format = SettingsManager.get('docDownloadFormat');
 
         try {
-            if (format === DocDownloadFormat.HTML) {
+            if (format === DocDownloadFormat.DOCX) {
+                const html = ContentParser.parseHtmlFromPrivateDoc(document, title);
+                if (html) {
+                    const blob = await DocxBuilder.build(html, title);
+                    saveAs(blob, `${title}.docx`);
+                }
+            } else if (format === DocDownloadFormat.HTML) {
                 const html = ContentParser.parseHtmlFromPrivateDoc(document, title);
                 if (html) {
                     saveAs(new Blob([html], { type: "text/html;charset=utf-8" }), `${title}.html`);
