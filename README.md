@@ -62,8 +62,10 @@ FFN is missing a `<meta name="viewport">` tag, which causes browsers to assume a
 
 ## For Writers
 
-### Export Documents as Markdown
-In both the **Doc Manager** and the **Doc Editor**, a new Export button lets you download any document as a clean `.md` Markdown file. Perfect for backing up your work or moving it to another editor. Markdown is a universal format: feed it into another program to convert it to `.docx`, `.rtf`, or whatever floats your boat.
+### Export Documents in Multiple Formats
+In both the **Doc Manager** and the **Doc Editor**, a new Export button lets you download any document in your choice of format: **Markdown** (`.md`), **HTML** (`.html`), or **DOCX** (`.docx`). The active format is controlled from the Settings menu and applies to single exports, bulk export, and the Doc Editor toolbar button alike.
+
+> **Note:** Markdown does not preserve HTML-exclusive formatting such as text alignment and custom styles. Use HTML or DOCX if you need to keep those.
 
 ---
 
@@ -72,8 +74,22 @@ In the Doc Manager, a single **↓ All** button downloads every document in your
 
 ---
 
-### Paste Markdown Directly into the Editor
-Working in Markdown externally and then copying into FFN's editor? The extension intercepts your paste in both the Doc Editor (TinyMCE) and the Doc Manager's Copy-N-Paste box and automatically converts Markdown syntax to the rich-text format FFN expects. No manual reformatting or relying on another app.
+### Paste Markdown or HTML into the Editor
+Working in Markdown or raw HTML externally and copying into FFN's editor? The extension intercepts your paste in the Doc Editor (TinyMCE) and automatically converts it to rich text. Markdown syntax is detected and rendered; HTML source code is detected and rendered. Both behaviors can be toggled independently from the Settings menu.
+
+---
+
+### Settings Menu
+Click **FFN Enhancements Settings** in your Tampermonkey/Violentmonkey extension menu on any FFN page to open the settings panel. Changes are saved immediately and sync to all open FanFiction.net tabs. Available settings include:
+
+| Setting | Description |
+|---|---|
+| Fluid Layout | Toggle the full-width reading layout on or off |
+| Download Format | Choose Markdown, HTML, or DOCX for doc exports |
+| Convert Markdown on Paste | Auto-render Markdown pasted into the Doc Editor |
+| Convert HTML on Paste | Auto-render HTML source pasted into the Doc Editor |
+| Keyboard Scroll Distance | Pixels scrolled per keypress on story pages |
+| Advanced | Fetch retry limits, iframe timeouts, bulk export delays |
 
 ---
 
@@ -117,7 +133,7 @@ Once you have the extension manager installed, [Click This Button](https://githu
 
 # Roadmap
 
-* [x] Download documents as Markdown in both Doc Manager and Doc Editor. Bulk export allowed.
+* [x] Download documents as Markdown, HTML, or DOCX in both Doc Manager and Doc Editor. Bulk export allowed.
 * [x] Make text selectable while reading.
 * [x] Bind arrow keys or WASD keys to chapter navigation.
 * [x] Integrate Ao3's export to EPUB/PDF/HTML/MOBI feature (AZW3 is proprietary and out of scope).
@@ -125,12 +141,12 @@ Once you have the extension manager installed, [Click This Button](https://githu
 * [ ] Integrate native dark theme (gave up: may I suggest using the mature [Dark Reader](https://darkreader.org/) instead? - see the [attempt](https://github.com/WhiteLicorice/ffn-enhancements/pull/20) here, maybe you can help me).
 * [x] Make story text more large-screen friendly? Expand it so the borders at the sides are gone.
 * [x] Fix FFN's bug where clicking on a story's picture doesn't do anything and just darkens the screen lmao.
-* [x] Allow pasting of Markdown into the Doc Editor and Doc Manager's story boxes. It is automatically converted into Docx format.
+* [x] Allow pasting of Markdown and HTML source into the Doc Editor. Automatically converted to rich text.
 * [x] Allow single and bulk refresh of author documents life in Doc Manager.
 * [x] Inject the story's cover art into EPUBs (from Native and FicHub) as its thumbnail.
 * [x] Get rid of the letterboxed borders at the side of the page (requires a `LayoutManager` of some sort).
+* [x] UX enhancements from a settings menu: export format, paste conversion toggles, scroll speed, advanced timeouts.
 * [ ] Allow setting of fonts and custom fonts sitewide (requires a `FontManager` module that hooks in the `EarlyBoot` system).
-* [ ] UX enhancements from a menu like ao3-enhancements: font, author doc export type, etc, to wire it all up together.
  
 *Feel free to open issues and make suggestions!*
 
@@ -176,6 +192,32 @@ If you want to see your changes in real-time without building manually every tim
 
 Vite will provide a local URL (typically http://localhost:5173/__monkey.user.js). If you install this URL into Tampermonkey once, the extension will automatically reload on FanFiction.net whenever you save a change in your code editor.
 
+### Testing
+
+The project uses [Vitest](https://vitest.dev/) with a `jsdom` environment. There is no `test` script in `package.json`, so invoke Vitest directly:
+
+```bash
+# Run all tests once (CI / pre-commit)
+npx vitest run
+
+# Watch mode — re-runs affected tests on every file save
+npx vitest
+
+# Interactive browser UI
+npx vitest --ui
+```
+
+Test files live under `src/__tests__/` and match the pattern `**/*.test.ts`. The suite currently covers:
+
+| File | What it tests |
+|---|---|
+| `SimpleMarkdownParser.test.ts` | Markdown detection heuristic and HTML output |
+| `SettingsManager.test.ts` | Setting load, save, subscribe, cross-tab sync |
+| `EpubBuilder.test.ts` | EPUB ZIP structure and OPF/NCX XML validity |
+| `DocxBuilder.test.ts` | DOCX ZIP structure and OOXML document content |
+| `FicHubDownloader.test.ts` | FicHub API response parsing |
+| `DocManager.test.ts` | Bulk export/refresh button reference and smoke tests |
+
 ## Contributing
 
 Contributions are welcome. Please follow these guidelines to keep the project organized.
@@ -191,7 +233,7 @@ Contributions are welcome. Please follow these guidelines to keep the project or
 * Example: `feat/vite-plugin-monkey`
 
 
-3. Make your changes and test them using `npm run build`.
+3. Make your changes. Run `npx vitest run` to verify tests pass, then `npm run build` to confirm the bundle compiles cleanly.
 4. Submit a Pull Request.
 
 ### Commit Messages
