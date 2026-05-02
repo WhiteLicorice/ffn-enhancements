@@ -31,6 +31,18 @@ export interface FFNSettings {
     fluidMode: boolean;
 
     /**
+     * Whether to auto-convert Markdown text when pasted into the Doc Editor's TinyMCE iframe.
+     * Detected via `SimpleMarkdownParser.isMarkdown()`.
+     */
+    pasteConvertMarkdown: boolean;
+
+    /**
+     * Whether to auto-convert HTML source text when pasted into the Doc Editor's TinyMCE iframe.
+     * Detected by the presence of block-level HTML tags in the pasted plain text.
+     */
+    pasteConvertHtml: boolean;
+
+    /**
      * Number of pixels to scroll per W/S/↑/↓ keypress on story reading pages.
      */
     scrollStep: number;
@@ -87,6 +99,8 @@ export interface FFNSettings {
 const DEFAULTS: FFNSettings = {
     docDownloadFormat: DocDownloadFormat.MARKDOWN,
     fluidMode: true,
+    pasteConvertMarkdown: true,
+    pasteConvertHtml: true,
     scrollStep: 300,
     fetchMaxRetries: 3,
     fetchRetryBaseMs: 2000,
@@ -263,6 +277,8 @@ export const SettingsManager: ISitewideModule & {
 function _loadAll(): void {
     _loadEnum('docDownloadFormat', DocDownloadFormat);
     _loadBool('fluidMode');
+    _loadBool('pasteConvertMarkdown');
+    _loadBool('pasteConvertHtml');
     _loadPositiveNumber('scrollStep');
     _loadPositiveNumber('fetchMaxRetries');
     _loadPositiveNumber('fetchRetryBaseMs');

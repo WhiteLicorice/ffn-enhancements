@@ -12,6 +12,16 @@ const MODAL_ID = 'ffne-settings-modal';
 const STYLES_ID = 'ffne-settings-styles';
 
 /**
+ * Boolean setting keys — used for the bulk checkbox wiring and subscription
+ * registration. Must stay in sync with the boolean fields in `FFNSettings`.
+ */
+const BOOL_KEYS: (keyof FFNSettings)[] = [
+    'fluidMode',
+    'pasteConvertMarkdown',
+    'pasteConvertHtml',
+];
+
+/**
  * Numeric setting keys — used for the bulk number-input wiring and subscription
  * registration. Must stay in sync with the numeric fields in `FFNSettings`.
  */
@@ -54,6 +64,7 @@ let _unsubscribers: (() => void)[] = [];
  * **Sections:**
  * - Appearance: fluidMode
  * - Document Export: docDownloadFormat
+ * - Convert Pasted Text: pasteConvertMarkdown, pasteConvertHtml
  * - Reader: scrollStep
  * - Advanced (collapsible): fetch timeouts, retries, bulk delays
  *
@@ -158,9 +169,25 @@ function _buildModalHTML(): string {
                             { value: DocDownloadFormat.HTML,     label: 'HTML (.html)'   },
                             { value: DocDownloadFormat.DOCX,     label: 'DOCX (.docx)'   },
                         ],
-                        s.get('docDownloadFormat')
+                        s.get('docDownloadFormat'),
+                        'Markdown does not preserve HTML-exclusive formatting such as text alignment and custom styles.'
                     ),
                 ])}
+
+                ${_buildSection('Convert Pasted Text', [
+                    _buildToggleRow(
+                        'pasteConvertMarkdown',
+                        'Convert Markdown',
+                        'Automatically renders Markdown syntax as formatted text when pasted into the Doc Editor.',
+                        s.get('pasteConvertMarkdown')
+                    ),
+                    _buildToggleRow(
+                        'pasteConvertHtml',
+                        'Convert HTML',
+                        'Automatically renders HTML source code as formatted text when pasted into the Doc Editor.',
+                        s.get('pasteConvertHtml')
+                    ),
+                ], 'Paste Markdown or HTML source into the Doc Editor and have it automatically rendered as formatted rich text.')}
 
                 ${_buildSection('Reader', [
                     _buildNumberRow(
@@ -230,10 +257,11 @@ function _buildModalHTML(): string {
 
 // ─── Row Builders ─────────────────────────────────────────────────────────────
 
-function _buildSection(title: string, rows: string[]): string {
+function _buildSection(title: string, rows: string[], subtitle?: string): string {
     return `
         <div class="ffne-settings-section">
             <div class="ffne-settings-section-header">${title}</div>
+            ${subtitle ? `<p class="ffne-section-subtitle">${subtitle}</p>` : ''}
             ${rows.join('')}
         </div>
     `;
@@ -280,7 +308,8 @@ function _buildSelectRow(
     label: string,
     description: string,
     options: SelectOption[],
-    current: string
+    current: string,
+    warning?: string
 ): string {
     const optHTML = options.map(o =>
         `<option value="${o.value}"${o.value === current ? ' selected' : ''}>${o.label}</option>`
@@ -290,6 +319,7 @@ function _buildSelectRow(
             <div class="ffne-settings-row-label">
                 <strong>${label}</strong>
                 <small>${description}</small>
+                ${warning ? `<small class="ffne-warning">${warning}</small>` : ''}
             </div>
             <div class="ffne-settings-row-control">
                 <select class="ffne-select" data-setting="${key}">${optHTML}</select>
@@ -338,15 +368,15 @@ function _wireHandlers(
     log: (fn: string, msg: string) => void
 ): void {
 
-    // ── Boolean toggles ──
+    // ── Boolean toggles (generic — all BOOL_KEYS handled uniformly) ──
     container.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-setting]').forEach(el => {
         el.addEventListener('change', () => {
-            const key = el.dataset.setting!;
-            if (key === 'fluidMode') {
-                SettingsManager.set('fluidMode', el.checked);
-                log('wireHandlers', `fluidMode = ${el.checked}`);
-                _flashSaved(container, key);
-            }
+            const key = el.dataset.setting as keyof FFNSettings;
+            if (!BOOL_KEYS.includes(key)) return;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            SettingsManager.set(key, el.checked as any);
+            log('wireHandlers', `${String(key)} = ${el.checked}`);
+            _flashSaved(container, String(key));
         });
     });
 
@@ -415,12 +445,14 @@ function _flashSaved(container: HTMLElement, key: string): void {
 function _registerSubscriptions(container: HTMLElement): (() => void)[] {
     const unsubscribers: (() => void)[] = [];
 
-    // ── Boolean ──
-    unsubscribers.push(SettingsManager.subscribe('fluidMode', newVal => {
-        const el = container.querySelector<HTMLInputElement>('[data-setting="fluidMode"]');
-        if (el) el.checked = newVal;
-        _flashSaved(container, 'fluidMode');
-    }));
+    // ── Boolean (generic — all BOOL_KEYS handled uniformly) ──
+    BOOL_KEYS.forEach(key => {
+        unsubscribers.push(SettingsManager.subscribe(key, newVal => {
+            const el = container.querySelector<HTMLInputElement>(`[data-setting="${String(key)}"]`);
+            if (el) el.checked = Boolean(newVal);
+            _flashSaved(container, String(key));
+        }));
+    });
 
     // ── Enum ──
     unsubscribers.push(SettingsManager.subscribe('docDownloadFormat', newVal => {

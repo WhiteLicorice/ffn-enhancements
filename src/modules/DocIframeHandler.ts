@@ -2,6 +2,7 @@
 
 import { Core } from './Core';
 import { SimpleMarkdownParser } from './SimpleMarkdownParser';
+import { SettingsManager } from './SettingsManager';
 
 /**
  * Shared utility for managing TinyMCE iframes across different FFN pages.
@@ -64,26 +65,48 @@ export const DocIframeHandler = {
     },
 
     /**
+     * Returns true if `text` looks like HTML source code.
+     * Requires at least one block-level tag to avoid false positives on generic
+     * code that contains angle brackets (e.g. TypeScript generics, XML snippets).
+     */
+    _isHtmlSource: function (text: string): boolean {
+        return /<(p|div|h[1-6]|ul|ol|li|table|blockquote|pre|figure|article|section)\b[^>]*>/i.test(text.trim());
+    },
+
+    /**
      * Intercepts paste events within the iframe.
-     * If Markdown is detected, it parses it to HTML and inserts it.
+     * HTML source is checked first (more explicit); Markdown is checked second.
+     * Each conversion path is independently gated by its own setting.
      */
     handlePaste: function (e: ClipboardEvent, iframe: HTMLIFrameElement) {
         const log = Core.getLogger(this.MODULE_NAME, 'handlePaste');
         const text = e.clipboardData?.getData('text/plain');
+        if (!text) return;
 
-        if (text && SimpleMarkdownParser.isMarkdown(text)) {
-            log('Markdown detected. Intercepting paste.');
+        const convertHtml = SettingsManager.get('pasteConvertHtml');
+        const convertMd   = SettingsManager.get('pasteConvertMarkdown');
+
+        let htmlToInsert: string | null = null;
+        let detected: string | null = null;
+
+        // HTML check runs first — it is the more explicit/specific format.
+        if (convertHtml && this._isHtmlSource(text)) {
+            htmlToInsert = text;
+            detected = 'HTML source';
+        } else if (convertMd && SimpleMarkdownParser.isMarkdown(text)) {
+            htmlToInsert = SimpleMarkdownParser.parse(text);
+            detected = 'Markdown';
+        }
+
+        if (htmlToInsert !== null && iframe.contentDocument) {
+            log(`${detected} detected. Intercepting paste.`);
             e.preventDefault();
             e.stopPropagation();
-
-            const parsedHtml = SimpleMarkdownParser.parse(text);
-            if (iframe.contentDocument) {
-                // Note: execCommand('insertHTML') is deprecated but no practical
-                // replacement exists for inserting HTML at cursor in a contenteditable.
-                // ClipboardEvent-based approaches lose cursor position; Clipboard API
-                // promises break on mixed content. Keep until browsers remove it.
-                iframe.contentDocument.execCommand('insertHTML', false, parsedHtml);
-            }
+            // Note: execCommand('insertHTML') is deprecated but no practical
+            // replacement exists for inserting HTML at cursor in a contenteditable.
+            // ClipboardEvent-based approaches lose cursor position; Clipboard API
+            // promises break on mixed content. Keep until browsers remove it.
+            iframe.contentDocument.execCommand('insertHTML', false, htmlToInsert);
         }
-    }
+    },
 };

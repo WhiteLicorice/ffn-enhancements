@@ -189,6 +189,25 @@ details.ffne-settings-section:not([open]) > summary .ffne-adv-arrow-open { displ
 .ffne-number-input:focus { outline: none; border-color: #336699; box-shadow: 0 0 0 2px rgba(51,102,153,.2); }
 .ffne-number-input:invalid { border-color: #c00; }
 
+/* -- Section subtitle -- */
+.ffne-section-subtitle {
+    color: #777;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 8px 14px 4px;
+    margin: 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+/* -- Warning note (amber) -- */
+.ffne-warning {
+    display: block;
+    color: #8a5c00;
+    font-size: 11px;
+    line-height: 1.4;
+    margin-top: 3px;
+}
+
 /* -- Unit label -- */
 .ffne-unit { color: #999; font-size: 11px; }
 
