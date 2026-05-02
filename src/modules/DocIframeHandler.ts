@@ -77,11 +77,26 @@ export const DocIframeHandler = {
      * Intercepts paste events within the iframe.
      * HTML source is checked first (more explicit); Markdown is checked second.
      * Each conversion path is independently gated by its own setting.
+     *
+     * Pastes that carry a `text/html` MIME type (Word, Google Docs, browser copy)
+     * are skipped by default — TinyMCE's native handler already renders them as
+     * rich text. `pasteForceIntercept` overrides this guard.
      */
     handlePaste: function (e: ClipboardEvent, iframe: HTMLIFrameElement) {
         const log = Core.getLogger(this.MODULE_NAME, 'handlePaste');
         const text = e.clipboardData?.getData('text/plain');
         if (!text) return;
+
+        // Rich-source guard: if the clipboard carries text/html (e.g. a copy from
+        // Word, Google Docs, or a browser selection), the content is already
+        // rendered markup. Let TinyMCE handle it natively unless force-intercept
+        // is enabled.
+        if (!SettingsManager.get('pasteForceIntercept')) {
+            const types = e.clipboardData?.types ?? [];
+            const hasRichHtml = types.includes('text/html') &&
+                (e.clipboardData?.getData('text/html') ?? '').trim().length > 0;
+            if (hasRichHtml) return;
+        }
 
         const convertHtml = SettingsManager.get('pasteConvertHtml');
         const convertMd   = SettingsManager.get('pasteConvertMarkdown');

@@ -43,6 +43,14 @@ export interface FFNSettings {
     pasteConvertHtml: boolean;
 
     /**
+     * When false (default), pastes that carry a `text/html` MIME type in the clipboard
+     * (e.g. from Word, Google Docs, or a browser copy) are skipped — TinyMCE's native
+     * paste handler already renders them as rich text.
+     * When true, Markdown/HTML source detection runs regardless of clipboard MIME types.
+     */
+    pasteForceIntercept: boolean;
+
+    /**
      * Number of pixels to scroll per W/S/↑/↓ keypress on story reading pages.
      */
     scrollStep: number;
@@ -101,6 +109,7 @@ const DEFAULTS: FFNSettings = {
     fluidMode: true,
     pasteConvertMarkdown: true,
     pasteConvertHtml: true,
+    pasteForceIntercept: false,
     scrollStep: 300,
     fetchMaxRetries: 3,
     fetchRetryBaseMs: 2000,
@@ -279,6 +288,7 @@ function _loadAll(): void {
     _loadBool('fluidMode');
     _loadBool('pasteConvertMarkdown');
     _loadBool('pasteConvertHtml');
+    _loadBool('pasteForceIntercept');
     _loadPositiveNumber('scrollStep');
     _loadPositiveNumber('fetchMaxRetries');
     _loadPositiveNumber('fetchRetryBaseMs');

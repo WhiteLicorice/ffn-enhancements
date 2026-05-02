@@ -19,6 +19,7 @@ const BOOL_KEYS: (keyof FFNSettings)[] = [
     'fluidMode',
     'pasteConvertMarkdown',
     'pasteConvertHtml',
+    'pasteForceIntercept',
 ];
 
 /**
@@ -186,6 +187,12 @@ function _buildModalHTML(): string {
                         'Convert HTML',
                         'Automatically renders HTML source code as formatted text when pasted into the Doc Editor.',
                         s.get('pasteConvertHtml')
+                    ),
+                    _buildToggleRow(
+                        'pasteForceIntercept',
+                        'Always Convert Pasted Text',
+                        'By default, pastes from rich-text sources (Word, Google Docs, browser selections) are skipped so the editor can handle them natively. Enable this to force Markdown and HTML detection for all pastes regardless of source.',
+                        s.get('pasteForceIntercept')
                     ),
                 ], 'Paste Markdown or HTML source into the Doc Editor and have it automatically rendered as formatted rich text.')}
 
