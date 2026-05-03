@@ -59,7 +59,7 @@ export interface FFNSettings {
 
     /**
      * When true, appends a format-specific separator at the end of exported
-     * content: `---` for Markdown, `<hr>` for HTML/DOCX.
+     * content: `---` for Markdown, `HR tag` for HTML/DOCX.
      */
     appendSeparator: boolean;
 

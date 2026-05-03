@@ -117,8 +117,18 @@ describe('_parseStoredValue — string enum', () => {
 
 describe('_parseStoredValue — edge cases', () => {
     it('handles all known boolean keys', () => {
-        expect(_parseStoredValue('fluidMode', true)).toBe(true);
-        expect(_parseStoredValue('fluidMode', false)).toBe(false);
+        const boolKeys: (keyof FFNSettings)[] = [
+            'fluidMode',
+            'pasteConvertMarkdown',
+            'pasteConvertHtml',
+            'pasteForceIntercept',
+            'ao3HtmlCompatibility',
+            'appendSeparator',
+        ];
+        for (const k of boolKeys) {
+            expect(_parseStoredValue(k, true)).toBe(true);
+            expect(_parseStoredValue(k, false)).toBe(false);
+        }
     });
 
     it('handles all known number keys', () => {

@@ -66,11 +66,19 @@ export const DocIframeHandler = {
 
     /**
      * Returns true if `text` looks like HTML source code.
-     * Requires at least one block-level tag to avoid false positives on generic
-     * code that contains angle brackets (e.g. TypeScript generics, XML snippets).
+     * Checks for unambiguous HTML signatures (DOCTYPE, comments) and a broad set
+     * of common HTML tags. Skips generic `<...>` patterns to avoid false positives
+     * on TypeScript generics, XML, or mathematical expressions.
      */
     _isHtmlSource: function (text: string): boolean {
-        return /<(p|div|h[1-6]|ul|ol|li|table|blockquote|pre|figure|article|section)\b[^>]*>/i.test(text.trim());
+        const trimmed = text.trim();
+        // Unambiguous signals: DOCTYPE or HTML comments.
+        if (/^<!DOCTYPE\s+html/i.test(trimmed)) return true;
+        if (/<!--[\s\S]*?-->/.test(trimmed)) return true;
+
+        // Opening or closing tag for a common HTML element.
+        const htmlTagRe = /<\/(html|head|body|div|span|p|h[1-6]|ul|ol|li|table|tr|td|th|a|br|hr|img|strong|em|b|i|u|s|pre|code|blockquote|figure|form|input|button|select|textarea|label|header|footer|nav|main|aside|section|article|meta|link|script|style|title)>|<(html|head|body|div|span|p|h[1-6]|ul|ol|li|table|tr|td|th|a|br|hr|img|strong|em|b|i|u|s|pre|code|blockquote|figure|form|input|button|select|textarea|label|header|footer|nav|main|aside|section|article|meta|link|script|style|title)\b[^>]*\/?>/i;
+        return htmlTagRe.test(trimmed);
     },
 
     /**
