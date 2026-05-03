@@ -35,11 +35,11 @@ export function appendFormatSeparator(
     const trimmed = content.trimEnd();
     switch (format) {
         case DocDownloadFormat.MARKDOWN:
-            return trimmed + '\n---\n';
+            return trimmed + '---\n';
         case DocDownloadFormat.HTML:
-            return trimmed + '\n<hr>\n';
+            return trimmed + '<hr>\n<p>&nbsp;</p>';
         case DocDownloadFormat.DOCX:
-            return trimmed + '\n<hr>\n';
+            return trimmed + '<hr>\n<p>&nbsp;</p>';
     }
 }
 

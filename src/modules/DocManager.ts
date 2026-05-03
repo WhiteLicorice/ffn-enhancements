@@ -504,9 +504,12 @@ export const DocManager = {
         let content: string | null = null;
         let isHtml = false;
 
-        if (format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML) {
+        if (format === DocDownloadFormat.DOCX) {
             content = await DocFetchService.fetchPrivateDocAsHtml(docId, title);
-            isHtml = true;
+            isHtml = true; // rendered HTML for rich paste
+        } else if (format === DocDownloadFormat.HTML) {
+            content = await DocFetchService.fetchPrivateDocAsHtml(docId, title);
+            isHtml = false; // raw HTML source as plain text (like Markdown writes raw Markdown)
         } else {
             content = await DocFetchService.fetchAndConvertPrivateDoc(docId, title);
             isHtml = false;

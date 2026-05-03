@@ -184,7 +184,7 @@ function _buildModalHTML(): string {
                     _buildToggleRow(
                         'appendSeparator',
                         'Append End Separator',
-                        'Adds a separator at end of each exported document (--- for Markdown, <hr> for HTML/DOCX).',
+                        'Adds a separator at end of each exported document (`---` for Markdown, `hr` for HTML/DOCX).',
                         s.get('appendSeparator')
                     ),
                 ])}

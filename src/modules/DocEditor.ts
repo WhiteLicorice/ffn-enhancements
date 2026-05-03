@@ -27,6 +27,9 @@ export const DocEditor = {
     /** Reference to the injected download button (used for live tooltip updates). */
     downloadBtn: null as HTMLElement | null,
 
+    /** Reference to the injected clipboard button (used for live tooltip updates). */
+    clipBtn: null as HTMLElement | null,
+
     /**
      * Initializes the module by waiting for the DOM and observing for the TinyMCE instance.
      * Uses MutationObserver to react instantly when the toolbar is injected, preventing UI flicker.
@@ -61,17 +64,23 @@ export const DocEditor = {
                 }, 10000);
             }
 
-            // Cross-tab sync: update the download button tooltip when another tab
+            // Cross-tab sync: update both button tooltips when another tab
             // changes docDownloadFormat via the settings page.
             SettingsManager.subscribe('docDownloadFormat', (newVal) => {
                 if (this.downloadBtn) {
                     const tooltip = newVal === DocDownloadFormat.DOCX
-                        ? 'Export Document (DOCX)'
+                        ? 'Export Document as DOCX'
                         : newVal === DocDownloadFormat.HTML
-                            ? 'Export Document (HTML)'
-                            : 'Export Document (Markdown)';
+                            ? 'Export Document as HTML'
+                            : 'Export Document as Markdown';
                     this.downloadBtn.title = tooltip;
                     log(`Download button tooltip updated to: "${tooltip}"`);
+                }
+                if (this.clipBtn) {
+                    const clipTooltip = this._clipTooltip(newVal);
+                    const ariaLabel = this.clipBtn.getAttribute('aria-label');
+                    if (ariaLabel) this.clipBtn.setAttribute('aria-label', clipTooltip);
+                    log(`Clipboard button tooltip updated to: "${clipTooltip}"`);
                 }
             });
         });
@@ -94,14 +103,14 @@ export const DocEditor = {
      */
     setupButtons: function () {
         const format = SettingsManager.get('docDownloadFormat');
-        const tooltip = format === DocDownloadFormat.DOCX
+        const exportTooltip = format === DocDownloadFormat.DOCX
             ? 'Export Document (DOCX)'
             : format === DocDownloadFormat.HTML
                 ? 'Export Document (HTML)'
                 : 'Export Document (Markdown)';
         const dlContent = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
         const dlBtn = TinyMCEButtonFactory.create(
-            tooltip,
+            exportTooltip,
             dlContent,
             () => this.exportCurrentDoc()
         );
@@ -111,11 +120,15 @@ export const DocEditor = {
         this.injectToolbarButton(dlBtn);
 
         // Clipboard button
+        const clipTooltip = this._clipTooltip(format);
         const clipBtn = TinyMCEButtonFactory.create(
-            'Copy to Clipboard',
+            clipTooltip,
             '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">' + '⧉' + '</span>',
             () => this.clipboardCurrentDoc()
         );
+
+        // Store reference so the subscriber in init() can update the tooltip live.
+        this.clipBtn = clipBtn;
         this.injectToolbarButton(clipBtn);
     },
 
@@ -187,6 +200,15 @@ export const DocEditor = {
     },
 
     /**
+     * Returns tooltip text for clipboard button reflecting current format.
+     */
+    _clipTooltip: function (format: DocDownloadFormat): string {
+        if (format === DocDownloadFormat.DOCX) return 'Copy to Clipboard as DOCX';
+        if (format === DocDownloadFormat.HTML) return 'Copy to Clipboard as HTML';
+        return 'Copy to Clipboard as Markdown';
+    },
+
+    /**
      * Reads current HTML content directly from TinyMCE iframe body.
      * More reliable than reading from textarea (no sync delay).
      */
@@ -254,9 +276,14 @@ export const DocEditor = {
             let content: string;
             let isHtml: boolean;
 
-            if (format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML) {
+            if (format === DocDownloadFormat.DOCX) {
+                // DOCX clipboard: write rendered HTML (rich paste).
                 content = html;
                 isHtml = true;
+            } else if (format === DocDownloadFormat.HTML) {
+                // HTML clipboard: write raw HTML source as plain text (like Markdown writes raw Markdown).
+                content = html;
+                isHtml = false;
             } else {
                 content = ContentParser.turndownService.turndown(html);
                 isHtml = false;

@@ -80,30 +80,30 @@ describe('convertStyleAlignToAttr', () => {
 describe('appendFormatSeparator', () => {
     it('appends --- for Markdown format', () => {
         const result = appendFormatSeparator('Hello', DocDownloadFormat.MARKDOWN);
-        expect(result).toBe('Hello\n---\n');
+        expect(result).toBe('Hello---\n');
     });
 
     it('appends <hr> for HTML format', () => {
         const result = appendFormatSeparator('<p>Hello</p>', DocDownloadFormat.HTML);
-        expect(result).toBe('<p>Hello</p>\n<hr>\n');
+        expect(result).toBe('<p>Hello</p><hr>\n<p>&nbsp;</p>');
     });
 
     it('appends <hr> for DOCX format', () => {
         const result = appendFormatSeparator('<p>Hello</p>', DocDownloadFormat.DOCX);
-        expect(result).toBe('<p>Hello</p>\n<hr>\n');
+        expect(result).toBe('<p>Hello</p><hr>\n<p>&nbsp;</p>');
     });
 
     it('trims trailing whitespace before appending', () => {
         const result = appendFormatSeparator('Hello   \n', DocDownloadFormat.MARKDOWN);
-        expect(result).toBe('Hello\n---\n');
+        expect(result).toBe('Hello---\n');
     });
 
     it('handles empty content', () => {
-        expect(appendFormatSeparator('', DocDownloadFormat.HTML)).toBe('\n<hr>\n');
+        expect(appendFormatSeparator('', DocDownloadFormat.HTML)).toBe('<hr>\n<p>&nbsp;</p>');
     });
 
     it('handles whitespace-only content', () => {
         const result = appendFormatSeparator('   ', DocDownloadFormat.MARKDOWN);
-        expect(result).toBe('\n---\n');
+        expect(result).toBe('---\n');
     });
 });
