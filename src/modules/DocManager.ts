@@ -10,6 +10,8 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { DocIframeHandler } from './DocIframeHandler';
 import { IBulkOperationConfig, IBulkItem } from '../interfaces/IBulkOperationConfig';
+import { applyExportTransforms } from '../utils/exportTransform';
+import { writeToClipboard } from '../utils/clipboard';
 
 /**
  * Two-pass retry orchestrator for bulk operations.
@@ -313,6 +315,14 @@ export const DocManager = {
         const headerRow = Core.getElement(Elements.DOC_TABLE_HEAD_ROW);
 
         if (headerRow) {
+            // Add Copy column header
+            const copyTh = document.createElement('th');
+            copyTh.className = 'thead';
+            copyTh.innerText = 'Copy';
+            copyTh.align = 'center';
+            copyTh.width = '5%';
+            headerRow.appendChild(copyTh);
+
             // Add Export column header
             const exportTh = document.createElement('th');
             exportTh.className = 'thead';
@@ -345,6 +355,25 @@ export const DocManager = {
             const docId = match[1];
 
             const title = (row as HTMLTableRowElement).cells[1].innerText.trim().replace(/[/\\?%*:|"<>]/g, '-');
+
+            // Add Copy cell
+            const copyTd = document.createElement('td');
+            copyTd.align = 'center';
+            copyTd.vAlign = 'top';
+            copyTd.width = '5%';
+
+            const copyLink = document.createElement('a');
+            copyLink.innerText = "Copy";
+            copyLink.href = "#";
+            copyLink.title = "Copy to clipboard";
+            copyLink.style.textDecoration = "none";
+            copyLink.style.whiteSpace = "nowrap";
+            copyLink.onclick = (e) => {
+                e.preventDefault();
+                this.runSingleClipboardExport(e.currentTarget as HTMLElement, docId, title);
+            };
+            copyTd.appendChild(copyLink);
+            row.appendChild(copyTd);
 
             // Add Export cell
             const exportTd = document.createElement('td');
@@ -428,14 +457,15 @@ export const DocManager = {
             : await DocFetchService.fetchAndConvertPrivateDoc(docId, title);
 
         if (content) {
+            const transformed = applyExportTransforms(content, format);
             if (format === DocDownloadFormat.DOCX) {
-                const docxBlob = await DocxBuilder.build(content, title);
+                const docxBlob = await DocxBuilder.build(transformed, title);
                 saveAs(docxBlob, `${title}.docx`);
             } else {
                 const mimeType = format === DocDownloadFormat.HTML
                     ? "text/html;charset=utf-8"
                     : "text/markdown;charset=utf-8";
-                saveAs(new Blob([content], { type: mimeType }), `${title}.${format}`);
+                saveAs(new Blob([transformed], { type: mimeType }), `${title}.${format}`);
             }
             btnElement.innerText = "Done";
             setTimeout(() => {
@@ -447,6 +477,72 @@ export const DocManager = {
             btnElement.innerText = "Err";
             log("Failed to fetch document content.");
         }
+    },
+
+    /**
+     * Copies a single document's content to the system clipboard.
+     * Fetches in the configured format, applies export transforms
+     * (Ao3 HTML compatibility, append separator), and writes to clipboard.
+     * For DOCX format: fetches HTML source and writes as HTML to clipboard,
+     * since DOCX is a binary file format not meaningful on clipboard.
+     * @param btnElement - The button clicked (for UI feedback).
+     * @param docId - The FFN Document ID.
+     * @param title - The title of the document.
+     */
+    runSingleClipboardExport: async function (btnElement: HTMLElement, docId: string, title: string) {
+        const log = Core.getLogger(this.MODULE_NAME, 'runSingleClipboardExport');
+        const originalText = btnElement.innerText;
+        const originalTitle = btnElement.title;
+
+        btnElement.innerText = "...";
+        btnElement.style.color = "gray";
+        btnElement.style.cursor = "wait";
+
+        const format = SettingsManager.get('docDownloadFormat');
+        log(`Starting clipboard export for ${title} (${docId}) as ${format}`);
+
+        let content: string | null = null;
+        let isHtml = false;
+
+        if (format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML) {
+            content = await DocFetchService.fetchPrivateDocAsHtml(docId, title);
+            isHtml = true;
+        } else {
+            content = await DocFetchService.fetchAndConvertPrivateDoc(docId, title);
+            isHtml = false;
+        }
+
+        if (content) {
+            // For DOCX clipboard writes, treat format as HTML so Ao3
+            // compatibility applies (the content is HTML, not binary DOCX).
+            const effectiveFormat = format === DocDownloadFormat.DOCX
+                ? DocDownloadFormat.HTML
+                : format;
+            const transformed = applyExportTransforms(content, effectiveFormat);
+
+            const success = await writeToClipboard(transformed, isHtml);
+
+            if (success) {
+                btnElement.innerText = "Copied!";
+                btnElement.style.color = "green";
+                log(`Clipboard export successful for "${title}"`);
+            } else {
+                btnElement.innerText = "Err";
+                btnElement.style.color = "red";
+                log(`Clipboard export failed for "${title}"`);
+            }
+        } else {
+            btnElement.innerText = "Err";
+            btnElement.style.color = "red";
+            log(`Failed to fetch document content for clipboard export.`);
+        }
+
+        setTimeout(() => {
+            btnElement.innerText = originalText;
+            btnElement.title = originalTitle;
+            btnElement.style.color = "";
+            btnElement.style.cursor = "pointer";
+        }, 2500);
     },
 
     /**
@@ -514,11 +610,12 @@ export const DocManager = {
                     ? await DocFetchService.fetchPrivateDocAsHtml(item.docId, item.title)
                     : await DocFetchService.fetchAndConvertPrivateDoc(item.docId, item.title);
                 if (content) {
+                    const transformed = applyExportTransforms(content, format);
                     if (format === DocDownloadFormat.DOCX) {
-                        const docxBlob = await DocxBuilder.build(content, item.title);
+                        const docxBlob = await DocxBuilder.build(transformed, item.title);
                         zip.file(`${item.title}.docx`, docxBlob, { date: new Date() });
                     } else {
-                        zip.file(`${item.title}.${format}`, content, { date: new Date() });
+                        zip.file(`${item.title}.${format}`, transformed, { date: new Date() });
                     }
                     return true;
                 }

@@ -51,6 +51,19 @@ export interface FFNSettings {
     pasteForceIntercept: boolean;
 
     /**
+     * When true (default), converts inline `style="text-align:*"` attributes to
+     * `align="*"` attributes in HTML exports. Ao3's TinyMCE rejects the style
+     * attribute but accepts the align attribute.
+     */
+    ao3HtmlCompatibility: boolean;
+
+    /**
+     * When true, appends a format-specific separator at the end of exported
+     * content: `---` for Markdown, `<hr>` for HTML/DOCX.
+     */
+    appendSeparator: boolean;
+
+    /**
      * Number of pixels to scroll per W/S/↑/↓ keypress on story reading pages.
      */
     scrollStep: number;
@@ -110,6 +123,8 @@ const DEFAULTS: FFNSettings = {
     pasteConvertMarkdown: true,
     pasteConvertHtml: true,
     pasteForceIntercept: false,
+    ao3HtmlCompatibility: true,
+    appendSeparator: false,
     scrollStep: 300,
     fetchMaxRetries: 3,
     fetchRetryBaseMs: 2000,
@@ -289,6 +304,8 @@ function _loadAll(): void {
     _loadBool('pasteConvertMarkdown');
     _loadBool('pasteConvertHtml');
     _loadBool('pasteForceIntercept');
+    _loadBool('ao3HtmlCompatibility');
+    _loadBool('appendSeparator');
     _loadPositiveNumber('scrollStep');
     _loadPositiveNumber('fetchMaxRetries');
     _loadPositiveNumber('fetchRetryBaseMs');

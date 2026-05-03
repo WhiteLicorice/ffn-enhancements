@@ -9,6 +9,8 @@ import { SettingsManager } from './SettingsManager';
 import { saveAs } from 'file-saver';
 import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
 import { DocIframeHandler } from './DocIframeHandler';
+import { applyExportTransforms } from '../utils/exportTransform';
+import { writeToClipboard } from '../utils/clipboard';
 
 /**
  * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).
@@ -107,6 +109,14 @@ export const DocEditor = {
         // Store reference so the subscriber in init() can update the tooltip live.
         this.downloadBtn = dlBtn;
         this.injectToolbarButton(dlBtn);
+
+        // Clipboard button
+        const clipBtn = TinyMCEButtonFactory.create(
+            'Copy to Clipboard',
+            '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">' + '⧉' + '</span>',
+            () => this.clipboardCurrentDoc()
+        );
+        this.injectToolbarButton(clipBtn);
     },
 
     /**
@@ -191,22 +201,103 @@ export const DocEditor = {
             if (format === DocDownloadFormat.DOCX) {
                 const html = ContentParser.parseHtmlFromPrivateDoc(document, title);
                 if (html) {
-                    const blob = await DocxBuilder.build(html, title);
+                    const transformed = applyExportTransforms(html, format);
+                    const blob = await DocxBuilder.build(transformed, title);
                     saveAs(blob, `${title}.docx`);
                 }
             } else if (format === DocDownloadFormat.HTML) {
                 const html = ContentParser.parseHtmlFromPrivateDoc(document, title);
                 if (html) {
-                    saveAs(new Blob([html], { type: "text/html;charset=utf-8" }), `${title}.html`);
+                    const transformed = applyExportTransforms(html, format);
+                    saveAs(new Blob([transformed], { type: "text/html;charset=utf-8" }), `${title}.html`);
                 }
             } else {
                 const markdown = ContentParser.parseContentFromPrivateDoc(document, title);
                 if (markdown) {
-                    saveAs(new Blob([markdown], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
+                    const transformed = applyExportTransforms(markdown, format);
+                    saveAs(new Blob([transformed], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
                 }
             }
         } catch (e) {
             log('CRITICAL ERROR', e);
         }
+    },
+
+    /**
+     * Copies the currently open document's content to the system clipboard.
+     * Applies export transforms (Ao3 HTML compatibility, append separator).
+     * For DOCX format: writes the HTML source to clipboard as HTML.
+     */
+    clipboardCurrentDoc: async function () {
+        const log = Core.getLogger(this.MODULE_NAME, 'clipboardCurrentDoc');
+        const title = this.getTitle();
+        const format = SettingsManager.get('docDownloadFormat');
+
+        log(`Starting clipboard export for "${title}" as ${format}`);
+
+        let content: string | null = null;
+        let isHtml = false;
+
+        try {
+            if (format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML) {
+                content = ContentParser.parseHtmlFromPrivateDoc(document, title);
+                isHtml = true;
+            } else {
+                content = ContentParser.parseContentFromPrivateDoc(document, title);
+                isHtml = false;
+            }
+
+            if (!content) {
+                log('No content found to copy.');
+                this._showToast('No content to copy', true);
+                return;
+            }
+
+            const effectiveFormat = format === DocDownloadFormat.DOCX
+                ? DocDownloadFormat.HTML
+                : format;
+            const transformed = applyExportTransforms(content, effectiveFormat);
+
+            const success = await writeToClipboard(transformed, isHtml);
+
+            if (success) {
+                log(`Clipboard export successful for "${title}"`);
+                this._showToast('Copied to clipboard!', false);
+            } else {
+                log(`Clipboard export failed for "${title}"`);
+                this._showToast('Clipboard copy failed', true);
+            }
+        } catch (e) {
+            log('Clipboard export error', e);
+            this._showToast('Clipboard error', true);
+        }
+    },
+
+    /**
+     * Shows a temporary toast notification.
+     * @param message - The message to display.
+     * @param isError - If true, styles the toast as an error (red).
+     */
+    _showToast: function (message: string, isError: boolean) {
+        const existing = document.getElementById('ffne-clipboard-toast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'ffne-clipboard-toast';
+        toast.textContent = message;
+        toast.style.cssText = `
+            position: fixed; bottom: 20px; right: 20px; z-index: 999999;
+            padding: 10px 20px; border-radius: 6px;
+            font-family: Arial, sans-serif; font-size: 14px;
+            color: #fff; background-color: ${isError ? '#e74c3c' : '#27ae60'};
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            transition: opacity 0.3s ease;
+        `;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 2000);
     }
 };
