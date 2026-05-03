@@ -1,3 +1,5 @@
+import { GM_setClipboard } from '$';
+
 /**
  * Strips HTML tags using DOMParser. More robust than regex for edge cases.
  */
@@ -7,7 +9,7 @@ function stripHtmlBasic(html: string): string {
 }
 
 /**
- * Legacy fallback: temp textarea + execCommand('copy').
+ * Legacy fallback for plain text: temp textarea + execCommand('copy').
  */
 function copyTextFallback(text: string): boolean {
     const textarea = document.createElement('textarea');
@@ -28,9 +30,8 @@ function copyTextFallback(text: string): boolean {
 }
 
 /**
- * Preserves both text/html and text/plain on clipboard when ClipboardItem API fails.
- * Uses a hidden contentEditable div — selecting its content and calling
- * execCommand('copy') causes the browser to write both MIME types natively.
+ * Legacy fallback for HTML: hidden contentEditable div + execCommand('copy').
+ * The browser natively writes both text/html and text/plain MIME types.
  */
 function copyHtmlFallback(html: string): boolean {
     const div = document.createElement('div');
@@ -61,12 +62,14 @@ function copyHtmlFallback(html: string): boolean {
 /**
  * Writes content to the system clipboard.
  *
- * For HTML content: tries navigator.clipboard.write() with both text/html
- * and text/plain MIME types so pasting into rich editors preserves formatting
- * while plain-text contexts get readable text.
+ * Fallback chain (HTML):
+ * 1. GM_setClipboard (Tampermonkey native — most reliable in userscript context)
+ * 2. ClipboardItem API (modern browsers, writes both text/html + text/plain)
+ * 3. contentEditable div + execCommand('copy') (legacy fallback)
  *
- * Fallback chain:
- * 1. ClipboardItem API (HTML only) → 2. writeText() → 3. execCommand('copy')
+ * Fallback chain (plain text):
+ * 1. navigator.clipboard.writeText()
+ * 2. textarea + execCommand('copy')
  *
  * @returns true if clipboard write succeeded, false otherwise.
  */
@@ -75,6 +78,17 @@ export async function writeToClipboard(
     isHtml: boolean
 ): Promise<boolean> {
     if (isHtml) {
+        // 1. GM_setClipboard — Tampermonkey native, synchronous, works in sandbox.
+        if (typeof GM_setClipboard !== 'undefined') {
+            try {
+                GM_setClipboard(content, 'html');
+                return true;
+            } catch {
+                // GM_setClipboard failed — fall through.
+            }
+        }
+
+        // 2. ClipboardItem API — writes both text/html and text/plain.
         try {
             const plainText = stripHtmlBasic(content);
             await navigator.clipboard.write([
@@ -85,10 +99,11 @@ export async function writeToClipboard(
             ]);
             return true;
         } catch {
-            // ClipboardItem not available — fall through to HTML-specific
-            // fallback that preserves both MIME types.
-            return copyHtmlFallback(content);
+            // Fall through to execCommand.
         }
+
+        // 3. contentEditable div + execCommand('copy').
+        return copyHtmlFallback(content);
     }
 
     try {

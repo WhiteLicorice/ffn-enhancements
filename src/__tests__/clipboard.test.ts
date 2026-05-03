@@ -20,8 +20,6 @@ describe('writeToClipboard', () => {
             writable: true,
             configurable: true,
         });
-        // jsdom execCommand('copy') returns true by default.
-        // Override to false so fallback tests can verify behavior.
         document.execCommand = vi.fn().mockReturnValue(false) as unknown as typeof document.execCommand;
     });
 
@@ -34,32 +32,15 @@ describe('writeToClipboard', () => {
         document.execCommand = originalExecCommand;
     });
 
+    // ── Plain text ──
+
     it('writes plain text using writeText', async () => {
         const result = await writeToClipboard('Hello', false);
         expect(result).toBe(true);
         expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Hello');
     });
 
-    it('writes HTML using ClipboardItem API', async () => {
-        const result = await writeToClipboard('<p>Hello</p>', true);
-        expect(result).toBe(true);
-        expect(navigator.clipboard.write).toHaveBeenCalled();
-        const args = (navigator.clipboard.write as ReturnType<typeof vi.fn>).mock.calls[0][0];
-        expect(args[0]).toBeInstanceOf(MockClipboardItem);
-    });
-
-    it('falls back to contentEditable div + execCommand when ClipboardItem fails for HTML', async () => {
-        (navigator.clipboard.write as ReturnType<typeof vi.fn>).mockRejectedValue(
-            new Error('Not available')
-        );
-        // Make execCommand succeed for this test.
-        (document.execCommand as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
-        const result = await writeToClipboard('<p>Hello</p>', true);
-        expect(result).toBe(true);
-        expect(document.execCommand).toHaveBeenCalledWith('copy');
-    });
-
-    it('returns false when all clipboard methods fail (plain text path)', async () => {
+    it('returns false when all text clipboard methods fail', async () => {
         (navigator.clipboard.write as ReturnType<typeof vi.fn>).mockRejectedValue(
             new Error('Not available')
         );
@@ -68,5 +49,28 @@ describe('writeToClipboard', () => {
         );
         const result = await writeToClipboard('Hello', false);
         expect(result).toBe(false);
+    });
+
+    // ── HTML — GM path (primary) ──
+
+    it('uses GM_setClipboard for HTML content', async () => {
+        // GM_setClipboard is mocked in the $ mock — synchronous, always succeeds.
+        const result = await writeToClipboard('<p>Hello</p>', true);
+        expect(result).toBe(true);
+        // GM path short-circuits — navigator.clipboard.write is NOT called.
+        expect(navigator.clipboard.write).not.toHaveBeenCalled();
+    });
+
+    it('skips ClipboardItem API when GM_setClipboard succeeds', async () => {
+        // Verify the GM path takes priority over ClipboardItem
+        const rejectWrite = vi.fn().mockRejectedValue(new Error('Would fail if called'));
+        Object.defineProperty(globalThis.navigator, 'clipboard', {
+            value: { write: rejectWrite, writeText: vi.fn() },
+            writable: true,
+            configurable: true,
+        });
+        const result = await writeToClipboard('<p>Hello</p>', true);
+        expect(result).toBe(true);
+        expect(rejectWrite).not.toHaveBeenCalled();
     });
 });

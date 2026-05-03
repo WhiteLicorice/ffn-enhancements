@@ -20,6 +20,7 @@ export default defineConfig({
           'GM_registerMenuCommand',
           'GM_unregisterMenuCommand',
           'GM_addValueChangeListener',
+          'GM_setClipboard',
         ],
         license: 'GPL-3.0-or-later',
         updateURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',
