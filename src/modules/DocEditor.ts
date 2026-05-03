@@ -187,6 +187,16 @@ export const DocEditor = {
     },
 
     /**
+     * Reads current HTML content directly from TinyMCE iframe body.
+     * More reliable than reading from textarea (no sync delay).
+     */
+    _getEditorHtml: function (): string | null {
+        if (!this.editorIframe?.contentDocument?.body) return null;
+        const html = this.editorIframe.contentDocument.body.innerHTML;
+        return html || null;
+    },
+
+    /**
      * Orchestrates the export of the currently open document.
      * The output format (Markdown or HTML) is read from SettingsManager at call time,
      * so changes made via the Tampermonkey menu take effect on the next click.
@@ -198,25 +208,23 @@ export const DocEditor = {
         const format = SettingsManager.get('docDownloadFormat');
 
         try {
+            const html = this._getEditorHtml();
+            if (!html) {
+                log('No HTML content found in editor.');
+                return;
+            }
+
             if (format === DocDownloadFormat.DOCX) {
-                const html = ContentParser.parseHtmlFromPrivateDoc(document, title);
-                if (html) {
-                    const transformed = applyExportTransforms(html, format);
-                    const blob = await DocxBuilder.build(transformed, title);
-                    saveAs(blob, `${title}.docx`);
-                }
+                const transformed = applyExportTransforms(html, format);
+                const blob = await DocxBuilder.build(transformed, title);
+                saveAs(blob, `${title}.docx`);
             } else if (format === DocDownloadFormat.HTML) {
-                const html = ContentParser.parseHtmlFromPrivateDoc(document, title);
-                if (html) {
-                    const transformed = applyExportTransforms(html, format);
-                    saveAs(new Blob([transformed], { type: "text/html;charset=utf-8" }), `${title}.html`);
-                }
+                const transformed = applyExportTransforms(html, format);
+                saveAs(new Blob([transformed], { type: "text/html;charset=utf-8" }), `${title}.html`);
             } else {
-                const markdown = ContentParser.parseContentFromPrivateDoc(document, title);
-                if (markdown) {
-                    const transformed = applyExportTransforms(markdown, format);
-                    saveAs(new Blob([transformed], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
-                }
+                const markdown = ContentParser.turndownService.turndown(html);
+                const transformed = applyExportTransforms(markdown, format);
+                saveAs(new Blob([transformed], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
             }
         } catch (e) {
             log('CRITICAL ERROR', e);
@@ -235,22 +243,23 @@ export const DocEditor = {
 
         log(`Starting clipboard export for "${title}" as ${format}`);
 
-        let content: string | null = null;
-        let isHtml = false;
+        const html = this._getEditorHtml();
+        if (!html) {
+            log('No HTML content found in editor.');
+            this._showToast('No content to copy', true);
+            return;
+        }
 
         try {
+            let content: string;
+            let isHtml: boolean;
+
             if (format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML) {
-                content = ContentParser.parseHtmlFromPrivateDoc(document, title);
+                content = html;
                 isHtml = true;
             } else {
-                content = ContentParser.parseContentFromPrivateDoc(document, title);
+                content = ContentParser.turndownService.turndown(html);
                 isHtml = false;
-            }
-
-            if (!content) {
-                log('No content found to copy.');
-                this._showToast('No content to copy', true);
-                return;
             }
 
             const effectiveFormat = format === DocDownloadFormat.DOCX

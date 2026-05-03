@@ -9,6 +9,7 @@ class MockClipboardItem {
 
 describe('writeToClipboard', () => {
     const originalClipboard = globalThis.navigator.clipboard;
+    const originalExecCommand = document.execCommand;
 
     beforeEach(() => {
         Object.defineProperty(globalThis.navigator, 'clipboard', {
@@ -19,6 +20,9 @@ describe('writeToClipboard', () => {
             writable: true,
             configurable: true,
         });
+        // jsdom execCommand('copy') returns true by default.
+        // Override to false so fallback tests can verify behavior.
+        document.execCommand = vi.fn().mockReturnValue(false) as unknown as typeof document.execCommand;
     });
 
     afterEach(() => {
@@ -27,6 +31,7 @@ describe('writeToClipboard', () => {
             writable: true,
             configurable: true,
         });
+        document.execCommand = originalExecCommand;
     });
 
     it('writes plain text using writeText', async () => {
@@ -43,16 +48,18 @@ describe('writeToClipboard', () => {
         expect(args[0]).toBeInstanceOf(MockClipboardItem);
     });
 
-    it('falls back to writeText when ClipboardItem API fails (HTML path)', async () => {
+    it('falls back to contentEditable div + execCommand when ClipboardItem fails for HTML', async () => {
         (navigator.clipboard.write as ReturnType<typeof vi.fn>).mockRejectedValue(
             new Error('Not available')
         );
+        // Make execCommand succeed for this test.
+        (document.execCommand as ReturnType<typeof vi.fn>).mockReturnValueOnce(true);
         const result = await writeToClipboard('<p>Hello</p>', true);
         expect(result).toBe(true);
-        expect(navigator.clipboard.writeText).toHaveBeenCalled();
+        expect(document.execCommand).toHaveBeenCalledWith('copy');
     });
 
-    it('returns false when all clipboard methods fail', async () => {
+    it('returns false when all clipboard methods fail (plain text path)', async () => {
         (navigator.clipboard.write as ReturnType<typeof vi.fn>).mockRejectedValue(
             new Error('Not available')
         );

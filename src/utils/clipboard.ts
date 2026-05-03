@@ -28,6 +28,37 @@ function copyTextFallback(text: string): boolean {
 }
 
 /**
+ * Preserves both text/html and text/plain on clipboard when ClipboardItem API fails.
+ * Uses a hidden contentEditable div — selecting its content and calling
+ * execCommand('copy') causes the browser to write both MIME types natively.
+ */
+function copyHtmlFallback(html: string): boolean {
+    const div = document.createElement('div');
+    div.contentEditable = 'true';
+    div.innerHTML = html;
+    div.style.position = 'fixed';
+    div.style.left = '-9999px';
+    div.style.top = '-9999px';
+    div.style.opacity = '0';
+    document.body.appendChild(div);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    const range = document.createRange();
+    range.selectNodeContents(div);
+    selection?.addRange(range);
+
+    try {
+        return document.execCommand('copy');
+    } catch {
+        return false;
+    } finally {
+        selection?.removeAllRanges();
+        document.body.removeChild(div);
+    }
+}
+
+/**
  * Writes content to the system clipboard.
  *
  * For HTML content: tries navigator.clipboard.write() with both text/html
@@ -54,7 +85,9 @@ export async function writeToClipboard(
             ]);
             return true;
         } catch {
-            // ClipboardItem not available — fall through to writeText.
+            // ClipboardItem not available — fall through to HTML-specific
+            // fallback that preserves both MIME types.
+            return copyHtmlFallback(content);
         }
     }
 
