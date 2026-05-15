@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DocManager } from '../modules/DocManager';
 import type { IBulkItem } from '../interfaces/IBulkOperationConfig';
+import type { IAo3Chapter } from '../interfaces/IAo3Migration';
+import { Ao3Service } from '../services/Ao3Service';
+import { DocFetchService } from '../services/DocFetchService';
+import { SettingsManager } from '../modules/SettingsManager';
+import { Core } from '../modules/Core';
+import { DocManagerDelegate } from '../delegates/DocManagerDelegate';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -20,6 +26,11 @@ function makeBtn(): HTMLButtonElement {
 function cleanupDOM(): void {
     document.body.innerHTML = '';
     document.head.innerHTML = '';
+}
+
+async function flushMicrotasks(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
 }
 
 function makeItem(docName: string, docId: string): IBulkItem {
@@ -47,6 +58,41 @@ function makeSelectedFile(name: string, content: string = '# Title'): File {
         configurable: true,
     });
     return file;
+}
+
+function makeAo3Chapter(chapterNumber: number): IAo3Chapter {
+    return {
+        workId: '77945481',
+        chapterId: `900${chapterNumber}`,
+        chapterNumber,
+        label: `Chapter ${chapterNumber}: Title ${chapterNumber}`,
+        title: `Title ${chapterNumber}`,
+        readerUrl: `https://archiveofourown.org/works/77945481/chapters/900${chapterNumber}`,
+        editUrl: `https://archiveofourown.org/works/77945481/chapters/900${chapterNumber}/edit`,
+    };
+}
+
+function mountDocManagerTable(docNames: string[]): void {
+    document.body.innerHTML = `
+        <table id="gui_table1">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Life</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${docNames.map((docName, index) => `
+                    <tr>
+                        <td><a href="https://www.fanfiction.net/docs/edit.php?docid=${100 + index}">Edit</a></td>
+                        <td>${docName}</td>
+                        <td>123 days</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
 }
 
 // ─── Module smoke test ──────────────────────────────────────────────────────
@@ -308,6 +354,7 @@ describe('DocManager advanced drawer', () => {
         expect(document.querySelector('[data-ffne-action="bulk-export"]')).not.toBeNull();
         expect(document.querySelector('[data-ffne-action="bulk-refresh"]')).not.toBeNull();
         expect(document.querySelector('[data-ffne-action="bulk-import"]')).not.toBeNull();
+        expect(document.querySelector('[data-ffne-action="bulk-migrate-ao3"]')).not.toBeNull();
     });
 
     it('routes Bulk Export and Bulk Refresh through existing handlers', () => {
@@ -321,5 +368,227 @@ describe('DocManager advanced drawer', () => {
 
         expect(exportSpy).toHaveBeenCalledTimes(1);
         expect(refreshSpy).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('DocManager AO3 migration mapping', () => {
+    it('auto-maps numbered docs to matching AO3 chapter numbers', () => {
+        const rows = DocManager._createAo3MigrationRows(
+            [makeItem('P1', '1'), makeItem('P44', '44'), makeItem('Intro', '99')],
+            [makeAo3Chapter(1), makeAo3Chapter(44)],
+        );
+
+        expect(rows[0]).toMatchObject({
+            mappingSource: 'auto',
+            status: 'mapped',
+        });
+        expect(rows[0].selectedChapter?.chapterNumber).toBe(1);
+        expect(rows[1].selectedChapter?.chapterNumber).toBe(44);
+        expect(rows[2]).toMatchObject({
+            selectedChapter: null,
+            mappingSource: 'unmapped',
+            status: 'skipped',
+        });
+    });
+
+    it('manual mappings override auto-map and unmapped rows are skipped', () => {
+        const chapters = [makeAo3Chapter(1), makeAo3Chapter(2), makeAo3Chapter(3)];
+        const rows = DocManager._createAo3MigrationRows(
+            [makeItem('P1', '1'), makeItem('P2', '2')],
+            chapters,
+        );
+
+        DocManager._setManualAo3ChapterSelection(rows, chapters, 0, chapters[2].chapterId);
+        DocManager._setManualAo3ChapterSelection(rows, chapters, 1, '');
+        const plan = DocManager._buildAo3MigrationPlan('https://archiveofourown.org/works/77945481', chapters, rows, false);
+
+        expect(plan.rows[0]).toMatchObject({
+            mappingSource: 'manual',
+            status: 'mapped',
+        });
+        expect(plan.rows[0].selectedChapter?.chapterNumber).toBe(3);
+        expect(plan.rows[1].status).toBe('skipped');
+        expect(plan.mappedCount).toBe(1);
+        expect(plan.skippedCount).toBe(1);
+    });
+
+    it('blocks duplicate AO3 target mappings during validation', () => {
+        const chapters = [makeAo3Chapter(1), makeAo3Chapter(2)];
+        const rows = DocManager._createAo3MigrationRows(
+            [makeItem('P1', '1'), makeItem('P2', '2')],
+            chapters,
+        );
+
+        DocManager._setManualAo3ChapterSelection(rows, chapters, 1, chapters[0].chapterId);
+        const plan = DocManager._buildAo3MigrationPlan('https://archiveofourown.org/works/77945481', chapters, rows, false);
+
+        expect(plan.hasBlockingErrors).toBe(true);
+        expect(plan.duplicateTargets).toEqual([chapters[0].chapterId]);
+        expect(plan.rows.map(row => row.status)).toEqual(['duplicate', 'duplicate']);
+    });
+});
+
+describe('DocManager AO3 migration modal', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        Core.activeDelegate = DocManagerDelegate;
+        vi.restoreAllMocks();
+    });
+
+    afterEach(() => {
+        DocManager.closeAo3MigrationModal();
+        Core.activeDelegate = null;
+        cleanupDOM();
+    });
+
+    it('loads AO3 chapters and renders one mapping row per visible doc', async () => {
+        mountDocManagerTable(['P1', 'P2']);
+        vi.spyOn(Ao3Service, 'fetchChapterIndex').mockResolvedValue({
+            ok: true,
+            chapters: [makeAo3Chapter(1), makeAo3Chapter(2)],
+        });
+
+        DocManager.openAo3MigrationModal();
+        const input = document.getElementById('ffne-dm-ao3-work-url') as HTMLInputElement;
+        input.value = 'https://archiveofourown.org/works/77945481';
+        document.getElementById('ffne-dm-ao3-load')?.dispatchEvent(new MouseEvent('click'));
+        await flushMicrotasks();
+
+        const rows = document.querySelectorAll('#ffne-dm-ao3-mappings tbody tr');
+        expect(rows).toHaveLength(2);
+        expect(rows[0].textContent).toContain('P1');
+        expect((rows[0].querySelector('select') as HTMLSelectElement).value).toBe('9001');
+        expect((rows[1].querySelector('select') as HTMLSelectElement).value).toBe('9002');
+    });
+});
+
+describe('DocManager AO3 migration execution', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        vi.useFakeTimers();
+        vi.restoreAllMocks();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        cleanupDOM();
+    });
+
+    async function runAo3MigrationWithPlan(plan: ReturnType<typeof DocManager._buildAo3MigrationPlan>) {
+        const btn = makeBtn();
+        const status = document.createElement('div');
+        const results = document.createElement('div');
+        document.body.append(status, results);
+
+        const promise = DocManager.runBulkAo3Migration(mockEvent(btn), plan, status, results);
+        await vi.runAllTimersAsync();
+        await promise;
+        await vi.runAllTimersAsync();
+
+        return { btn, status, results };
+    }
+
+    it('blocks execution when duplicate chapter mappings exist', async () => {
+        const chapters = [makeAo3Chapter(1), makeAo3Chapter(2)];
+        const rows = DocManager._createAo3MigrationRows(
+            [makeItem('P1', '1'), makeItem('P2', '2')],
+            chapters,
+        );
+        DocManager._setManualAo3ChapterSelection(rows, chapters, 1, chapters[0].chapterId);
+        const plan = DocManager._buildAo3MigrationPlan('https://archiveofourown.org/works/77945481', chapters, rows, false);
+        const fetchSpy = vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml');
+        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent');
+
+        const { status } = await runAo3MigrationWithPlan(plan);
+
+        expect(status.textContent).toContain('duplicate chapter mappings');
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('blocks AO3 POSTs when the source doc is empty', async () => {
+        const chapters = [makeAo3Chapter(1)];
+        const plan = DocManager._buildAo3MigrationPlan(
+            'https://archiveofourown.org/works/77945481',
+            chapters,
+            DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters),
+            false,
+        );
+        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('');
+        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent');
+
+        const { status, results } = await runAo3MigrationWithPlan(plan);
+
+        expect(status.textContent).toContain('No AO3 chapters migrated');
+        expect(results.innerHTML).toContain('Source document is empty.');
+        expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('forces AO3 compatibility transforms even when the global setting is off', async () => {
+        const chapters = [makeAo3Chapter(1)];
+        const plan = DocManager._buildAo3MigrationPlan(
+            'https://archiveofourown.org/works/77945481',
+            chapters,
+            DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters),
+            false,
+        );
+        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p style="text-align: center;">Centered</p>');
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
+            return 0;
+        });
+        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent').mockResolvedValue({ ok: true });
+
+        await runAo3MigrationWithPlan(plan);
+
+        expect(updateSpy).toHaveBeenCalledWith(
+            chapters[0],
+            '<p align="center">Centered</p>'
+        );
+    });
+
+    it('applies optional linebreak conversion only when checked', async () => {
+        const chapters = [makeAo3Chapter(1)];
+        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p>Line 1\nLine 2</p>');
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
+            return 0;
+        });
+        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent').mockResolvedValue({ ok: true });
+
+        const rowsA = DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters);
+        const rowsB = DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters);
+        const withoutLinebreaks = DocManager._buildAo3MigrationPlan('https://archiveofourown.org/works/77945481', chapters, rowsA, false);
+        const withLinebreaks = DocManager._buildAo3MigrationPlan('https://archiveofourown.org/works/77945481', chapters, rowsB, true);
+
+        await runAo3MigrationWithPlan(withoutLinebreaks);
+        await runAo3MigrationWithPlan(withLinebreaks);
+
+        expect(updateSpy.mock.calls[0][1]).toBe('<p>Line 1\nLine 2</p>');
+        expect(updateSpy.mock.calls[1][1]).toBe('<p>Line 1<br>Line 2</p>');
+    });
+
+    it('renders a failure table for failed AO3 migrations', async () => {
+        const chapters = [makeAo3Chapter(1)];
+        const plan = DocManager._buildAo3MigrationPlan(
+            'https://archiveofourown.org/works/77945481',
+            chapters,
+            DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters),
+            false,
+        );
+        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p>Ready</p>');
+        vi.spyOn(Ao3Service, 'updateChapterContent').mockResolvedValue({
+            ok: false,
+            reason: 'AO3 rejected the update.',
+        });
+
+        const { results } = await runAo3MigrationWithPlan(plan);
+
+        expect(results.innerHTML).toContain('Failed AO3 Migrations');
+        expect(results.innerHTML).toContain('P1');
+        expect(results.innerHTML).toContain('Chapter 1');
+        expect(results.innerHTML).toContain('AO3 rejected the update.');
     });
 });

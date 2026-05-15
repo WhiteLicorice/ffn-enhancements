@@ -43,6 +43,46 @@ export function appendFormatSeparator(
     }
 }
 
+function shouldSkipLinebreakNode(node: Text): boolean {
+    const parent = node.parentElement;
+    return !!parent && /^(PRE|CODE|SCRIPT|STYLE|TEXTAREA)$/i.test(parent.tagName);
+}
+
+export function convertTextLineBreaksToBr(html: string): string {
+    const doc = new DOMParser().parseFromString(`<div id="ffne-export-root">${html}</div>`, 'text/html');
+    const root = doc.getElementById('ffne-export-root');
+    if (!root) return html;
+
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = [];
+    let current = walker.nextNode();
+    while (current) {
+        nodes.push(current as Text);
+        current = walker.nextNode();
+    }
+
+    nodes.forEach(node => {
+        if (!node.data.includes('\n') || shouldSkipLinebreakNode(node)) return;
+
+        const parts = node.data.split(/\r\n|\r|\n/);
+        if (parts.length < 2) return;
+
+        const fragment = doc.createDocumentFragment();
+        parts.forEach((part, index) => {
+            if (part) fragment.appendChild(doc.createTextNode(part));
+            if (index < parts.length - 1) fragment.appendChild(doc.createElement('br'));
+        });
+        node.replaceWith(fragment);
+    });
+
+    return root.innerHTML;
+}
+
+export interface ExportTransformOptions {
+    forceAo3HtmlCompatibility?: boolean;
+    convertLineBreaks?: boolean;
+}
+
 /**
  * Applies all enabled export transformations to content.
  *
@@ -52,15 +92,20 @@ export function appendFormatSeparator(
  */
 export function applyExportTransforms(
     content: string,
-    format: DocDownloadFormat
+    format: DocDownloadFormat,
+    options: ExportTransformOptions = {},
 ): string {
     let result = content;
 
     if (
         format === DocDownloadFormat.HTML &&
-        SettingsManager.get('ao3HtmlCompatibility')
+        (SettingsManager.get('ao3HtmlCompatibility') || options.forceAo3HtmlCompatibility)
     ) {
         result = convertStyleAlignToAttr(result);
+    }
+
+    if (format === DocDownloadFormat.HTML && options.convertLineBreaks) {
+        result = convertTextLineBreaksToBr(result);
     }
 
     if (SettingsManager.get('appendSeparator')) {

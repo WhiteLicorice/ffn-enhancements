@@ -133,4 +133,23 @@ export enum Elements {
 
     /** Error panel returned by StoryEditContent actions. */
     STORY_EDIT_ERROR_PANEL = 'STORY_EDIT_ERROR_PANEL',
+
+    // =============================
+    // AO3
+    // =============================
+
+    /** Logged-in AO3 marker (body.logged-in or the user nav). */
+    AO3_LOGIN_INDICATOR = 'AO3_LOGIN_INDICATOR',
+
+    /** Chapter links listed on an AO3 work navigate page. */
+    AO3_WORK_CHAPTER_LINKS = 'AO3_WORK_CHAPTER_LINKS',
+
+    /** The AO3 chapter edit form. */
+    AO3_CHAPTER_EDIT_FORM = 'AO3_CHAPTER_EDIT_FORM',
+
+    /** The AO3 chapter content textarea. */
+    AO3_CHAPTER_CONTENT_TEXTAREA = 'AO3_CHAPTER_CONTENT_TEXTAREA',
+
+    /** The AO3 chapter update submit control. */
+    AO3_CHAPTER_UPDATE_BUTTON = 'AO3_CHAPTER_UPDATE_BUTTON',
 }

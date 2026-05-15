@@ -24,8 +24,8 @@ import { StoryEditContent } from './modules/StoryEditContent';
  * Used to route the application logic.
  */
 const path = window.location.pathname;
-
-Core.log('Router', 'main', `Here at https://www.fanfiction.net${path}`, path);
+const hostname = window.location.hostname;
+const isFfnHost = hostname === 'www.fanfiction.net' || hostname === 'fanfiction.net';
 
 // Register all sitewide modules with EarlyBoot.
 // Order of registration determines execution order and CSS cascade layering.
@@ -37,10 +37,12 @@ Core.log('Router', 'main', `Here at https://www.fanfiction.net${path}`, path);
 // 3. LayoutManager MUST come after SettingsManager so prime() can restore fluidMode
 //    preference before first paint, preventing FOUC.
 //
-EarlyBoot.register(SettingsManager);
-EarlyBoot.register(SettingsMenu);
-EarlyBoot.register(LayoutManager);
-EarlyBoot.prime();
+if (isFfnHost) {
+    EarlyBoot.register(SettingsManager);
+    EarlyBoot.register(SettingsMenu);
+    EarlyBoot.register(LayoutManager);
+    EarlyBoot.prime();
+}
 
 // Global error boundary — logs unhandled exceptions without breaking script
 window.addEventListener('error', (e) => {
@@ -61,7 +63,10 @@ const bootstrap = () => {
      * 1. Sets the Delegate based on the path (Core.setDelegate).
      * 2. Runs Phase 2 init() on all registered sitewide modules via EarlyBoot.
      */
-    Core.startup(path);
+    Core.log('Router', 'main', `Here at ${window.location.origin}${path}`, path);
+    Core.startup(window.location);
+
+    if (!isFfnHost) return;
 
     // Phase 2 — DOMContentLoaded.
     // Calls init() on every registered sitewide module now that the DOM is fully ready.

@@ -8,6 +8,7 @@ import { DocEditorDelegate } from '../delegates/DocEditorDelegate';
 import { GlobalDelegate } from '../delegates/GlobalDelegate';
 import { StoryEditContentDelegate } from '../delegates/StoryEditContentDelegate';
 import { FFNLogger } from './FFNLogger';
+import { Ao3Delegate } from '../delegates/Ao3Delegate';
 
 /**
  * Shared utility engine providing logging, DOM readiness,
@@ -61,9 +62,9 @@ export const Core = {
      * Detects the current page, sets the delegate, and initializes layout managers.
      * Call this from your main entry point (e.g., index.ts).
      */
-    startup: function (path: string) {
+    startup: function (locationLike: Pick<Location, 'pathname' | 'hostname'>) {
         const log = this.getLogger(this.MODULE_NAME, 'startup');
-        this.setDelegate(path);
+        this.setDelegate(locationLike);
         log('Core System initialized and ready.');
     },
 
@@ -76,10 +77,14 @@ export const Core = {
      * This abstracts away the DOM differences between pages.
      * @param pagePath - window.location.pathname
      */
-    setDelegate: function (pagePath: string) {
+    setDelegate: function ({ pathname: pagePath, hostname }: Pick<Location, 'pathname' | 'hostname'>) {
         const log = this.getLogger(this.MODULE_NAME, 'setDelegate');
 
-        if (pagePath.startsWith('/s/')) {
+        if (hostname === 'archiveofourown.org') {
+            this.activeDelegate = Ao3Delegate;
+            log('Strategy set to Ao3Delegate');
+        }
+        else if (pagePath.startsWith('/s/')) {
             this.activeDelegate = StoryDelegate;
             log('Strategy set to StoryDelegate');
         }
