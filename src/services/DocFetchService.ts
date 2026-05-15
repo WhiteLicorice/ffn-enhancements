@@ -103,6 +103,27 @@ export const DocFetchService = {
     },
 
     /**
+     * Validates that a private source document exists and contains non-empty editor content.
+     */
+    validatePrivateDocHasContentWithResult: async function (docId: string, title: string): Promise<PrivateDocSaveResult> {
+        const doc = await this._fetchDocPage(docId, title);
+        if (!doc) {
+            return { ok: false, reason: 'Could not load the source document.' };
+        }
+
+        const trimmedContent = this._getEditorContentForGuard(doc);
+        if (trimmedContent === null) {
+            return { ok: false, reason: 'Could not find the source document editor content.' };
+        }
+
+        if (!trimmedContent) {
+            return { ok: false, reason: 'Source document is empty.' };
+        }
+
+        return { ok: true };
+    },
+
+    /**
      * Reads the backing editor textarea used by FFN private documents.
      * Returns null when the editor was not present, and trimmed content otherwise.
      */

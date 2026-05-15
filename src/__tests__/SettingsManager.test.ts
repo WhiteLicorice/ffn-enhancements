@@ -124,6 +124,7 @@ describe('_parseStoredValue — edge cases', () => {
             'pasteForceIntercept',
             'ao3HtmlCompatibility',
             'appendSeparator',
+            'bulkReplaceAutofill',
         ];
         for (const k of boolKeys) {
             expect(_parseStoredValue(k, true)).toBe(true);

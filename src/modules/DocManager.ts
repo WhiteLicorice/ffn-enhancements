@@ -13,6 +13,7 @@ import { IBulkOperationConfig, IBulkItem } from '../interfaces/IBulkOperationCon
 import { applyExportTransforms } from '../utils/exportTransform';
 import { writeToClipboard } from '../utils/clipboard';
 import { SimpleMarkdownParser } from './SimpleMarkdownParser';
+import { runBulkOperation } from '../utils/runBulkOperation';
 
 const ADVANCED_DRAWER_ID = 'ffne-docmanager-advanced-drawer';
 const ADVANCED_MODAL_ID = 'ffne-docmanager-advanced-modal';
@@ -288,94 +289,14 @@ function _readFileAsText(file: File): Promise<string> {
  * Handles: row extraction, progress UI, two-pass retry with delays, error handling, button reset.
  * Operation-specific logic injected via callbacks.
  */
-async function _runBulkOperation(e: MouseEvent, config: IBulkOperationConfig): Promise<void> {
-    const log = Core.getLogger(DocManager.MODULE_NAME, '_runBulkOperation');
-    const { verb, processItem, onItemStart, onItemSuccess, onPermanentFailure, preBatch, onFinalize } = config;
-
-    log(`${verb} initiated.`);
-    const btn = e.currentTarget as HTMLButtonElement;
-
-    if (!Core.getElement(Elements.DOC_TABLE)) {
-        log("Table not found.");
-        return;
-    }
-
-    let items = _collectBulkItems();
-
-    if (config.filterRows) {
-        items = config.filterRows(items);
-    }
-
-    if (items.length === 0) {
-        log("No documents to process.");
-        return;
-    }
-
-    if (preBatch) preBatch(items.length);
-
-    const originalText = btn.innerText;
-    btn.disabled = true;
-    btn.style.cursor = "wait";
-    btn.style.opacity = "1";
-
-    let successCount = 0;
-    const retriedItems: IBulkItem[] = [];
-
-    try {
-        // PASS 1: Initial attempt
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            btn.innerText = `${i + 1}/${items.length}`;
-            if (onItemStart) onItemStart(item, 1, i + 1, items.length);
-
-            await new Promise(r => setTimeout(r, SettingsManager.get('bulkExportDelayMs')));
-
-            if (await processItem(item)) {
-                successCount++;
-                if (onItemSuccess) onItemSuccess(item, 1);
-            } else {
-                retriedItems.push(item);
-            }
-        }
-
-        // PASS 2: Retry failures after cooldown
-        if (retriedItems.length > 0) {
-            log(`Pass 1 done. ${retriedItems.length} items failed. Cooling...`);
-            btn.innerText = "Cooling...";
-            await new Promise(r => setTimeout(r, SettingsManager.get('bulkCooldownMs')));
-
-            for (let i = 0; i < retriedItems.length; i++) {
-                const item = retriedItems[i];
-                btn.innerText = `Retry ${i + 1}/${retriedItems.length}`;
-                if (onItemStart) onItemStart(item, 2, i + 1, retriedItems.length);
-
-                await new Promise(r => setTimeout(r, SettingsManager.get('bulkRetryDelayMs')));
-
-                if (await processItem(item)) {
-                    successCount++;
-                    if (onItemSuccess) onItemSuccess(item, 2);
-                } else {
-                    log(`Pass 2 Permanent Failure for ${item.title}`);
-                    if (onPermanentFailure) onPermanentFailure(item);
-                }
-            }
-        }
-
-        // Finalization
-        if (onFinalize) {
-            await onFinalize({ successCount, totalCount: items.length, retriedItems });
-        }
-    } catch (error) {
-        log(`Error during bulk ${verb}.`, error);
-        btn.innerText = "Error";
-    } finally {
-        setTimeout(() => {
-            btn.innerText = originalText;
-            btn.disabled = false;
-            btn.style.cursor = "pointer";
-            btn.style.opacity = "0.6";
-        }, 3000);
-    }
+async function _runBulkOperation(
+    e: MouseEvent,
+    config: Omit<IBulkOperationConfig<IBulkItem>, 'getItems'>,
+): Promise<void> {
+    return runBulkOperation(e, {
+        ...config,
+        getItems: _collectBulkItems,
+    });
 }
 
 /**

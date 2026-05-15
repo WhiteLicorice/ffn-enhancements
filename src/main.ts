@@ -9,6 +9,7 @@ import { DocEditor } from './modules/DocEditor';
 import { StoryReader } from './modules/StoryReader';
 import { StoryDownloader } from './modules/StoryDownloader';
 import { LayoutManager } from './modules/LayoutManager';
+import { StoryEditContent } from './modules/StoryEditContent';
 
 /**
  * The Entry Point / Router.
@@ -82,6 +83,13 @@ const bootstrap = () => {
          * Features: Single Document Download button in Toolbar
          */
         safeInit('DocEditor', () => DocEditor.init());
+    }
+    else if (path.includes('/story/story_edit_content.php')) {
+        /**
+         * Route: Story Edit Content
+         * Features: Bulk Replace
+         */
+        safeInit('StoryEditContent', () => StoryEditContent.init());
     }
     else if (path.startsWith("/s/")) {
         /**

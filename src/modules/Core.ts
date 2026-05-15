@@ -6,6 +6,7 @@ import { IDelegate } from '../delegates/IDelegate';
 import { DocManagerDelegate } from '../delegates/DocManagerDelegate';
 import { DocEditorDelegate } from '../delegates/DocEditorDelegate';
 import { GlobalDelegate } from '../delegates/GlobalDelegate';
+import { StoryEditContentDelegate } from '../delegates/StoryEditContentDelegate';
 import { FFNLogger } from './FFNLogger';
 
 /**
@@ -82,6 +83,10 @@ export const Core = {
             this.activeDelegate = StoryDelegate;
             log('Strategy set to StoryDelegate');
         }
+        else if (pagePath === '/story/story_edit_content.php') {
+            this.activeDelegate = StoryEditContentDelegate;
+            log('Strategy set to StoryEditContentDelegate');
+        }
         else if (pagePath === "/docs/docs.php") {
             this.activeDelegate = DocManagerDelegate;
             log('Strategy set to DocManagerDelegate');
@@ -150,4 +155,3 @@ export const Core = {
     },
 
 };
-

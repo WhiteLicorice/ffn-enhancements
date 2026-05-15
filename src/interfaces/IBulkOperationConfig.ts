@@ -5,13 +5,21 @@ export interface IBulkItem {
     title: string;
     row: HTMLTableRowElement;
 }
-export interface IBulkOperationConfig {
+
+export interface IBulkOperationResult<TItem = IBulkItem> {
+    successCount: number;
+    totalCount: number;
+    retriedItems: TItem[];
+}
+
+export interface IBulkOperationConfig<TItem = IBulkItem> {
     verb: string;
-    filterRows?: (items: IBulkItem[]) => IBulkItem[];
-    processItem: (item: IBulkItem) => Promise<boolean>;
-    onItemStart?: (item: IBulkItem, pass: 1 | 2, index: number, total: number) => void;
-    onItemSuccess?: (item: IBulkItem, pass: 1 | 2) => void;
-    onPermanentFailure?: (item: IBulkItem) => void;
+    getItems: () => TItem[];
+    filterRows?: (items: TItem[]) => TItem[];
+    processItem: (item: TItem) => Promise<boolean>;
+    onItemStart?: (item: TItem, pass: 1 | 2, index: number, total: number) => void;
+    onItemSuccess?: (item: TItem, pass: 1 | 2) => void;
+    onPermanentFailure?: (item: TItem) => void;
     preBatch?: (totalCount: number) => void;
-    onFinalize?: (result: { successCount: number; totalCount: number; retriedItems: IBulkItem[]; }) => void | Promise<void>;
+    onFinalize?: (result: IBulkOperationResult<TItem>) => void | Promise<void>;
 }
