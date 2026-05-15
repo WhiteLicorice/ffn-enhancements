@@ -1247,6 +1247,10 @@ export const DocManager = {
             </tr>
         `).join('');
 
+        const tableBodyHtml = plan.rows.length > 0
+            ? rowsHtml
+            : '<tr><td colspan="4">No visible DocManager docs found.</td></tr>';
+
         mappingsEl.innerHTML = `
             <table class="ffne-dm-preview" contenteditable="false">
                 <thead>
@@ -1257,7 +1261,7 @@ export const DocManager = {
                         <th>Status</th>
                     </tr>
                 </thead>
-                <tbody>${rowsHtml || '<tr><td colspan="4">No visible DocManager docs found.</td></tr>'}</tbody>
+                <tbody>${tableBodyHtml}</tbody>
             </table>
         `;
 

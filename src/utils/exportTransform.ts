@@ -43,39 +43,63 @@ export function appendFormatSeparator(
     }
 }
 
-function shouldSkipLinebreakNode(node: Text): boolean {
-    const parent = node.parentElement;
-    return !!parent && /^(PRE|CODE|SCRIPT|STYLE|TEXTAREA)$/i.test(parent.tagName);
-}
-
 export function convertTextLineBreaksToBr(html: string): string {
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    const root = doc.body;
-    if (!root) return html;
+    const skipTags = new Set(['pre', 'code', 'script', 'style', 'textarea']);
+    let result = '';
+    let textBuffer = '';
+    let tagBuffer = '';
+    let inTag = false;
+    let skipDepth = 0;
 
-    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const nodes: Text[] = [];
-    let current = walker.nextNode();
-    while (current) {
-        nodes.push(current as Text);
-        current = walker.nextNode();
+    const flushTextBuffer = () => {
+        if (!textBuffer) return;
+        result += skipDepth > 0
+            ? textBuffer
+            : textBuffer.replace(/\r?\n|\r/g, '<br>');
+        textBuffer = '';
+    };
+
+    const updateSkipDepth = (tagText: string) => {
+        const match = tagText.match(/^<\s*(\/?)\s*([a-z0-9:-]+)/i);
+        if (!match) return;
+
+        const [, closingSlash, tagNameRaw] = match;
+        const tagName = tagNameRaw.toLowerCase();
+        if (!skipTags.has(tagName) || /\/\s*>$/.test(tagText)) return;
+
+        if (closingSlash) {
+            skipDepth = Math.max(0, skipDepth - 1);
+        } else {
+            skipDepth++;
+        }
+    };
+
+    for (let index = 0; index < html.length; index++) {
+        const char = html[index];
+        if (inTag) {
+            tagBuffer += char;
+            if (char === '>') {
+                inTag = false;
+                result += tagBuffer;
+                updateSkipDepth(tagBuffer);
+                tagBuffer = '';
+            }
+            continue;
+        }
+
+        if (char === '<') {
+            flushTextBuffer();
+            inTag = true;
+            tagBuffer = '<';
+            continue;
+        }
+
+        textBuffer += char;
     }
 
-    nodes.forEach(node => {
-        if (!node.data.includes('\n') || shouldSkipLinebreakNode(node)) return;
-
-        const parts = node.data.split(/\r?\n|\r/);
-        if (parts.length < 2) return;
-
-        const fragment = doc.createDocumentFragment();
-        parts.forEach((part, index) => {
-            if (part) fragment.appendChild(doc.createTextNode(part));
-            if (index < parts.length - 1) fragment.appendChild(doc.createElement('br'));
-        });
-        node.replaceWith(fragment);
-    });
-
-    return root.innerHTML;
+    flushTextBuffer();
+    if (tagBuffer) result += tagBuffer;
+    return result;
 }
 
 export interface ExportTransformOptions {
