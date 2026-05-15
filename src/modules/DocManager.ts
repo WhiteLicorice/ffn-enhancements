@@ -495,8 +495,14 @@ export const DocManager = {
         const drawer = document.createElement('div');
         drawer.id = ADVANCED_DRAWER_ID;
         drawer.innerHTML = `
-            <button type="button" class="ffne-dm-drawer-btn" title="Open advanced document routines">
-                Advanced
+            <button
+                type="button"
+                class="ffne-dm-drawer-pull"
+                title="Open advanced document routines"
+                aria-label="Open advanced document routines"
+            >
+                <span class="ffne-dm-drawer-grabber" aria-hidden="true"></span>
+                <span class="ffne-dm-drawer-chevron" aria-hidden="true"></span>
             </button>
         `;
 
@@ -516,12 +522,11 @@ export const DocManager = {
             #${ADVANCED_DRAWER_ID} {
                 position: fixed;
                 left: 50%;
-                bottom: 12px;
+                bottom: 0;
                 transform: translateX(-50%);
                 z-index: 99998;
-                font-family: Verdana, Arial, sans-serif;
+                line-height: 0;
             }
-            .ffne-dm-drawer-btn,
             .ffne-dm-btn {
                 appearance: none;
                 border: 1px solid #7892ad;
@@ -535,10 +540,49 @@ export const DocManager = {
                 cursor: pointer;
                 box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
             }
-            .ffne-dm-drawer-btn:hover,
             .ffne-dm-btn:hover {
                 background: #e3edf7;
                 color: #123a5a;
+            }
+            .ffne-dm-drawer-pull {
+                appearance: none;
+                width: 154px;
+                height: 28px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 3px;
+                padding: 3px 0 4px;
+                border: 1px solid ThreeDShadow;
+                border-bottom: 0;
+                border-radius: 10px 10px 0 0;
+                background: ButtonFace;
+                color: ButtonText;
+                cursor: pointer;
+                box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.22);
+            }
+            .ffne-dm-drawer-pull:hover {
+                filter: brightness(0.97);
+            }
+            .ffne-dm-drawer-pull:focus-visible {
+                outline: 2px solid Highlight;
+                outline-offset: 2px;
+            }
+            .ffne-dm-drawer-grabber {
+                width: 52px;
+                height: 4px;
+                border-radius: 999px;
+                background: currentColor;
+                opacity: 0.45;
+            }
+            .ffne-dm-drawer-chevron {
+                width: 10px;
+                height: 10px;
+                border-top: 2px solid currentColor;
+                border-left: 2px solid currentColor;
+                transform: rotate(45deg);
+                opacity: 0.72;
             }
             .ffne-dm-btn:disabled {
                 color: #777;

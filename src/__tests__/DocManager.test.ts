@@ -295,7 +295,14 @@ describe('DocManager advanced drawer', () => {
     it('opens a native advanced routines modal with all bulk actions', () => {
         DocManager.injectAdvancedDrawer();
 
-        document.querySelector<HTMLButtonElement>('#ffne-docmanager-advanced-drawer button')?.click();
+        const drawerButton = document.querySelector<HTMLButtonElement>('#ffne-docmanager-advanced-drawer button');
+        expect(drawerButton?.classList.contains('ffne-dm-drawer-pull')).toBe(true);
+        expect(drawerButton?.getAttribute('aria-label')).toBe('Open advanced document routines');
+        expect(drawerButton?.textContent?.trim()).toBe('');
+        expect(drawerButton?.querySelector('.ffne-dm-drawer-grabber')).not.toBeNull();
+        expect(drawerButton?.querySelector('.ffne-dm-drawer-chevron')).not.toBeNull();
+
+        drawerButton?.click();
 
         expect(document.getElementById('ffne-docmanager-advanced-modal')).not.toBeNull();
         expect(document.querySelector('[data-ffne-action="bulk-export"]')).not.toBeNull();
