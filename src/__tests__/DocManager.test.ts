@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DocManager } from '../modules/DocManager';
 import type { IBulkItem } from '../interfaces/IBulkOperationConfig';
 
@@ -35,6 +35,15 @@ function makeFile(name: string, relativePath: string, content: string = '# Title
     const file = new File([content], name, { type: 'text/markdown' });
     Object.defineProperty(file, 'webkitRelativePath', {
         value: relativePath,
+        configurable: true,
+    });
+    return file;
+}
+
+function makeSelectedFile(name: string, content: string = '# Title'): File {
+    const file = new File([content], name, { type: 'text/markdown' });
+    Object.defineProperty(file, 'webkitRelativePath', {
+        value: '',
         configurable: true,
     });
     return file;
@@ -191,6 +200,22 @@ describe('DocManager bulk import planner', () => {
         expect(plan.fileByDocId.get('101')?.name).toBe('A0.md');
     });
 
+    it('matches individually selected files without directory paths', () => {
+        const items = [makeItem('A0', '101')];
+        const files = [
+            makeSelectedFile('A0.md'),
+            makeSelectedFile('Missing.md'),
+        ];
+
+        const plan = DocManager._buildBulkImportPlan(files, items);
+
+        expect(plan.matchedCount).toBe(1);
+        expect(plan.missingCount).toBe(1);
+        expect(plan.ignoredFiles).toEqual([]);
+        expect(plan.rows.map(row => row.expectedFileName)).toEqual(['A0.md', 'Missing.md']);
+        expect(plan.fileByDocId.get('101')?.name).toBe('A0.md');
+    });
+
     it('blocks duplicate Markdown filenames', () => {
         const items = [makeItem('A0', '101')];
         const files = [
@@ -204,6 +229,35 @@ describe('DocManager bulk import planner', () => {
         expect(plan.duplicateFileNames).toEqual(['A0.md']);
         expect(plan.rows[0].status).toBe('duplicate');
         expect(plan.fileByDocId.has('101')).toBe(false);
+    });
+});
+
+describe('DocManager bulk import modal', () => {
+    beforeEach(() => {
+        cleanupDOM();
+    });
+
+    afterEach(() => {
+        DocManager.closeBulkImportModal();
+        cleanupDOM();
+    });
+
+    it('offers separate folder and file pickers', () => {
+        DocManager.openBulkImportModal();
+
+        const folderButton = document.getElementById('ffne-dm-browse-folder');
+        const filesButton = document.getElementById('ffne-dm-browse-files');
+        const folderInput = document.getElementById('ffne-dm-import-folder-input') as HTMLInputElement | null;
+        const filesInput = document.getElementById('ffne-dm-import-files-input') as HTMLInputElement | null;
+
+        expect(folderButton?.textContent).toBe('Browse Folder');
+        expect(filesButton?.textContent).toBe('Browse Files');
+        expect(folderInput?.type).toBe('file');
+        expect(folderInput?.multiple).toBe(true);
+        expect(folderInput?.hasAttribute('webkitdirectory')).toBe(true);
+        expect(filesInput?.type).toBe('file');
+        expect(filesInput?.multiple).toBe(true);
+        expect(filesInput?.hasAttribute('webkitdirectory')).toBe(false);
     });
 });
 

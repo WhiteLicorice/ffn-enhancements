@@ -583,9 +583,17 @@ export const DocManager = {
                 margin-bottom: 10px;
             }
             .ffne-dm-file-input {
-                font-family: Verdana, Arial, sans-serif;
-                font-size: 12px;
-                max-width: 100%;
+                display: none;
+            }
+            .ffne-dm-picker-group {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .ffne-dm-selection-label {
+                color: #555;
+                font-size: 11px;
             }
             .ffne-dm-summary {
                 margin: 8px 0;
@@ -725,10 +733,16 @@ export const DocManager = {
                 </div>
                 <div class="ffne-dm-modal-body">
                     <div class="ffne-dm-import-controls">
-                        <input id="ffne-dm-import-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" webkitdirectory multiple>
+                        <div class="ffne-dm-picker-group">
+                            <button type="button" id="ffne-dm-browse-folder" class="ffne-dm-btn">Browse Folder</button>
+                            <button type="button" id="ffne-dm-browse-files" class="ffne-dm-btn">Browse Files</button>
+                            <span id="ffne-dm-import-selection" class="ffne-dm-selection-label">No files selected.</span>
+                            <input id="ffne-dm-import-folder-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" webkitdirectory multiple>
+                            <input id="ffne-dm-import-files-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" multiple>
+                        </div>
                         <button type="button" id="ffne-dm-import-start" class="ffne-dm-btn" disabled>Import</button>
                     </div>
-                    <div id="ffne-dm-import-preview" class="ffne-dm-summary">Select a folder containing Markdown files.</div>
+                    <div id="ffne-dm-import-preview" class="ffne-dm-summary">Select a folder or Markdown files.</div>
                     <div class="ffne-dm-footer">
                         <span id="ffne-dm-import-status" class="ffne-dm-run-status"></span>
                         <button type="button" class="ffne-dm-btn" data-ffne-action="close-import">Close</button>
@@ -737,19 +751,49 @@ export const DocManager = {
             </div>
         `;
 
-        const input = overlay.querySelector<HTMLInputElement>('#ffne-dm-import-input');
+        const folderButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-browse-folder');
+        const filesButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-browse-files');
+        const folderInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-import-folder-input');
+        const filesInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-import-files-input');
         const startButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-import-start');
         const preview = overlay.querySelector<HTMLElement>('#ffne-dm-import-preview');
         const status = overlay.querySelector<HTMLElement>('#ffne-dm-import-status');
+        const selection = overlay.querySelector<HTMLElement>('#ffne-dm-import-selection');
 
-        input?.addEventListener('change', () => {
+        const updateSelectedFiles = (input: HTMLInputElement, sourceLabel: string) => {
             const files = Array.from(input.files || []);
             const plan = _buildBulkImportPlan(files);
             this._bulkImportPlan = plan;
             if (preview && startButton) {
                 this._renderBulkImportPreview(preview, startButton, plan);
             }
+            if (selection) {
+                const count = files.length;
+                selection.textContent = count === 1
+                    ? `${sourceLabel}: 1 file selected.`
+                    : `${sourceLabel}: ${count} files selected.`;
+            }
             if (status) status.textContent = '';
+        };
+
+        folderButton?.addEventListener('click', () => {
+            if (!folderInput) return;
+            folderInput.value = '';
+            folderInput.click();
+        });
+
+        filesButton?.addEventListener('click', () => {
+            if (!filesInput) return;
+            filesInput.value = '';
+            filesInput.click();
+        });
+
+        folderInput?.addEventListener('change', () => {
+            updateSelectedFiles(folderInput, 'Folder');
+        });
+
+        filesInput?.addEventListener('change', () => {
+            updateSelectedFiles(filesInput, 'Files');
         });
 
         startButton?.addEventListener('click', async (e) => {
