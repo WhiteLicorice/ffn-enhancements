@@ -1,4 +1,6 @@
 import { SettingsManager } from '../modules/SettingsManager';
+import { Elements } from '../enums/Elements';
+import { StoryEditContentDelegate } from '../delegates/StoryEditContentDelegate';
 
 export interface StoryReplaceResult {
     ok: boolean;
@@ -16,26 +18,14 @@ function appendHiddenInput(form: HTMLFormElement, name: string, value: string): 
     return input;
 }
 
-function findReplaceForm(doc: Document): HTMLFormElement | null {
-    const forms = Array.from(doc.forms);
-    return forms.find(form => {
-        const chapterSelect = form.querySelector('select[name="storytextid"]');
-        const docSelect = form.querySelector('select[name="docid"]');
-        const replaceAction = form.querySelector('input[name="action"][value="replace"], button[name="action"][value="replace"]');
-        return !!chapterSelect && !!docSelect && !!replaceAction;
-    }) || null;
-}
-
-function setFormValue(form: HTMLFormElement, name: string, value: string): boolean {
-    const control = form.elements.namedItem(name);
+function setControlValue(control: Element | null, value: string): boolean {
     if (control && 'value' in control) {
         const valueControl = control as HTMLInputElement | HTMLSelectElement | RadioNodeList;
         valueControl.value = value;
         return valueControl.value === value;
     }
 
-    appendHiddenInput(form, name, value);
-    return true;
+    return false;
 }
 
 function normalizeText(value: string): string {
@@ -43,7 +33,7 @@ function normalizeText(value: string): string {
 }
 
 function getExplicitFailureReason(doc: Document): string | null {
-    const failure = doc.querySelector('.panel_error, .gui_error, .alert-error, .error');
+    const failure = StoryEditContentDelegate.getElement(Elements.STORY_EDIT_ERROR_PANEL, doc);
     const failureText = normalizeText(failure?.textContent || '');
     if (failureText) return failureText;
 
@@ -95,14 +85,19 @@ export const StoryReplaceService = {
             };
 
             const submitNativeReplaceForm = (doc: Document): StoryReplaceResult | null => {
-                const form = findReplaceForm(doc);
+                const form = StoryEditContentDelegate.getElement(Elements.STORY_EDIT_REPLACE_FORM, doc) as HTMLFormElement | null;
                 if (!form) {
                     return { ok: false, reason: 'Hidden StoryEditContent page did not contain the native replace form.' };
                 }
 
-                const didSetChapter = setFormValue(form, 'storytextid', storyTextId);
-                const didSetDoc = setFormValue(form, 'docid', docId);
-                setFormValue(form, 'action', 'replace');
+                const chapterSelect = StoryEditContentDelegate.getElement(Elements.STORY_EDIT_CHAPTER_SELECT, doc);
+                const docSelect = StoryEditContentDelegate.getElement(Elements.STORY_EDIT_DOC_SELECT, doc);
+                const actionControl = StoryEditContentDelegate.getElement(Elements.STORY_EDIT_REPLACE_ACTION_CONTROL, doc);
+                const didSetChapter = setControlValue(chapterSelect, storyTextId);
+                const didSetDoc = setControlValue(docSelect, docId);
+                if (!setControlValue(actionControl, 'replace')) {
+                    appendHiddenInput(form, 'action', 'replace');
+                }
 
                 if (!didSetChapter) {
                     return { ok: false, reason: 'Hidden replace form did not include the selected chapter.' };

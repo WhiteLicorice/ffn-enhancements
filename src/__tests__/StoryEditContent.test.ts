@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StoryEditContent } from '../modules/StoryEditContent';
 import { DocFetchService } from '../services/DocFetchService';
 import { StoryReplaceService } from '../services/StoryReplaceService';
+import { Core } from '../modules/Core';
+import { StoryEditContentDelegate } from '../delegates/StoryEditContentDelegate';
 import type {
     IStoryEditContentChapter,
     IStoryEditContentDoc,
@@ -209,6 +211,44 @@ describe('StoryEditContent mapping state', () => {
         expect(plan.hasBlockingErrors).toBe(true);
         expect(plan.duplicateDocIds).toEqual(['StoryName-1']);
         expect(plan.rows.map(row => row.status)).toEqual(['duplicate', 'duplicate']);
+    });
+});
+
+describe('StoryEditContent injection', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        Core.activeDelegate = StoryEditContentDelegate;
+    });
+
+    afterEach(() => {
+        Core.activeDelegate = null;
+        cleanupDOM();
+    });
+
+    it('places Bulk Replace next to the visible Replace/Update Chapter toggle', () => {
+        document.body.innerHTML = `
+            <center>
+                <a href="#">Post New Chapter</a> |
+                <a href="#">Replace/Update Chapter</a>
+            </center>
+            <div id="area_modchapter" style="display:none;">
+                <form id="replacechapter">
+                    <select name="storytextid"></select>
+                    <select name="docid"></select>
+                    <input type="hidden" name="action" value="replace">
+                    <button type="submit">Replace Chapter Content with Document</button>
+                </form>
+            </div>
+        `;
+
+        StoryEditContent.injectBulkReplaceButton(document.getElementById('replacechapter') as HTMLFormElement);
+
+        const button = document.getElementById('ffne-story-bulk-replace-btn');
+        const visibleControls = document.querySelector('center');
+
+        expect(button).not.toBeNull();
+        expect(button?.parentElement).toBe(visibleControls);
+        expect(document.querySelector('#area_modchapter #ffne-story-bulk-replace-btn')).toBeNull();
     });
 });
 

@@ -16,6 +16,18 @@ export const StoryEditContentDelegate: IDelegate = {
             case Elements.STORY_EDIT_DOC_SELECT:
                 return findReplaceForm(doc)?.querySelector('select[name="docid"]') || null;
 
+            case Elements.STORY_EDIT_REPLACE_ACTION_CONTROL:
+                return findReplaceActionControl(doc);
+
+            case Elements.STORY_EDIT_REPLACE_SUBMIT:
+                return findReplaceForm(doc)?.querySelector<HTMLElement>('button[type="submit"], input[type="submit"]') || null;
+
+            case Elements.STORY_EDIT_REPLACE_TOGGLE:
+                return findReplaceUpdateToggle(doc);
+
+            case Elements.STORY_EDIT_ERROR_PANEL:
+                return doc.querySelector<HTMLElement>('.panel_error, .gui_error, .alert-error, .error');
+
             default:
                 return null;
         }
@@ -37,11 +49,25 @@ function findReplaceForm(doc: Document = document): HTMLFormElement | null {
     return forms.find(form => {
         const chapterSelect = form.querySelector('select[name="storytextid"]');
         const docSelect = form.querySelector('select[name="docid"]');
-        const replaceAction = form.querySelector(
-            'input[name="action"][value="replace"], button[name="action"][value="replace"], input[type="submit"][value*="Replace"], button[type="submit"][value="replace"]'
-        );
+        const replaceAction = findReplaceActionControlInForm(form);
         return !!chapterSelect && !!docSelect && !!replaceAction;
     }) || null;
+}
+
+function findReplaceActionControl(doc: Document = document): HTMLElement | null {
+    const form = findReplaceForm(doc);
+    return form ? findReplaceActionControlInForm(form) : null;
+}
+
+function findReplaceActionControlInForm(form: HTMLFormElement): HTMLElement | null {
+    return form.querySelector<HTMLElement>(
+        'input[name="action"][value="replace"], button[name="action"][value="replace"], input[type="submit"][value*="Replace"], button[type="submit"][value="replace"]'
+    );
+}
+
+function findReplaceUpdateToggle(doc: Document = document): HTMLAnchorElement | null {
+    return Array.from(doc.querySelectorAll<HTMLAnchorElement>('a[href="#"], a'))
+        .find(anchor => /replace\s*\/\s*update\s+chapter/i.test(normalizeText(anchor.textContent || ''))) || null;
 }
 
 function findLikelyChapterRows(doc: Document = document): HTMLElement[] {

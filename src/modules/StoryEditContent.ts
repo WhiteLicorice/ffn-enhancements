@@ -351,10 +351,15 @@ export const StoryEditContent = {
         button.textContent = 'Bulk Replace';
         button.addEventListener('click', () => this.openBulkReplaceModal());
 
-        const replaceControl = form.querySelector<HTMLElement>(
-            'button[type="submit"], input[type="submit"]'
-        );
-        if (replaceControl?.parentElement) {
+        const replaceToggle = Core.getElement(Elements.STORY_EDIT_REPLACE_TOGGLE) as HTMLAnchorElement | null;
+        if (replaceToggle?.parentElement) {
+            const spacer = document.createTextNode(' ');
+            replaceToggle.after(spacer, button);
+            return;
+        }
+
+        const replaceControl = Core.getElement(Elements.STORY_EDIT_REPLACE_SUBMIT) as HTMLElement | null;
+        if (replaceControl) {
             replaceControl.insertAdjacentElement('afterend', button);
         } else {
             form.appendChild(button);
