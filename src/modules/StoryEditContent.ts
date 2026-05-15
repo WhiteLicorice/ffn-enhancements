@@ -433,7 +433,6 @@ export const StoryEditContent = {
             if (!confirmed) return;
 
             await this.runBulkReplace(e as MouseEvent, plan, status, results);
-            this._refreshPlan(summary, startButton);
         });
 
         overlay.querySelector<HTMLButtonElement>('.ffne-story-bulk-close')

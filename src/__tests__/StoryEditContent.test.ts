@@ -103,15 +103,19 @@ describe('StoryEditContent parsing', () => {
 describe('StoryEditContent mapping state', () => {
     it('tracks manual mappings and skips unmapped rows', () => {
         const mappings = makeMappings(3);
-        const docs = makeDocs('StoryName', 1, 3);
+        const docs = [
+            { docId: 'plain-1', docName: 'Standalone Intro' },
+            { docId: 'plain-2', docName: 'Standalone Middle' },
+            { docId: 'plain-3', docName: 'Standalone Finale' },
+        ];
 
-        StoryEditContent._setManualDocSelection(mappings, docs, 0, 'StoryName-1');
+        StoryEditContent._setManualDocSelection(mappings, docs, 0, 'plain-1');
         const plan = StoryEditContent._buildMappingPlan(mappings);
 
         expect(plan.mappedCount).toBe(1);
         expect(plan.skippedCount).toBe(2);
         expect(plan.rows[0]).toMatchObject({
-            selectedDocName: 'StoryName001',
+            selectedDocName: 'Standalone Intro',
             source: 'manual',
             status: 'mapped',
         });
