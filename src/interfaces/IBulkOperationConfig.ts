@@ -9,6 +9,7 @@ export interface IBulkOperationConfig {
     verb: string;
     filterRows?: (items: IBulkItem[]) => IBulkItem[];
     processItem: (item: IBulkItem) => Promise<boolean>;
+    onItemStart?: (item: IBulkItem, pass: 1 | 2, index: number, total: number) => void;
     onItemSuccess?: (item: IBulkItem, pass: 1 | 2) => void;
     onPermanentFailure?: (item: IBulkItem) => void;
     preBatch?: (totalCount: number) => void;

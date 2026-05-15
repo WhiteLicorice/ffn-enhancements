@@ -249,6 +249,7 @@ describe('DocManager bulk import modal', () => {
         const filesButton = document.getElementById('ffne-dm-browse-files');
         const folderInput = document.getElementById('ffne-dm-import-folder-input') as HTMLInputElement | null;
         const filesInput = document.getElementById('ffne-dm-import-files-input') as HTMLInputElement | null;
+        const results = document.getElementById('ffne-dm-import-results') as HTMLElement | null;
 
         expect(folderButton?.textContent).toBe('Browse Folder');
         expect(filesButton?.textContent).toBe('Browse Files');
@@ -258,6 +259,7 @@ describe('DocManager bulk import modal', () => {
         expect(filesInput?.type).toBe('file');
         expect(filesInput?.multiple).toBe(true);
         expect(filesInput?.hasAttribute('webkitdirectory')).toBe(false);
+        expect(results?.hidden).toBe(true);
     });
 });
 

@@ -44,6 +44,12 @@ interface BulkImportPlan {
     hasBlockingErrors: boolean;
 }
 
+interface BulkImportFailure {
+    docName: string;
+    fileName: string;
+    reason: string;
+}
+
 function _sanitizeDocTitle(title: string): string {
     return title.trim().replace(/[/\\?%*:|"<>]/g, '-');
 }
@@ -231,6 +237,39 @@ function _markdownToImportHtml(markdown: string): string {
     return _sanitizeImportHtml(SimpleMarkdownParser.parse(markdown));
 }
 
+function _renderBulkImportFailures(container: HTMLElement | null | undefined, failures: BulkImportFailure[]): void {
+    if (!container) return;
+
+    if (failures.length === 0) {
+        container.hidden = true;
+        container.innerHTML = '';
+        return;
+    }
+
+    const rowsHtml = failures.map(failure => `
+        <tr>
+            <td>${_escapeHtml(failure.docName)}</td>
+            <td>${_escapeHtml(failure.fileName)}</td>
+            <td>${_escapeHtml(failure.reason)}</td>
+        </tr>
+    `).join('');
+
+    container.hidden = false;
+    container.innerHTML = `
+        <div class="ffne-dm-import-results-title">Failed Imports</div>
+        <table class="ffne-dm-preview">
+            <thead>
+                <tr>
+                    <th>DocManager Name</th>
+                    <th>Selected File</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+        </table>
+    `;
+}
+
 function _readFileAsText(file: File): Promise<string> {
     if (typeof file.text === 'function') {
         return file.text();
@@ -251,7 +290,7 @@ function _readFileAsText(file: File): Promise<string> {
  */
 async function _runBulkOperation(e: MouseEvent, config: IBulkOperationConfig): Promise<void> {
     const log = Core.getLogger(DocManager.MODULE_NAME, '_runBulkOperation');
-    const { verb, processItem, onItemSuccess, onPermanentFailure, preBatch, onFinalize } = config;
+    const { verb, processItem, onItemStart, onItemSuccess, onPermanentFailure, preBatch, onFinalize } = config;
 
     log(`${verb} initiated.`);
     const btn = e.currentTarget as HTMLButtonElement;
@@ -287,6 +326,7 @@ async function _runBulkOperation(e: MouseEvent, config: IBulkOperationConfig): P
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
             btn.innerText = `${i + 1}/${items.length}`;
+            if (onItemStart) onItemStart(item, 1, i + 1, items.length);
 
             await new Promise(r => setTimeout(r, SettingsManager.get('bulkExportDelayMs')));
 
@@ -307,6 +347,7 @@ async function _runBulkOperation(e: MouseEvent, config: IBulkOperationConfig): P
             for (let i = 0; i < retriedItems.length; i++) {
                 const item = retriedItems[i];
                 btn.innerText = `Retry ${i + 1}/${retriedItems.length}`;
+                if (onItemStart) onItemStart(item, 2, i + 1, retriedItems.length);
 
                 await new Promise(r => setTimeout(r, SettingsManager.get('bulkRetryDelayMs')));
 
@@ -642,6 +683,20 @@ export const DocManager = {
                 margin-right: auto;
                 color: #555;
             }
+            .ffne-dm-import-results {
+                margin-top: 10px;
+                padding: 7px 8px;
+                color: #8b0000;
+                background: #fff0f0;
+                border: 1px solid #d8a0a0;
+            }
+            .ffne-dm-import-results[hidden] {
+                display: none;
+            }
+            .ffne-dm-import-results-title {
+                font-weight: 700;
+                margin-bottom: 6px;
+            }
         `;
         document.head.appendChild(style);
     },
@@ -743,6 +798,7 @@ export const DocManager = {
                         <button type="button" id="ffne-dm-import-start" class="ffne-dm-btn" disabled>Import</button>
                     </div>
                     <div id="ffne-dm-import-preview" class="ffne-dm-summary">Select a folder or Markdown files.</div>
+                    <div id="ffne-dm-import-results" class="ffne-dm-import-results" hidden></div>
                     <div class="ffne-dm-footer">
                         <span id="ffne-dm-import-status" class="ffne-dm-run-status"></span>
                         <button type="button" class="ffne-dm-btn" data-ffne-action="close-import">Close</button>
@@ -759,6 +815,7 @@ export const DocManager = {
         const preview = overlay.querySelector<HTMLElement>('#ffne-dm-import-preview');
         const status = overlay.querySelector<HTMLElement>('#ffne-dm-import-status');
         const selection = overlay.querySelector<HTMLElement>('#ffne-dm-import-selection');
+        const results = overlay.querySelector<HTMLElement>('#ffne-dm-import-results');
 
         const updateSelectedFiles = (input: HTMLInputElement, sourceLabel: string) => {
             const files = Array.from(input.files || []);
@@ -767,6 +824,7 @@ export const DocManager = {
             if (preview && startButton) {
                 this._renderBulkImportPreview(preview, startButton, plan);
             }
+            _renderBulkImportFailures(results, []);
             if (selection) {
                 const count = files.length;
                 selection.textContent = count === 1
@@ -806,7 +864,7 @@ export const DocManager = {
             );
             if (!confirmed) return;
 
-            await this.runBulkImport(e as MouseEvent, plan, status || undefined);
+            await this.runBulkImport(e as MouseEvent, plan, status || undefined, results || undefined);
         });
 
         overlay.querySelector<HTMLButtonElement>('.ffne-dm-close')
@@ -1304,12 +1362,29 @@ export const DocManager = {
     /**
      * Handles Markdown-only bulk import for matched DocManager rows.
      */
-    runBulkImport: async function (e: MouseEvent, plan: BulkImportPlan, statusEl?: HTMLElement) {
+    runBulkImport: async function (
+        e: MouseEvent,
+        plan: BulkImportPlan,
+        statusEl?: HTMLElement,
+        resultsEl?: HTMLElement,
+    ) {
         const log = Core.getLogger(this.MODULE_NAME, 'runBulkImport');
         const btn = e.currentTarget as HTMLButtonElement;
+        const failureReasons = new Map<string, string>();
+        const failures: BulkImportFailure[] = [];
+
+        const setFailure = (item: IBulkItem, reason: string) => {
+            failureReasons.set(item.docId, reason);
+        };
+
+        const fileLabelFor = (item: IBulkItem): string => {
+            const file = plan.fileByDocId.get(item.docId);
+            return file ? _getFileDisplayPath(file) : '(no matched file)';
+        };
 
         if (plan.hasBlockingErrors || plan.matchedCount === 0) {
             if (statusEl) statusEl.textContent = 'Import blocked.';
+            _renderBulkImportFailures(resultsEl, []);
             log('Import blocked by validation state.', {
                 blockedFiles: plan.blockedFiles,
                 duplicateFileNames: plan.duplicateFileNames,
@@ -1318,14 +1393,23 @@ export const DocManager = {
             return;
         }
 
-        if (statusEl) statusEl.textContent = `Importing ${plan.matchedCount} document(s)...`;
+        if (statusEl) statusEl.textContent = `Preparing to import ${plan.matchedCount} document(s)...`;
+        _renderBulkImportFailures(resultsEl, []);
 
         await _runBulkOperation(e, {
             verb: 'Import',
             filterRows: (items) => items.filter(item => plan.fileByDocId.has(item.docId)),
+            onItemStart: (item, pass, index, total) => {
+                if (!statusEl) return;
+                const verb = pass === 2 ? 'Retrying' : 'Importing';
+                statusEl.textContent = `${verb} ${index}/${total}: ${item.docName} from ${fileLabelFor(item)}...`;
+            },
             processItem: async (item) => {
                 const file = plan.fileByDocId.get(item.docId);
-                if (!file) return false;
+                if (!file) {
+                    setFailure(item, 'No matched Markdown file was found.');
+                    return false;
+                }
 
                 const originalBg = item.row.style.backgroundColor;
                 item.row.style.backgroundColor = '#fff4c2';
@@ -1335,18 +1419,29 @@ export const DocManager = {
                     const markdown = await _readFileAsText(file);
                     if (!markdown.trim()) {
                         log(`Skipping "${item.docName}" because matched file is empty.`);
+                        setFailure(item, 'Matched Markdown file is empty.');
                         return false;
                     }
 
                     const html = _markdownToImportHtml(markdown);
                     if (!html.trim()) {
                         log(`Skipping "${item.docName}" because Markdown conversion produced no HTML.`);
+                        setFailure(item, 'Markdown conversion produced no importable HTML.');
                         return false;
                     }
 
-                    return await DocFetchService.replacePrivateDocContent(item.docId, item.title, html);
+                    const result = await DocFetchService.replacePrivateDocContentWithResult(item.docId, item.title, html);
+                    if (!result.ok) {
+                        setFailure(item, result.reason || 'FFN did not confirm the save.');
+                        return false;
+                    }
+
+                    failureReasons.delete(item.docId);
+                    return true;
                 } catch (err) {
                     log(`Failed to import "${item.docName}".`, err);
+                    const reason = err instanceof Error ? err.message : String(err);
+                    setFailure(item, `Unexpected error: ${reason}`);
                     return false;
                 } finally {
                     item.row.style.backgroundColor = originalBg;
@@ -1357,9 +1452,15 @@ export const DocManager = {
             },
             onPermanentFailure: (item) => {
                 log(`Permanent import failure for "${item.docName}".`);
+                failures.push({
+                    docName: item.docName,
+                    fileName: fileLabelFor(item),
+                    reason: failureReasons.get(item.docId) || 'Import failed after retry.',
+                });
             },
             onFinalize: ({ successCount, totalCount }) => {
                 const failedCount = totalCount - successCount;
+                _renderBulkImportFailures(resultsEl, failures);
                 if (successCount === totalCount) {
                     btn.innerText = 'Done';
                     if (statusEl) statusEl.textContent = `Imported all ${successCount} document(s).`;

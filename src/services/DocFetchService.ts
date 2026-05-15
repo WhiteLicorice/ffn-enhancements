@@ -11,6 +11,11 @@ interface SavePrivateDocOptions {
     replacementHtml?: string;
 }
 
+export interface PrivateDocSaveResult {
+    ok: boolean;
+    reason?: string;
+}
+
 interface TinyMceEditorLike {
     setContent?: (html: string) => void;
     save?: () => void;
@@ -93,6 +98,18 @@ export const DocFetchService = {
     },
 
     /**
+     * Reads the backing editor textarea used by FFN private documents.
+     * Returns null when the editor was not present, and trimmed content otherwise.
+     */
+    _getEditorContentForGuard: function (doc: Document): string | null {
+        const contentElement = Core.getElement(Elements.EDITOR_TEXT_AREA, doc) as HTMLTextAreaElement | null;
+        if (!contentElement) return null;
+
+        const rawValue = contentElement.value || contentElement.innerHTML || '';
+        return rawValue.trim();
+    },
+
+    /**
      * Refreshes a document by loading it in a hidden iframe and clicking Save.
      * This lets FFN preserve the existing content while extending document life.
      */
@@ -123,14 +140,11 @@ export const DocFetchService = {
 
             if (!doc) return false;
 
-            const contentElement = Core.getElement(Elements.EDITOR_TEXT_AREA, doc);
-            if (!contentElement) {
+            const trimmedContent = this._getEditorContentForGuard(doc);
+            if (trimmedContent === null) {
                 log(`[REFRESH ERROR] Could not find content textarea for "${title}"`);
                 return false;
             }
-
-            const rawValue = (contentElement as HTMLTextAreaElement).value || contentElement.innerHTML;
-            const trimmedContent = rawValue.trim();
 
             if (!trimmedContent) {
                 log(`[REFRESH BLOCKED] Document "${title}" appears to be empty. Aborting refresh to prevent data loss.`);
@@ -176,29 +190,43 @@ export const DocFetchService = {
         replacementHtml: string,
         attempt: number = 1,
     ): Promise<boolean> {
+        const result = await this.replacePrivateDocContentWithResult(docId, title, replacementHtml, attempt);
+        return result.ok;
+    },
+
+    /**
+     * Replaces private document content and returns a user-facing failure reason
+     * when the operation cannot be completed.
+     */
+    replacePrivateDocContentWithResult: async function (
+        docId: string,
+        title: string,
+        replacementHtml: string,
+        attempt: number = 1,
+    ): Promise<PrivateDocSaveResult> {
         const log = Core.getLogger(this.MODULE_NAME, 'replacePrivateDocContent');
         const maxRetries = SettingsManager.get('fetchMaxRetries');
 
         if (!replacementHtml.trim()) {
             log(`[IMPORT BLOCKED] Replacement content for "${title}" is empty.`);
-            return false;
+            return { ok: false, reason: 'Replacement content is empty.' };
         }
 
         try {
             log(`[IMPORT START] Replacing "${title}" (DocID: ${docId}, Attempt: ${attempt}/${maxRetries})`);
-            const saveSuccess = await this._savePrivateDocViaIframe(docId, title, {
+            const saveResult = await this._savePrivateDocViaIframeWithResult(docId, title, {
                 operationLabel: 'IMPORT',
                 replacementHtml,
             });
 
-            if (!saveSuccess && attempt < maxRetries) {
+            if (!saveResult.ok && attempt < maxRetries) {
                 const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
                 log(`[IMPORT] Save failed for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
                 await new Promise(r => setTimeout(r, waitTime));
-                return this.replacePrivateDocContent(docId, title, replacementHtml, attempt + 1);
+                return this.replacePrivateDocContentWithResult(docId, title, replacementHtml, attempt + 1);
             }
 
-            return saveSuccess;
+            return saveResult;
         } catch (err) {
             log('[IMPORT ERROR] Exception during import save:', err);
             console.error(`IMPORT FAILED for document ${docId}:`, err);
@@ -207,10 +235,11 @@ export const DocFetchService = {
                 const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
                 log(`[IMPORT] Exception occurred. Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
                 await new Promise(r => setTimeout(r, waitTime));
-                return this.replacePrivateDocContent(docId, title, replacementHtml, attempt + 1);
+                return this.replacePrivateDocContentWithResult(docId, title, replacementHtml, attempt + 1);
             }
 
-            return false;
+            const message = err instanceof Error ? err.message : String(err);
+            return { ok: false, reason: `Unexpected error: ${message}` };
         }
     },
 
@@ -222,12 +251,28 @@ export const DocFetchService = {
         title: string,
         options: SavePrivateDocOptions,
     ): Promise<boolean> {
+        const result = await this._savePrivateDocViaIframeWithResult(docId, title, options);
+        return result.ok;
+    },
+
+    /**
+     * Shared hidden-iframe save implementation with a structured failure reason.
+     */
+    _savePrivateDocViaIframeWithResult: async function (
+        docId: string,
+        title: string,
+        options: SavePrivateDocOptions,
+    ): Promise<PrivateDocSaveResult> {
         const log = Core.getLogger(this.MODULE_NAME, '_savePrivateDocViaIframe');
         const label = options.operationLabel;
 
         log(`[${label}] Loading document in hidden iframe...`);
 
-        return new Promise<boolean>((resolve) => {
+        if (options.replacementHtml !== undefined && !options.replacementHtml.trim()) {
+            return { ok: false, reason: 'Replacement content is empty.' };
+        }
+
+        return new Promise<PrivateDocSaveResult>((resolve) => {
             const iframe = document.createElement('iframe');
             iframe.name = `_ffn_${label.toLowerCase()}_${docId}`;
             iframe.style.position = 'absolute';
@@ -260,14 +305,15 @@ export const DocFetchService = {
                 }
             };
 
-            const resolveOnce = (value: boolean) => {
+            const resolveOnce = (result: PrivateDocSaveResult) => {
                 if (isResolved) return;
                 isResolved = true;
                 removeIframe();
-                resolve(value);
+                resolve(result);
             };
 
-            const onPageHide = () => resolveOnce(false);
+            const failOnce = (reason: string) => resolveOnce({ ok: false, reason });
+            const onPageHide = () => failOnce('Page changed before the save confirmation was received.');
             window.addEventListener('pagehide', onPageHide);
 
             const waitForSaveButton = (maxAttempts: number = 50): Promise<HTMLElement | null> => {
@@ -320,7 +366,20 @@ export const DocFetchService = {
                     const submitButton = await waitForSaveButton();
                     if (!submitButton) {
                         log(`[${label} ERROR] Could not find Submit button in hidden iframe`);
-                        resolveOnce(false);
+                        failOnce('Save button was not found in the hidden editor.');
+                        return;
+                    }
+
+                    const currentContent = this._getEditorContentForGuard(iframeDoc);
+                    if (currentContent === null) {
+                        log(`[${label} ERROR] Could not find content textarea for "${title}" in hidden iframe`);
+                        failOnce('Editor textarea was not found in the hidden editor.');
+                        return;
+                    }
+
+                    if (label === 'REFRESH' && !currentContent) {
+                        log(`[${label} BLOCKED] Hidden editor loaded empty content for "${title}". Save blocked.`);
+                        failOnce('Hidden editor loaded empty content, so save was blocked.');
                         return;
                     }
 
@@ -328,7 +387,7 @@ export const DocFetchService = {
                         const didReplace = this._applyReplacementContent(iframe, options.replacementHtml);
                         if (!didReplace) {
                             log(`[${label} ERROR] Could not replace editor content for "${title}"`);
-                            resolveOnce(false);
+                            failOnce('Replacement content could not be written into the hidden editor.');
                             return;
                         }
                     }
@@ -343,7 +402,7 @@ export const DocFetchService = {
                                     submitCompleted = true;
                                     log(`[${label} SUCCESS] Document saved successfully`);
                                     console.log(`${label} SUCCESS: Document ${docId} (${title}) saved successfully`);
-                                    resolveOnce(true);
+                                    resolveOnce({ ok: true });
                                 }
                             }
                         } catch {
@@ -359,21 +418,21 @@ export const DocFetchService = {
                     saveTimer = window.setTimeout(() => {
                         if (!submitCompleted) {
                             log(`[${label} TIMEOUT] No confirmation received after ${saveTimeout}ms`);
-                            resolveOnce(false);
+                            failOnce(`No save confirmation appeared within ${saveTimeout}ms.`);
                         }
                     }, saveTimeout);
                 } catch (e) {
                     clearTimer(checkInterval, window.clearInterval);
                     checkInterval = null;
                     log(`[${label} ERROR] Lost access to iframe: ${e}`);
-                    resolveOnce(false);
+                    failOnce(`Lost access to the hidden editor: ${e}`);
                 }
             }, 100);
 
             const loadTimeout = SettingsManager.get('iframeLoadTimeoutMs');
             loadTimer = window.setTimeout(() => {
                 log(`[${label} TIMEOUT] Iframe did not load after ${loadTimeout}ms`);
-                resolveOnce(false);
+                failOnce(`Hidden editor did not load within ${loadTimeout}ms.`);
             }, loadTimeout);
 
             iframe.src = `https://www.fanfiction.net/docs/edit.php?docid=${docId}`;
