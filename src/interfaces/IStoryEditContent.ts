@@ -1,3 +1,5 @@
+export const STORY_EDIT_CONTENT_CHAPTER_ID_ATTR = 'data-ffne-story-text-id';
+
 export interface IStoryEditContentChapter {
     storyTextId: string;
     chapterNumber: number;

@@ -4,6 +4,7 @@ import { DocFetchService } from '../services/DocFetchService';
 import { StoryReplaceService } from '../services/StoryReplaceService';
 import { Core } from '../modules/Core';
 import { StoryEditContentDelegate } from '../delegates/StoryEditContentDelegate';
+import { Elements } from '../enums/Elements';
 import type {
     IStoryEditContentChapter,
     IStoryEditContentDoc,
@@ -90,7 +91,7 @@ describe('StoryEditContent parsing', () => {
 
         const chapters = StoryEditContent._parsePublishedChapters(
             document.querySelector('select[name="storytextid"]'),
-            Array.from(document.querySelectorAll('tbody tr')),
+            StoryEditContentDelegate.getElements(Elements.STORY_EDIT_CHAPTER_ROWS),
         );
         const docs = StoryEditContent._parseDocOptions(document.querySelector('select[name="docid"]'));
 

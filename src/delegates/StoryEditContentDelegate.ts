@@ -1,6 +1,7 @@
 import { Elements } from '../enums/Elements';
 import { BaseDelegate } from './BaseDelegate';
 import { IDelegate } from './IDelegate';
+import { STORY_EDIT_CONTENT_CHAPTER_ID_ATTR } from '../interfaces/IStoryEditContent';
 
 export const StoryEditContentDelegate: IDelegate = {
     ...BaseDelegate,
@@ -17,10 +18,12 @@ export const StoryEditContentDelegate: IDelegate = {
                 return findReplaceForm(doc)?.querySelector('select[name="docid"]') || null;
 
             case Elements.STORY_EDIT_REPLACE_ACTION_CONTROL:
-                return findReplaceActionControl(doc);
+                return findNamedReplaceActionControl(doc);
 
-            case Elements.STORY_EDIT_REPLACE_SUBMIT:
-                return findReplaceForm(doc)?.querySelector<HTMLElement>('button[type="submit"], input[type="submit"]') || null;
+            case Elements.STORY_EDIT_REPLACE_SUBMIT: {
+                const form = findReplaceForm(doc);
+                return form ? findReplaceSubmitInForm(form) : null;
+            }
 
             case Elements.STORY_EDIT_REPLACE_TOGGLE:
                 return findReplaceUpdateToggle(doc);
@@ -49,19 +52,26 @@ function findReplaceForm(doc: Document = document): HTMLFormElement | null {
     return forms.find(form => {
         const chapterSelect = form.querySelector('select[name="storytextid"]');
         const docSelect = form.querySelector('select[name="docid"]');
-        const replaceAction = findReplaceActionControlInForm(form);
-        return !!chapterSelect && !!docSelect && !!replaceAction;
+        const replaceAction = findNamedReplaceActionControlInForm(form);
+        const replaceSubmit = findReplaceSubmitInForm(form);
+        return !!chapterSelect && !!docSelect && (!!replaceAction || !!replaceSubmit);
     }) || null;
 }
 
-function findReplaceActionControl(doc: Document = document): HTMLElement | null {
+function findNamedReplaceActionControl(doc: Document = document): HTMLElement | null {
     const form = findReplaceForm(doc);
-    return form ? findReplaceActionControlInForm(form) : null;
+    return form ? findNamedReplaceActionControlInForm(form) : null;
 }
 
-function findReplaceActionControlInForm(form: HTMLFormElement): HTMLElement | null {
+function findNamedReplaceActionControlInForm(form: HTMLFormElement): HTMLElement | null {
     return form.querySelector<HTMLElement>(
-        'input[name="action"][value="replace"], button[name="action"][value="replace"], input[type="submit"][value*="Replace"], button[type="submit"][value="replace"]'
+        'input[name="action"][value="replace"], button[name="action"][value="replace"]'
+    );
+}
+
+function findReplaceSubmitInForm(form: HTMLFormElement): HTMLElement | null {
+    return form.querySelector<HTMLElement>(
+        'button[type="submit"], input[type="submit"][value*="Replace"], button[type="submit"][value="replace"]'
     );
 }
 
@@ -77,7 +87,11 @@ function findLikelyChapterRows(doc: Document = document): HTMLElement[] {
 
     return explicitRows.filter(row => {
         const text = normalizeText(row.textContent || '');
-        return !!extractStoryTextId(row) || /published|draft|chapter/i.test(text);
+        const storyTextId = extractStoryTextId(row);
+        if (storyTextId) {
+            row.setAttribute(STORY_EDIT_CONTENT_CHAPTER_ID_ATTR, storyTextId);
+        }
+        return !!storyTextId || /published|draft|chapter/i.test(text);
     });
 }
 

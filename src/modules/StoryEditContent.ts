@@ -5,6 +5,7 @@ import {
     IStoryEditContentFailure,
     IStoryEditContentMappingRow,
     IStoryEditContentPlan,
+    STORY_EDIT_CONTENT_CHAPTER_ID_ATTR,
 } from '../interfaces/IStoryEditContent';
 import { IBulkOperationConfig } from '../interfaces/IBulkOperationConfig';
 import { Core } from './Core';
@@ -60,21 +61,7 @@ function _extractChapterNumber(label: string, fallbackNumber: number): number {
 }
 
 function _extractStoryTextId(row: HTMLElement): string {
-    const direct = row.getAttribute('data-storytextid')
-        || row.getAttribute('data-story-text-id')
-        || row.getAttribute('data-storytext-id');
-    if (direct) return direct;
-
-    const selectors = ['a[href*="storytextid="]', 'input[name="storytextid"]', 'input[value]', 'button[value]'];
-    for (const selector of selectors) {
-        const element = row.querySelector<HTMLElement>(selector);
-        if (!element) continue;
-        const value = element instanceof HTMLAnchorElement ? element.href : element.getAttribute('value') || '';
-        const match = value.match(/storytextid=(\d+)/i) || value.match(/^(\d+)$/);
-        if (match) return match[1];
-    }
-
-    return '';
+    return row.getAttribute(STORY_EDIT_CONTENT_CHAPTER_ID_ATTR) || '';
 }
 
 function _parsePublishedChapters(
