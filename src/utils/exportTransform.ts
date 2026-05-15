@@ -49,8 +49,8 @@ function shouldSkipLinebreakNode(node: Text): boolean {
 }
 
 export function convertTextLineBreaksToBr(html: string): string {
-    const doc = new DOMParser().parseFromString(`<div id="ffne-export-root">${html}</div>`, 'text/html');
-    const root = doc.getElementById('ffne-export-root');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const root = doc.body;
     if (!root) return html;
 
     const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -64,7 +64,7 @@ export function convertTextLineBreaksToBr(html: string): string {
     nodes.forEach(node => {
         if (!node.data.includes('\n') || shouldSkipLinebreakNode(node)) return;
 
-        const parts = node.data.split(/\r\n|\r|\n/);
+        const parts = node.data.split(/\r?\n|\r/);
         if (parts.length < 2) return;
 
         const fragment = doc.createDocumentFragment();

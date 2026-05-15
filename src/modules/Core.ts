@@ -83,24 +83,19 @@ export const Core = {
         if (hostname === 'archiveofourown.org') {
             this.activeDelegate = Ao3Delegate;
             log('Strategy set to Ao3Delegate');
-        }
-        else if (pagePath.startsWith('/s/')) {
+        } else if (pagePath.startsWith('/s/')) {
             this.activeDelegate = StoryDelegate;
             log('Strategy set to StoryDelegate');
-        }
-        else if (pagePath === '/story/story_edit_content.php') {
+        } else if (pagePath === '/story/story_edit_content.php') {
             this.activeDelegate = StoryEditContentDelegate;
             log('Strategy set to StoryEditContentDelegate');
-        }
-        else if (pagePath === "/docs/docs.php") {
+        } else if (pagePath === "/docs/docs.php") {
             this.activeDelegate = DocManagerDelegate;
             log('Strategy set to DocManagerDelegate');
-        }
-        else if (pagePath.includes("/docs/edit.php")) {
+        } else if (pagePath.includes("/docs/edit.php")) {
             this.activeDelegate = DocEditorDelegate;
             log('Strategy set to DocEditorDelegate');
-        }
-        else {
+        } else {
             log('No specific delegate found for this path.');
         }
     },

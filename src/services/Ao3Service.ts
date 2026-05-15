@@ -69,7 +69,7 @@ function appendControl(params: URLSearchParams, control: Element): void {
         return;
     }
 
-    if (control instanceof HTMLButtonElement && control.type.toLowerCase() !== 'submit') {
+    if (control instanceof HTMLButtonElement && control.type.toLowerCase() === 'button') {
         params.append(name, control.value);
     }
 }
