@@ -1,6 +1,7 @@
 // === Shared bulk operation types and helper ===
 export interface IBulkItem {
     docId: string;
+    docName: string;
     title: string;
     row: HTMLTableRowElement;
 }
