@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DocManager } from '../modules/DocManager';
+import type { IBulkItem } from '../interfaces/IBulkOperationConfig';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,34 @@ function makeBtn(): HTMLButtonElement {
 
 function cleanupDOM(): void {
     document.body.innerHTML = '';
+    document.head.innerHTML = '';
+}
+
+function makeItem(docName: string, docId: string): IBulkItem {
+    return {
+        docId,
+        docName,
+        title: docName,
+        row: document.createElement('tr') as HTMLTableRowElement,
+    };
+}
+
+function makeFile(name: string, relativePath: string, content: string = '# Title'): File {
+    const file = new File([content], name, { type: 'text/markdown' });
+    Object.defineProperty(file, 'webkitRelativePath', {
+        value: relativePath,
+        configurable: true,
+    });
+    return file;
+}
+
+function makeSelectedFile(name: string, content: string = '# Title'): File {
+    const file = new File([content], name, { type: 'text/markdown' });
+    Object.defineProperty(file, 'webkitRelativePath', {
+        value: '',
+        configurable: true,
+    });
+    return file;
 }
 
 // ─── Module smoke test ──────────────────────────────────────────────────────
@@ -93,5 +122,204 @@ describe('DocManager bulk operation button reference', () => {
         };
 
         expect(() => buggyOnFinalize()).toThrow();
+    });
+});
+
+describe('DocManager bulk import planner', () => {
+    beforeEach(() => {
+        cleanupDOM();
+    });
+
+    it('matches files by exact DocManager name plus .md', () => {
+        const items = [
+            makeItem('A0', '101'),
+            makeItem('A0.md', '102'),
+        ];
+        const files = [
+            makeFile('A0.md', 'Import/A0.md'),
+            makeFile('A0.md.md', 'Import/A0.md.md'),
+        ];
+
+        const plan = DocManager._buildBulkImportPlan(files, items);
+
+        expect(plan.matchedCount).toBe(2);
+        expect(plan.missingCount).toBe(0);
+        expect(plan.hasBlockingErrors).toBe(false);
+        expect(plan.fileByDocId.get('101')?.name).toBe('A0.md');
+        expect(plan.fileByDocId.get('102')?.name).toBe('A0.md.md');
+    });
+
+    it('blocks HTML and DOCX files in the selected directory', () => {
+        const items = [makeItem('A0', '101')];
+        const files = [
+            makeFile('A0.md', 'Import/A0.md'),
+            makeFile('A0.html', 'Import/A0.html'),
+            makeFile('A0.htm', 'Import/A0.htm'),
+            makeFile('A1.docx', 'Import/A1.docx'),
+        ];
+
+        const plan = DocManager._buildBulkImportPlan(files, items);
+
+        expect(plan.matchedCount).toBe(1);
+        expect(plan.hasBlockingErrors).toBe(true);
+        expect(plan.blockedFiles).toEqual(['Import/A0.html', 'Import/A0.htm', 'Import/A1.docx']);
+    });
+
+    it('ignores unrelated files and nested Markdown files', () => {
+        const items = [makeItem('A0', '101')];
+        const files = [
+            makeFile('A0.md', 'Import/Nested/A0.md'),
+            makeFile('notes.txt', 'Import/notes.txt'),
+        ];
+
+        const plan = DocManager._buildBulkImportPlan(files, items);
+
+        expect(plan.matchedCount).toBe(0);
+        expect(plan.missingCount).toBe(0);
+        expect(plan.ignoredFiles).toEqual(['Import/Nested/A0.md', 'Import/notes.txt']);
+    });
+
+    it('shows selected Markdown files with no DocManager match as missing', () => {
+        const items = [makeItem('A0', '101')];
+        const files = [
+            makeFile('A0.md', 'Import/A0.md'),
+            makeFile('Missing.md', 'Import/Missing.md'),
+        ];
+
+        const plan = DocManager._buildBulkImportPlan(files, items);
+
+        expect(plan.matchedCount).toBe(1);
+        expect(plan.missingCount).toBe(1);
+        expect(plan.rows.map(row => row.status)).toEqual(['matched', 'missing']);
+        expect(plan.rows[1]).toMatchObject({
+            docId: '',
+            docName: 'Missing',
+            expectedFileName: 'Missing.md',
+            status: 'missing',
+        });
+        expect(plan.fileByDocId.get('101')?.name).toBe('A0.md');
+    });
+
+    it('matches individually selected files without directory paths', () => {
+        const items = [makeItem('A0', '101')];
+        const files = [
+            makeSelectedFile('A0.md'),
+            makeSelectedFile('Missing.md'),
+        ];
+
+        const plan = DocManager._buildBulkImportPlan(files, items);
+
+        expect(plan.matchedCount).toBe(1);
+        expect(plan.missingCount).toBe(1);
+        expect(plan.ignoredFiles).toEqual([]);
+        expect(plan.rows.map(row => row.expectedFileName)).toEqual(['A0.md', 'Missing.md']);
+        expect(plan.fileByDocId.get('101')?.name).toBe('A0.md');
+    });
+
+    it('blocks duplicate Markdown filenames', () => {
+        const items = [makeItem('A0', '101')];
+        const files = [
+            makeFile('A0.md', 'ImportA/A0.md'),
+            makeFile('A0.md', 'ImportB/A0.md'),
+        ];
+
+        const plan = DocManager._buildBulkImportPlan(files, items);
+
+        expect(plan.hasBlockingErrors).toBe(true);
+        expect(plan.duplicateFileNames).toEqual(['A0.md']);
+        expect(plan.rows[0].status).toBe('duplicate');
+        expect(plan.fileByDocId.has('101')).toBe(false);
+    });
+});
+
+describe('DocManager bulk import modal', () => {
+    beforeEach(() => {
+        cleanupDOM();
+    });
+
+    afterEach(() => {
+        DocManager.closeBulkImportModal();
+        cleanupDOM();
+    });
+
+    it('offers separate folder and file pickers', () => {
+        DocManager.openBulkImportModal();
+
+        const folderButton = document.getElementById('ffne-dm-browse-folder');
+        const filesButton = document.getElementById('ffne-dm-browse-files');
+        const folderInput = document.getElementById('ffne-dm-import-folder-input') as HTMLInputElement | null;
+        const filesInput = document.getElementById('ffne-dm-import-files-input') as HTMLInputElement | null;
+        const results = document.getElementById('ffne-dm-import-results') as HTMLElement | null;
+
+        expect(folderButton?.textContent).toBe('Browse Folder');
+        expect(filesButton?.textContent).toBe('Browse Files');
+        expect(folderInput?.type).toBe('file');
+        expect(folderInput?.multiple).toBe(true);
+        expect(folderInput?.hasAttribute('webkitdirectory')).toBe(true);
+        expect(filesInput?.type).toBe('file');
+        expect(filesInput?.multiple).toBe(true);
+        expect(filesInput?.hasAttribute('webkitdirectory')).toBe(false);
+        expect(results?.hidden).toBe(true);
+    });
+});
+
+describe('DocManager bulk import conversion', () => {
+    it('converts Markdown to sanitized HTML', () => {
+        const html = DocManager._markdownToImportHtml(
+            '# Heading\n\n<script>alert(1)</script>\n\n**Bold**'
+        );
+
+        expect(html).toContain('<h1>Heading</h1>');
+        expect(html).toContain('<strong>Bold</strong>');
+        expect(html).not.toContain('<script>');
+    });
+
+    it('strips event attributes and dangerous URLs from imported HTML', () => {
+        const html = DocManager._sanitizeImportHtml(
+            '<p onclick="alert(1)">Text</p><a href="javascript:alert(1)">Bad</a>'
+        );
+
+        expect(html).toContain('<p>Text</p>');
+        expect(html).toContain('<a>Bad</a>');
+        expect(html).not.toContain('onclick');
+        expect(html).not.toContain('javascript:');
+    });
+});
+
+describe('DocManager advanced drawer', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        vi.restoreAllMocks();
+    });
+
+    it('opens a native advanced routines modal with all bulk actions', () => {
+        DocManager.injectAdvancedDrawer();
+
+        const drawerButton = document.querySelector<HTMLButtonElement>('#ffne-docmanager-advanced-drawer button');
+        expect(drawerButton?.classList.contains('ffne-dm-drawer-pull')).toBe(true);
+        expect(drawerButton?.getAttribute('aria-label')).toBe('Open advanced document routines');
+        expect(drawerButton?.textContent?.trim()).toBe('');
+        expect(drawerButton?.querySelector('.ffne-dm-drawer-grabber')).not.toBeNull();
+        expect(drawerButton?.querySelector('.ffne-dm-drawer-chevron')).not.toBeNull();
+
+        drawerButton?.click();
+
+        expect(document.getElementById('ffne-docmanager-advanced-modal')).not.toBeNull();
+        expect(document.querySelector('[data-ffne-action="bulk-export"]')).not.toBeNull();
+        expect(document.querySelector('[data-ffne-action="bulk-refresh"]')).not.toBeNull();
+        expect(document.querySelector('[data-ffne-action="bulk-import"]')).not.toBeNull();
+    });
+
+    it('routes Bulk Export and Bulk Refresh through existing handlers', () => {
+        const exportSpy = vi.spyOn(DocManager, 'runBulkExport').mockResolvedValue(undefined);
+        const refreshSpy = vi.spyOn(DocManager, 'runBulkRefresh').mockResolvedValue(undefined);
+
+        DocManager.injectAdvancedDrawer();
+        document.querySelector<HTMLButtonElement>('#ffne-docmanager-advanced-drawer button')?.click();
+        document.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-export"]')?.click();
+        document.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-refresh"]')?.click();
+
+        expect(exportSpy).toHaveBeenCalledTimes(1);
+        expect(refreshSpy).toHaveBeenCalledTimes(1);
     });
 });
