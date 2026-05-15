@@ -72,7 +72,7 @@ function makeAo3Chapter(chapterNumber: number): IAo3Chapter {
     };
 }
 
-function mountDocManagerTable(docNames: string[]): void {
+function mountDocManagerItems(items: Array<{ docId: string; docName: string }>): void {
     document.body.innerHTML = `
         <table id="gui_table1">
             <thead>
@@ -83,9 +83,9 @@ function mountDocManagerTable(docNames: string[]): void {
                 </tr>
             </thead>
             <tbody>
-                ${docNames.map((docName, index) => `
+                ${items.map(({ docId, docName }) => `
                     <tr>
-                        <td><a href="https://www.fanfiction.net/docs/edit.php?docid=${100 + index}">Edit</a></td>
+                        <td><a href="https://www.fanfiction.net/docs/edit.php?docid=${docId}">Edit</a></td>
                         <td>${docName}</td>
                         <td>123 days</td>
                     </tr>
@@ -442,7 +442,10 @@ describe('DocManager AO3 migration modal', () => {
     });
 
     it('loads AO3 chapters and renders one mapping row per visible doc', async () => {
-        mountDocManagerTable(['P1', 'P2']);
+        mountDocManagerItems([
+            { docId: '100', docName: 'P1' },
+            { docId: '101', docName: 'P2' },
+        ]);
         vi.spyOn(Ao3Service, 'fetchChapterIndex').mockResolvedValue({
             ok: true,
             chapters: [makeAo3Chapter(1), makeAo3Chapter(2)],
@@ -465,16 +468,22 @@ describe('DocManager AO3 migration modal', () => {
 describe('DocManager AO3 migration execution', () => {
     beforeEach(() => {
         cleanupDOM();
+        Core.activeDelegate = DocManagerDelegate;
         vi.useFakeTimers();
         vi.restoreAllMocks();
     });
 
     afterEach(() => {
+        Core.activeDelegate = null;
         vi.useRealTimers();
         cleanupDOM();
     });
 
     async function runAo3MigrationWithPlan(plan: ReturnType<typeof DocManager._buildAo3MigrationPlan>) {
+        mountDocManagerItems(plan.rows.map(row => ({
+            docId: row.sourceItem.docId,
+            docName: row.sourceItem.docName,
+        })));
         const btn = makeBtn();
         const status = document.createElement('div');
         const results = document.createElement('div');

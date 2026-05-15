@@ -133,10 +133,6 @@ function _escapeHtml(value: string): string {
         .replace(/'/g, '&#39;');
 }
 
-function _normalizeText(value: string): string {
-    return value.replace(/\s+/g, ' ').trim();
-}
-
 function _extractTrailingNumber(value: string): number | null {
     const match = value.trim().match(/(\d+)$/);
     if (!match) return null;

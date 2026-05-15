@@ -24,6 +24,9 @@ function queueTextResponses(responses: Array<{ status?: number; responseText: st
             responseText: next.responseText,
             finalUrl: next.finalUrl ?? options.url,
         });
+        return {
+            abort: vi.fn(),
+        } as any;
     });
 }
 
