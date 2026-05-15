@@ -115,6 +115,11 @@ function _buildBulkImportPlan(files: File[], items: IBulkItem[] = _collectBulkIt
     const markdownFilesByName = new Map<string, File[]>();
     const blockedFiles: string[] = [];
     const ignoredFiles: string[] = [];
+    const itemByExpectedFileName = new Map<string, IBulkItem>();
+
+    for (const item of items) {
+        itemByExpectedFileName.set(`${item.docName}${MARKDOWN_EXTENSION}`, item);
+    }
 
     for (const file of files) {
         const displayPath = _getFileDisplayPath(file);
@@ -147,26 +152,26 @@ function _buildBulkImportPlan(files: File[], items: IBulkItem[] = _collectBulkIt
     let matchedCount = 0;
     let missingCount = 0;
 
-    for (const item of items) {
-        const expectedFileName = `${item.docName}${MARKDOWN_EXTENSION}`;
-        const matchedFiles = markdownFilesByName.get(expectedFileName) || [];
+    for (const [fileName, matchedFiles] of markdownFilesByName) {
+        const item = itemByExpectedFileName.get(fileName);
+        const targetDocName = fileName.slice(0, -MARKDOWN_EXTENSION.length);
 
-        if (duplicateSet.has(expectedFileName)) {
+        if (duplicateSet.has(fileName)) {
             rows.push({
-                docId: item.docId,
-                docName: item.docName,
-                expectedFileName,
+                docId: item?.docId || '',
+                docName: item?.docName || targetDocName,
+                expectedFileName: fileName,
                 status: 'duplicate',
                 file: null,
             });
             continue;
         }
 
-        if (matchedFiles.length === 1) {
+        if (item && matchedFiles.length === 1) {
             rows.push({
                 docId: item.docId,
                 docName: item.docName,
-                expectedFileName,
+                expectedFileName: fileName,
                 status: 'matched',
                 file: matchedFiles[0],
             });
@@ -176,11 +181,11 @@ function _buildBulkImportPlan(files: File[], items: IBulkItem[] = _collectBulkIt
         }
 
         rows.push({
-            docId: item.docId,
-            docName: item.docName,
-            expectedFileName,
+            docId: '',
+            docName: targetDocName,
+            expectedFileName: fileName,
             status: 'missing',
-            file: null,
+            file: matchedFiles[0] || null,
         });
         missingCount++;
     }
@@ -825,7 +830,7 @@ export const DocManager = {
         preview.innerHTML = `
             <div>
                 <strong>${plan.matchedCount}</strong> matched,
-                <strong>${plan.missingCount}</strong> missing,
+                <strong>${plan.missingCount}</strong> missing in DocManager,
                 <strong>${plan.duplicateFileNames.length}</strong> duplicate,
                 <strong>${plan.ignoredFiles.length}</strong> ignored.
             </div>
@@ -836,11 +841,11 @@ export const DocManager = {
                 <thead>
                     <tr>
                         <th>DocManager Name</th>
-                        <th>Expected File</th>
+                        <th>Selected File</th>
                         <th>Status</th>
                     </tr>
                 </thead>
-                <tbody>${rowsHtml || '<tr><td colspan="3">No documents found.</td></tr>'}</tbody>
+                <tbody>${rowsHtml || '<tr><td colspan="3">No top-level Markdown files found.</td></tr>'}</tbody>
             </table>
         `;
     },

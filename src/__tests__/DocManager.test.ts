@@ -166,8 +166,29 @@ describe('DocManager bulk import planner', () => {
         const plan = DocManager._buildBulkImportPlan(files, items);
 
         expect(plan.matchedCount).toBe(0);
-        expect(plan.missingCount).toBe(1);
+        expect(plan.missingCount).toBe(0);
         expect(plan.ignoredFiles).toEqual(['Import/Nested/A0.md', 'Import/notes.txt']);
+    });
+
+    it('shows selected Markdown files with no DocManager match as missing', () => {
+        const items = [makeItem('A0', '101')];
+        const files = [
+            makeFile('A0.md', 'Import/A0.md'),
+            makeFile('Missing.md', 'Import/Missing.md'),
+        ];
+
+        const plan = DocManager._buildBulkImportPlan(files, items);
+
+        expect(plan.matchedCount).toBe(1);
+        expect(plan.missingCount).toBe(1);
+        expect(plan.rows.map(row => row.status)).toEqual(['matched', 'missing']);
+        expect(plan.rows[1]).toMatchObject({
+            docId: '',
+            docName: 'Missing',
+            expectedFileName: 'Missing.md',
+            status: 'missing',
+        });
+        expect(plan.fileByDocId.get('101')?.name).toBe('A0.md');
     });
 
     it('blocks duplicate Markdown filenames', () => {
