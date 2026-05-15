@@ -25,9 +25,9 @@ export const GlobalDelegate: IDelegate = {
                     doc.querySelector('#content_wrapper')) as HTMLElement;
             case Elements.EDITOR_TEXT_AREA:
                 // Used globally for all docs that have editable textareas (usually author-accessible pages only)
-                return doc.querySelector("textarea[name='bio']") as HTMLElement;
+                return doc.querySelector("textarea[name='bio'], textarea#bio, textarea[name='webcontent'], textarea#webcontent") as HTMLElement;
             case Elements.EDITOR_TEXT_AREA_IFRAME:
-                return doc.querySelector("#bio_ifr") as HTMLElement;
+                return doc.querySelector("#bio_ifr, #webcontent_ifr") as HTMLElement;
             case Elements.SAVE_BUTTON:
                 return doc.querySelector("button[type='submit']") as HTMLButtonElement;
             case Elements.SUCCESS_PANEL:

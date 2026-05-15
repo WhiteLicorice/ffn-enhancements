@@ -26,6 +26,11 @@ interface TinyMceLike {
     activeEditor?: TinyMceEditorLike | null;
 }
 
+interface HiddenEditorControls {
+    submitButton: HTMLElement;
+    textarea: HTMLTextAreaElement;
+}
+
 /**
  * Document fetch and refresh service for FFN private author documents.
  * Handles fetching doc pages, extracting content, and refreshing via hidden iframe.
@@ -102,11 +107,43 @@ export const DocFetchService = {
      * Returns null when the editor was not present, and trimmed content otherwise.
      */
     _getEditorContentForGuard: function (doc: Document): string | null {
-        const contentElement = Core.getElement(Elements.EDITOR_TEXT_AREA, doc) as HTMLTextAreaElement | null;
+        const contentElement = this._getEditorTextarea(doc);
         if (!contentElement) return null;
 
         const rawValue = contentElement.value || contentElement.innerHTML || '';
         return rawValue.trim();
+    },
+
+    /**
+     * Locates FFN's backing editor textarea across both private-doc editor variants.
+     */
+    _getEditorTextarea: function (doc: Document): HTMLTextAreaElement | null {
+        const directMatch = doc.querySelector<HTMLTextAreaElement>(
+            "textarea[name='bio'], textarea#bio, textarea[name='webcontent'], textarea#webcontent"
+        );
+        if (directMatch) return directMatch;
+
+        const textareas = Array.from(doc.querySelectorAll<HTMLTextAreaElement>('textarea'));
+        return textareas.length === 1 ? textareas[0] : null;
+    },
+
+    /**
+     * Locates the TinyMCE iframe associated with the backing editor textarea.
+     */
+    _getEditorIframe: function (doc: Document, textarea?: HTMLTextAreaElement): HTMLIFrameElement | null {
+        const selectors = ['#bio_ifr', '#webcontent_ifr'];
+        const editorKey = textarea?.id || textarea?.name;
+        if (editorKey && /^[A-Za-z0-9_-]+$/.test(editorKey)) {
+            selectors.unshift(`#${editorKey}_ifr`);
+        }
+
+        for (const selector of selectors) {
+            const frame = doc.querySelector<HTMLIFrameElement>(selector);
+            if (frame) return frame;
+        }
+
+        const editorFrames = Array.from(doc.querySelectorAll<HTMLIFrameElement>('iframe[id$="_ifr"]'));
+        return editorFrames.length === 1 ? editorFrames[0] : null;
     },
 
     /**
@@ -316,39 +353,51 @@ export const DocFetchService = {
             const onPageHide = () => failOnce('Page changed before the save confirmation was received.');
             window.addEventListener('pagehide', onPageHide);
 
-            const waitForSaveButton = (maxAttempts: number = 50): Promise<HTMLElement | null> => {
-                return new Promise((resolveBtn) => {
+            let editorControlsFailureReason = 'Editor controls were not ready in the hidden editor.';
+            const waitForEditorControls = (maxAttempts: number = 100): Promise<HiddenEditorControls | null> => {
+                return new Promise((resolveControls) => {
                     let attempts = 0;
-                    const buttonInterval = window.setInterval(() => {
+                    const controlsInterval = window.setInterval(() => {
                         attempts++;
                         try {
                             const iframeDoc = iframe.contentDocument;
                             if (!iframeDoc) {
-                                window.clearInterval(buttonInterval);
-                                resolveBtn(null);
+                                window.clearInterval(controlsInterval);
+                                editorControlsFailureReason = 'Hidden editor document was unavailable.';
+                                resolveControls(null);
                                 return;
                             }
 
                             const hasContent = iframeDoc.body && iframeDoc.body.children.length > 0;
                             if (hasContent) {
                                 const submitButton = Core.getElement(Elements.SAVE_BUTTON, iframeDoc);
-                                if (submitButton) {
-                                    window.clearInterval(buttonInterval);
-                                    log(`[${label}] Save button found after ${attempts * 200}ms`);
-                                    resolveBtn(submitButton);
+                                const textarea = this._getEditorTextarea(iframeDoc);
+                                if (submitButton && textarea) {
+                                    window.clearInterval(controlsInterval);
+                                    log(`[${label}] Editor controls found after ${attempts * 200}ms`);
+                                    resolveControls({ submitButton, textarea });
                                     return;
                                 }
                             }
 
                             if (attempts >= maxAttempts) {
-                                window.clearInterval(buttonInterval);
-                                log(`[${label} ERROR] Save button not found after ${maxAttempts * 200}ms`);
-                                resolveBtn(null);
+                                window.clearInterval(controlsInterval);
+                                const iframeDocForLog = iframe.contentDocument;
+                                const missingSaveButton = !iframeDocForLog || !Core.getElement(Elements.SAVE_BUTTON, iframeDocForLog);
+                                const missingTextarea = !iframeDocForLog || !this._getEditorTextarea(iframeDocForLog);
+                                const missing = [
+                                    missingSaveButton ? 'Save button' : '',
+                                    missingTextarea ? 'editor textarea' : '',
+                                ].filter(Boolean).join(' and ') || 'Editor controls';
+                                editorControlsFailureReason = `${missing} not found in the hidden editor after ${maxAttempts * 200}ms.`;
+                                log(`[${label} ERROR] ${missing} not found after ${maxAttempts * 200}ms`);
+                                resolveControls(null);
                             }
                         } catch (e) {
-                            window.clearInterval(buttonInterval);
-                            log(`[${label} ERROR] Exception while waiting for button: ${e}`);
-                            resolveBtn(null);
+                            window.clearInterval(controlsInterval);
+                            editorControlsFailureReason = `Could not inspect hidden editor controls: ${e}`;
+                            log(`[${label} ERROR] Exception while waiting for editor controls: ${e}`);
+                            resolveControls(null);
                         }
                     }, 200);
                 });
@@ -363,19 +412,15 @@ export const DocFetchService = {
                     checkInterval = null;
                     log(`[${label}] Page readyState complete, waiting for editor controls...`);
 
-                    const submitButton = await waitForSaveButton();
-                    if (!submitButton) {
-                        log(`[${label} ERROR] Could not find Submit button in hidden iframe`);
-                        failOnce('Save button was not found in the hidden editor.');
+                    const controls = await waitForEditorControls();
+                    if (!controls) {
+                        log(`[${label} ERROR] Could not find editor controls in hidden iframe`);
+                        failOnce(editorControlsFailureReason);
                         return;
                     }
 
-                    const currentContent = this._getEditorContentForGuard(iframeDoc);
-                    if (currentContent === null) {
-                        log(`[${label} ERROR] Could not find content textarea for "${title}" in hidden iframe`);
-                        failOnce('Editor textarea was not found in the hidden editor.');
-                        return;
-                    }
+                    const { submitButton, textarea } = controls;
+                    const currentContent = (textarea.value || textarea.innerHTML || '').trim();
 
                     if (label === 'REFRESH' && !currentContent) {
                         log(`[${label} BLOCKED] Hidden editor loaded empty content for "${title}". Save blocked.`);
@@ -447,13 +492,13 @@ export const DocFetchService = {
         const iframeDoc = iframe.contentDocument;
         if (!iframeDoc) return false;
 
-        const textarea = Core.getElement(Elements.EDITOR_TEXT_AREA, iframeDoc) as HTMLTextAreaElement | null;
+        const textarea = this._getEditorTextarea(iframeDoc);
         if (!textarea) {
             log('Backing textarea not found.');
             return false;
         }
 
-        const editorFrame = Core.getElement(Elements.EDITOR_TEXT_AREA_IFRAME, iframeDoc) as HTMLIFrameElement | null;
+        const editorFrame = this._getEditorIframe(iframeDoc, textarea);
         if (editorFrame?.contentDocument?.body) {
             editorFrame.contentDocument.body.innerHTML = replacementHtml;
         }
@@ -463,7 +508,8 @@ export const DocFetchService = {
             tinyMCE?: TinyMceLike;
         }) | null;
         const tinyMce = iframeWindow?.tinymce || iframeWindow?.tinyMCE;
-        const editor = tinyMce?.get?.('bio') || tinyMce?.activeEditor || null;
+        const editorKey = textarea.id || textarea.name || 'bio';
+        const editor = tinyMce?.get?.(editorKey) || tinyMce?.get?.('bio') || tinyMce?.get?.('webcontent') || tinyMce?.activeEditor || null;
 
         if (editor?.setContent) {
             editor.setContent(replacementHtml);
