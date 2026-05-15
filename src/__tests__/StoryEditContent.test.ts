@@ -5,6 +5,7 @@ import { StoryReplaceService } from '../services/StoryReplaceService';
 import { Core } from '../modules/Core';
 import { StoryEditContentDelegate } from '../delegates/StoryEditContentDelegate';
 import { Elements } from '../enums/Elements';
+import { SettingsManager } from '../modules/SettingsManager';
 import type {
     IStoryEditContentChapter,
     IStoryEditContentDoc,
@@ -167,6 +168,27 @@ describe('StoryEditContent mapping state', () => {
         expect(mappings[3].hasBeenAutofilled).toBe(true);
     });
 
+    it('does not autofill when Bulk Replace autofill is disabled', () => {
+        const mappings = makeMappings(4);
+        const docs = makeDocs('StoryName', 1, 4);
+        const getSpy = vi.spyOn(SettingsManager, 'get').mockReturnValue(false);
+
+        try {
+            StoryEditContent._setManualDocSelection(mappings, docs, 1, 'StoryName-2');
+
+            expect(mappings.map(row => row.selectedDocName)).toEqual([
+                '',
+                'StoryName002',
+                '',
+                '',
+            ]);
+            expect(mappings[1].source).toBe('manual');
+            expect(mappings.some(row => row.source === 'autofill')).toBe(false);
+        } finally {
+            getSpy.mockRestore();
+        }
+    });
+
     it('autofilled rows do not cascade new autofill chains', () => {
         const mappings = makeMappings(4);
         const docs = makeDocs('StoryName', 2, 4);
@@ -226,7 +248,7 @@ describe('StoryEditContent injection', () => {
         cleanupDOM();
     });
 
-    it('places Bulk Replace next to the visible Replace/Update Chapter toggle', () => {
+    it('places Bulk Replace as a native-style link next to the visible Replace/Update Chapter toggle', () => {
         document.body.innerHTML = `
             <center>
                 <a href="#">Post New Chapter</a> |
@@ -244,10 +266,14 @@ describe('StoryEditContent injection', () => {
 
         StoryEditContent.injectBulkReplaceButton(document.getElementById('replacechapter') as HTMLFormElement);
 
-        const button = document.getElementById('ffne-story-bulk-replace-btn');
+        const button = document.getElementById('ffne-story-bulk-replace-btn') as HTMLAnchorElement | null;
         const visibleControls = document.querySelector('center');
 
         expect(button).not.toBeNull();
+        expect(button?.tagName).toBe('A');
+        expect(button?.className).toBe('');
+        expect(button?.href).toContain('#');
+        expect(button?.previousSibling?.textContent).toBe(' | ');
         expect(button?.parentElement).toBe(visibleControls);
         expect(document.querySelector('#area_modchapter #ffne-story-bulk-replace-btn')).toBeNull();
     });

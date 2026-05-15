@@ -1,6 +1,7 @@
 import { SettingsManager } from '../modules/SettingsManager';
 import { Elements } from '../enums/Elements';
 import { StoryEditContentDelegate } from '../delegates/StoryEditContentDelegate';
+import { Core } from '../modules/Core';
 
 export interface StoryReplaceResult {
     ok: boolean;
@@ -47,11 +48,14 @@ function getExplicitFailureReason(doc: Document): string | null {
 
 export const StoryReplaceService = {
     submitReplaceForm: async function (actionUrl: string, storyTextId: string, docId: string): Promise<StoryReplaceResult> {
+        const log = Core.getLogger('StoryReplaceService', 'submitReplaceForm');
         if (!storyTextId || !docId) {
+            log('Replace submission blocked by missing chapter or source doc.', { storyTextId, docId });
             return { ok: false, reason: 'Missing chapter or source document selection.' };
         }
 
         return new Promise<StoryReplaceResult>((resolve) => {
+            log(`Loading hidden StoryEditContent page for chapter ${storyTextId} and doc ${docId}.`, actionUrl);
             const iframe = document.createElement('iframe');
             iframe.name = `ffne_story_replace_${Date.now()}_${Math.random().toString(36).slice(2)}`;
             iframe.style.position = 'absolute';
@@ -75,18 +79,23 @@ export const StoryReplaceService = {
             const resolveOnce = (result: StoryReplaceResult) => {
                 if (settled) return;
                 settled = true;
+                log(`Hidden replace flow resolved: ${result.ok ? 'success' : 'failure'}.`, result.reason);
                 cleanup();
                 resolve(result);
             };
 
             const armTimeout = (ms: number, reason: string) => {
                 if (timeoutId !== null) window.clearTimeout(timeoutId);
-                timeoutId = window.setTimeout(() => resolveOnce({ ok: false, reason }), ms);
+                timeoutId = window.setTimeout(() => {
+                    log('Hidden replace flow timed out.', reason);
+                    resolveOnce({ ok: false, reason });
+                }, ms);
             };
 
             const submitNativeReplaceForm = (doc: Document): StoryReplaceResult | null => {
                 const form = StoryEditContentDelegate.getElement(Elements.STORY_EDIT_REPLACE_FORM, doc) as HTMLFormElement | null;
                 if (!form) {
+                    log('Native replace form missing from hidden StoryEditContent page.');
                     return { ok: false, reason: 'Hidden StoryEditContent page did not contain the native replace form.' };
                 }
 
@@ -100,9 +109,11 @@ export const StoryReplaceService = {
                 }
 
                 if (!didSetChapter) {
+                    log('Hidden replace form did not accept selected chapter.', storyTextId);
                     return { ok: false, reason: 'Hidden replace form did not include the selected chapter.' };
                 }
                 if (!didSetDoc) {
+                    log('Hidden replace form did not accept selected source doc.', docId);
                     return { ok: false, reason: 'Hidden replace form did not include the selected source document.' };
                 }
 
@@ -112,6 +123,7 @@ export const StoryReplaceService = {
                     `No replace response returned within ${SettingsManager.get('iframeSaveTimeoutMs')}ms.`,
                 );
 
+                log('Submitting native replace form inside hidden StoryEditContent page.');
                 form.submit();
                 return null;
             };
@@ -120,6 +132,7 @@ export const StoryReplaceService = {
                 try {
                     const doc = iframe.contentDocument;
                     if (!doc) {
+                        log('Hidden StoryEditContent iframe had no readable document.');
                         resolveOnce({ ok: false, reason: 'Hidden StoryEditContent frame was not readable.' });
                         return;
                     }
@@ -128,6 +141,7 @@ export const StoryReplaceService = {
                     if (phase === 'loading-page') {
                         if (!frameHref || frameHref === 'about:blank') return;
 
+                        log('Hidden StoryEditContent page loaded; preparing native replace form.', frameHref);
                         const submitFailure = submitNativeReplaceForm(doc);
                         if (submitFailure) resolveOnce(submitFailure);
                         return;
@@ -136,14 +150,17 @@ export const StoryReplaceService = {
                     if (phase === 'submitting-replace') {
                         const failureReason = getExplicitFailureReason(doc);
                         if (failureReason) {
+                            log('Hidden replace response contained an explicit failure.', failureReason);
                             resolveOnce({ ok: false, reason: failureReason });
                             return;
                         }
 
+                        log('Hidden replace response loaded without explicit failure.');
                         resolveOnce({ ok: true });
                     }
                 } catch (err) {
                     const message = err instanceof Error ? err.message : String(err);
+                    log('Could not inspect hidden StoryEditContent frame.', message);
                     resolveOnce({ ok: false, reason: `Could not inspect hidden StoryEditContent frame: ${message}` });
                 }
             };
@@ -159,6 +176,7 @@ export const StoryReplaceService = {
                 iframe.src = new URL(actionUrl, window.location.href).href;
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
+                log('Could not load hidden StoryEditContent page.', message);
                 resolveOnce({ ok: false, reason: `Could not load hidden StoryEditContent page: ${message}` });
             }
         });

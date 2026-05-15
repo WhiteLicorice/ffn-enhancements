@@ -64,6 +64,12 @@ export interface FFNSettings {
     appendSeparator: boolean;
 
     /**
+     * When true, Bulk Replace auto-maps nearby numbered docs after a manual
+     * source-doc selection.
+     */
+    bulkReplaceAutofill: boolean;
+
+    /**
      * Number of pixels to scroll per W/S/↑/↓ keypress on story reading pages.
      */
     scrollStep: number;
@@ -125,6 +131,7 @@ const DEFAULTS: FFNSettings = {
     pasteForceIntercept: false,
     ao3HtmlCompatibility: true,
     appendSeparator: false,
+    bulkReplaceAutofill: false,
     scrollStep: 300,
     fetchMaxRetries: 3,
     fetchRetryBaseMs: 2000,
@@ -306,6 +313,7 @@ function _loadAll(): void {
     _loadBool('pasteForceIntercept');
     _loadBool('ao3HtmlCompatibility');
     _loadBool('appendSeparator');
+    _loadBool('bulkReplaceAutofill');
     _loadPositiveNumber('scrollStep');
     _loadPositiveNumber('fetchMaxRetries');
     _loadPositiveNumber('fetchRetryBaseMs');

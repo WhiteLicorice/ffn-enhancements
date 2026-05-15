@@ -12,6 +12,7 @@ import { Core } from './Core';
 import { DocFetchService } from '../services/DocFetchService';
 import { StoryReplaceService } from '../services/StoryReplaceService';
 import { runBulkOperation } from '../utils/runBulkOperation';
+import { SettingsManager } from './SettingsManager';
 
 const BULK_REPLACE_BUTTON_ID = 'ffne-story-bulk-replace-btn';
 const BULK_REPLACE_MODAL_ID = 'ffne-story-bulk-replace-modal';
@@ -184,14 +185,19 @@ function _applySemanticAutofill(
     anchorIndex: number,
     selectedDocId: string,
 ): IStoryEditContentMappingRow[] {
+    const log = Core.getLogger('story-edit-content', '_applySemanticAutofill');
     const anchor = mappings[anchorIndex];
     if (!anchor || !selectedDocId) return mappings;
 
     const { byId, byName } = _buildDocMaps(docs);
     const anchorDoc = byId.get(selectedDocId);
     const parsed = anchorDoc ? _parseSemanticDocName(anchorDoc.docName) : null;
-    if (!anchorDoc || !parsed) return mappings;
+    if (!anchorDoc || !parsed) {
+        log(`No semantic doc suffix found for selected doc "${anchorDoc?.docName || selectedDocId}".`);
+        return mappings;
+    }
 
+    let appliedCount = 0;
     for (let index = 0; index < mappings.length; index++) {
         if (index === anchorIndex) continue;
 
@@ -211,7 +217,13 @@ function _applySemanticAutofill(
         row.source = 'autofill';
         row.hasBeenAutofilled = true;
         row.status = 'mapped';
+        appliedCount++;
     }
+
+    log(`Autofill from "${anchorDoc.docName}" applied to ${appliedCount} row(s).`, {
+        anchorIndex,
+        anchorChapter: anchor.chapter.chapterNumber,
+    });
 
     return mappings;
 }
@@ -232,8 +244,14 @@ function _setManualDocSelection(
     row.source = doc ? 'manual' : 'unmapped';
     row.status = doc ? 'mapped' : 'unmapped';
 
-    if (doc) {
+    const log = Core.getLogger('story-edit-content', '_setManualDocSelection');
+    if (doc && SettingsManager.get('bulkReplaceAutofill')) {
+        log(`Manual selection "${doc.docName}" on row ${rowIndex}; running semantic autofill.`);
         _applySemanticAutofill(mappings, docs, rowIndex, doc.docId);
+    } else if (doc) {
+        log(`Manual selection "${doc.docName}" on row ${rowIndex}; semantic autofill disabled.`);
+    } else {
+        log(`Row ${rowIndex} unmapped by manual selection.`);
     }
 
     return mappings;
@@ -317,44 +335,53 @@ export const StoryEditContent = {
     init: function () {
         const log = Core.getLogger(this.MODULE_NAME, 'init');
         Core.onDomReady(() => {
+            log('Initializing StoryEditContent hooks.');
             const form = Core.getElement(Elements.STORY_EDIT_REPLACE_FORM) as HTMLFormElement | null;
             if (!form) {
                 log('Replace form not found.');
                 return;
             }
             this.injectBulkReplaceButton(form);
+            log('StoryEditContent hooks initialized.');
         });
     },
 
     injectBulkReplaceButton: function (form: HTMLFormElement) {
         if (document.getElementById(BULK_REPLACE_BUTTON_ID)) return;
+        const log = Core.getLogger(this.MODULE_NAME, 'injectBulkReplaceButton');
 
         this._injectStyles();
 
-        const button = document.createElement('button');
-        button.id = BULK_REPLACE_BUTTON_ID;
-        button.type = 'button';
-        button.className = 'ffne-story-bulk-btn';
-        button.textContent = 'Bulk Replace';
-        button.addEventListener('click', () => this.openBulkReplaceModal());
+        const trigger = document.createElement('a');
+        trigger.id = BULK_REPLACE_BUTTON_ID;
+        trigger.href = '#';
+        trigger.textContent = 'Bulk Replace';
+        trigger.addEventListener('click', event => {
+            event.preventDefault();
+            this.openBulkReplaceModal();
+        });
 
         const replaceToggle = Core.getElement(Elements.STORY_EDIT_REPLACE_TOGGLE) as HTMLAnchorElement | null;
         if (replaceToggle?.parentElement) {
-            const spacer = document.createTextNode(' ');
-            replaceToggle.after(spacer, button);
+            const separator = document.createTextNode(' | ');
+            replaceToggle.after(separator, trigger);
+            log('Bulk Replace link inserted next to visible Replace/Update toggle.');
             return;
         }
 
         const replaceControl = Core.getElement(Elements.STORY_EDIT_REPLACE_SUBMIT) as HTMLElement | null;
         if (replaceControl) {
-            replaceControl.insertAdjacentElement('afterend', button);
+            replaceControl.insertAdjacentElement('afterend', trigger);
+            log('Bulk Replace link inserted after native replace submit control.');
         } else {
-            form.appendChild(button);
+            form.appendChild(trigger);
+            log('Bulk Replace link appended to native replace form.');
         }
     },
 
     openBulkReplaceModal: function () {
         if (document.getElementById(BULK_REPLACE_MODAL_ID)) return;
+        const log = Core.getLogger(this.MODULE_NAME, 'openBulkReplaceModal');
 
         const replaceForm = Core.getElement(Elements.STORY_EDIT_REPLACE_FORM) as HTMLFormElement | null;
         const chapterSelect = Core.getElement(Elements.STORY_EDIT_CHAPTER_SELECT) as HTMLSelectElement | null;
@@ -364,8 +391,14 @@ export const StoryEditContent = {
         const chapters = _parsePublishedChapters(chapterSelect, chapterRows);
         const docs = _parseDocOptions(docSelect);
         if (!replaceForm || chapters.length === 0 || docs.length === 0) {
+            log('Bulk Replace modal blocked by missing page data.', {
+                hasReplaceForm: !!replaceForm,
+                chapterCount: chapters.length,
+                docCount: docs.length,
+            });
             return;
         }
+        log(`Opening Bulk Replace modal for ${chapters.length} chapter(s) and ${docs.length} doc(s).`);
 
         this._state = {
             actionUrl: replaceForm.action || window.location.href,
@@ -676,6 +709,8 @@ export const StoryEditContent = {
     _refreshPlan: function (summary: HTMLElement, startButton: HTMLButtonElement) {
         if (!this._state) return;
         const plan = _buildMappingPlan(this._state.mappings);
+        const log = Core.getLogger(this.MODULE_NAME, '_refreshPlan');
+        log(`Plan refreshed: ${plan.mappedCount} mapped, ${plan.skippedCount} skipped, ${plan.duplicateDocIds.length} duplicate(s).`);
         const summaryClass = plan.hasBlockingErrors
             ? 'ffne-story-bulk-summary ffne-story-bulk-error'
             : 'ffne-story-bulk-summary';
@@ -699,11 +734,16 @@ export const StoryEditContent = {
         resultsEl?: HTMLElement,
     ) {
         if (!this._state) return;
+        const log = Core.getLogger(this.MODULE_NAME, 'runBulkReplace');
 
         const activePlan = plan || _buildMappingPlan(this._state.mappings);
         const failures: IStoryEditContentFailure[] = [];
         const failureReasons = new Map<string, string>();
         const mappedRows = activePlan.rows.filter(row => !!row.selectedDocId && row.status !== 'duplicate');
+        log(`Bulk Replace requested for ${mappedRows.length} mapped row(s).`, {
+            hasBlockingErrors: activePlan.hasBlockingErrors,
+            duplicateDocIds: activePlan.duplicateDocIds,
+        });
 
         if (activePlan.hasBlockingErrors || mappedRows.length === 0) {
             if (statusEl) {
@@ -712,6 +752,7 @@ export const StoryEditContent = {
                     : 'No chapters are mapped.';
             }
             _renderFailureTable(resultsEl, []);
+            log('Bulk Replace blocked before execution.');
             return;
         }
 
@@ -736,9 +777,11 @@ export const StoryEditContent = {
 
                 const validation = await DocFetchService.validatePrivateDocHasContentWithResult(row.selectedDocId, row.selectedDocName);
                 if (!validation.ok) {
+                    log(`Source doc validation failed for "${row.selectedDocName}".`, validation.reason);
                     setFailure(row, validation.reason || 'Source document validation failed.');
                     return false;
                 }
+                log(`Source doc validation passed for "${row.selectedDocName}".`);
 
                 const result = await StoryReplaceService.submitReplaceForm(
                     this._state?.actionUrl || window.location.href,
@@ -746,10 +789,12 @@ export const StoryEditContent = {
                     row.selectedDocId,
                 );
                 if (!result.ok) {
+                    log(`Replace failed for "${row.chapter.chapterLabel}" from "${row.selectedDocName}".`, result.reason);
                     setFailure(row, result.reason || 'FFN did not confirm the replacement.');
                     return false;
                 }
 
+                log(`Replace succeeded for "${row.chapter.chapterLabel}" from "${row.selectedDocName}".`);
                 failureReasons.delete(row.chapter.storyTextId);
                 return true;
             },
@@ -765,9 +810,11 @@ export const StoryEditContent = {
                     docName: row.selectedDocName,
                     reason: failureReasons.get(row.chapter.storyTextId) || 'Replace failed after retry.',
                 });
+                log(`Permanent replace failure for "${row.chapter.chapterLabel}".`, failures[failures.length - 1].reason);
             },
             onFinalize: ({ successCount, totalCount }) => {
                 _renderFailureTable(resultsEl, failures);
+                log(`Bulk Replace finalized: ${successCount}/${totalCount} succeeded.`);
                 if (statusEl) {
                     if (successCount === totalCount) {
                         statusEl.textContent = `Replaced all ${successCount} chapter(s).`;

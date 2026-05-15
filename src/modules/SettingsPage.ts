@@ -22,6 +22,7 @@ const BOOL_KEYS: (keyof FFNSettings)[] = [
     'pasteForceIntercept',
     'ao3HtmlCompatibility',
     'appendSeparator',
+    'bulkReplaceAutofill',
 ];
 
 /**
@@ -217,6 +218,15 @@ function _buildModalHTML(): string {
                         'Pixels scrolled per keypress when using W / S / ↑ / ↓ on story pages.',
                         s.get('scrollStep'),
                         { min: 50, max: 1000, step: 50, unit: 'px' }
+                    ),
+                ])}
+
+                ${_buildSection('Author Tools', [
+                    _buildToggleRow(
+                        'bulkReplaceAutofill',
+                        'Autofill in Bulk Replace',
+                        'When selecting one numbered source document in Bulk Replace, automatically maps matching numbered docs to nearby chapters.',
+                        s.get('bulkReplaceAutofill')
                     ),
                 ])}
 
