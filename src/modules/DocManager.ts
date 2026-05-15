@@ -257,10 +257,10 @@ function _renderBulkImportFailures(container: HTMLElement | null | undefined, fa
     container.hidden = false;
     container.innerHTML = `
         <div class="ffne-dm-import-results-title">Failed Imports</div>
-        <table class="ffne-dm-preview">
+        <table class="ffne-dm-preview" contenteditable="false">
             <thead>
                 <tr>
-                    <th>DocManager Name</th>
+                    <th>Doc</th>
                     <th>Selected File</th>
                     <th>Reason</th>
                 </tr>
@@ -700,6 +700,8 @@ export const DocManager = {
                 width: 100%;
                 border-collapse: collapse;
                 margin-top: 8px;
+                cursor: default;
+                user-select: none;
             }
             .ffne-dm-preview th {
                 background: #f0f4f8;
@@ -707,11 +709,13 @@ export const DocManager = {
                 border: 1px solid #c8d6e4;
                 padding: 5px 6px;
                 text-align: left;
+                cursor: default;
             }
             .ffne-dm-preview td {
                 border: 1px solid #ddd;
                 padding: 5px 6px;
                 vertical-align: top;
+                cursor: default;
             }
             .ffne-dm-status-matched { color: #236423; font-weight: 700; }
             .ffne-dm-status-missing { color: #777; }
@@ -983,10 +987,10 @@ export const DocManager = {
             ${blockedHtml}
             ${duplicateHtml}
             ${ignoredHtml}
-            <table class="ffne-dm-preview">
+            <table class="ffne-dm-preview" contenteditable="false">
                 <thead>
                     <tr>
-                        <th>DocManager Name</th>
+                        <th>Doc</th>
                         <th>Selected File</th>
                         <th>Status</th>
                     </tr>
