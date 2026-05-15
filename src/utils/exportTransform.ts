@@ -26,7 +26,7 @@ export function convertStyleAlignToAttr(html: string): string {
 }
 
 /**
- * Appends format-specific separator with one newline above and one below.
+ * Appends format-specific separator with one newline above.
  */
 export function appendFormatSeparator(
     content: string,
@@ -35,11 +35,11 @@ export function appendFormatSeparator(
     const trimmed = content.trimEnd();
     switch (format) {
         case DocDownloadFormat.MARKDOWN:
-            return trimmed + '---\n';
+            return trimmed + '\n\n---';
         case DocDownloadFormat.HTML:
-            return trimmed + '<hr>\n<p>&nbsp;</p>';
+            return trimmed + '\n<hr>\n<p>&nbsp;</p>';
         case DocDownloadFormat.DOCX:
-            return trimmed + '<hr>\n<p>&nbsp;</p>';
+            return trimmed + '\n<hr>\n<p>&nbsp;</p>';
     }
 }
 
