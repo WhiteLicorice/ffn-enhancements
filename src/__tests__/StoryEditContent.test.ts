@@ -156,6 +156,27 @@ describe('StoryEditContent mapping state', () => {
         expect(mappings[6].source).toBe('autofill');
     });
 
+    it('autofills unpadded docs across digit-width boundaries', () => {
+        const mappings = makeMappings(44);
+        const docs = Array.from({ length: 44 }, (_value, index) => {
+            const chapterNumber = index + 1;
+            return {
+                docId: `P-${chapterNumber}`,
+                docName: `P${chapterNumber}`,
+            };
+        });
+
+        StoryEditContent._setManualDocSelection(mappings, docs, 43, 'P-44');
+
+        expect(mappings.map(row => row.selectedDocName)).toEqual(
+            Array.from({ length: 44 }, (_value, index) => `P${index + 1}`)
+        );
+        expect(mappings[0].source).toBe('autofill');
+        expect(mappings[8].selectedDocName).toBe('P9');
+        expect(mappings[9].selectedDocName).toBe('P10');
+        expect(mappings[43].source).toBe('manual');
+    });
+
     it('does not autofill rows more than once after they were autofilled', () => {
         const mappings = makeMappings(4);
         const docs = [

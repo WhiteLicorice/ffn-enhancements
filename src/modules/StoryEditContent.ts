@@ -173,10 +173,39 @@ function _parseSemanticDocName(docName: string): ParsedSemanticDocName | null {
 }
 
 function _buildDocMaps(docs: IStoryEditContentDoc[]) {
+    const bySemanticNumber = new Map<string, IStoryEditContentDoc | null>();
+
+    docs.forEach(doc => {
+        const parsed = _parseSemanticDocName(doc.docName);
+        if (!parsed) return;
+
+        const key = `${parsed.prefix}\u0000${parsed.number}`;
+        if (bySemanticNumber.has(key)) {
+            bySemanticNumber.set(key, null);
+        } else {
+            bySemanticNumber.set(key, doc);
+        }
+    });
+
     return {
         byId: new Map(docs.map(doc => [doc.docId, doc])),
         byName: new Map(docs.map(doc => [doc.docName, doc])),
+        bySemanticNumber,
     };
+}
+
+function _getSemanticDocMatch(
+    byName: Map<string, IStoryEditContentDoc>,
+    bySemanticNumber: Map<string, IStoryEditContentDoc | null>,
+    prefix: string,
+    candidateNumber: number,
+    padding: number,
+): IStoryEditContentDoc | null {
+    const paddedName = `${prefix}${String(candidateNumber).padStart(padding, '0')}`;
+    const exactMatch = byName.get(paddedName);
+    if (exactMatch) return exactMatch;
+
+    return bySemanticNumber.get(`${prefix}\u0000${candidateNumber}`) || null;
 }
 
 function _applySemanticAutofill(
@@ -189,7 +218,7 @@ function _applySemanticAutofill(
     const anchor = mappings[anchorIndex];
     if (!anchor || !selectedDocId) return mappings;
 
-    const { byId, byName } = _buildDocMaps(docs);
+    const { byId, byName, bySemanticNumber } = _buildDocMaps(docs);
     const anchorDoc = byId.get(selectedDocId);
     const parsed = anchorDoc ? _parseSemanticDocName(anchorDoc.docName) : null;
     if (!anchorDoc || !parsed) {
@@ -208,8 +237,13 @@ function _applySemanticAutofill(
         const candidateNumber = parsed.number + offset;
         if (!Number.isFinite(candidateNumber) || candidateNumber <= 0) continue;
 
-        const candidateName = `${parsed.prefix}${String(candidateNumber).padStart(parsed.padding, '0')}`;
-        const candidateDoc = byName.get(candidateName);
+        const candidateDoc = _getSemanticDocMatch(
+            byName,
+            bySemanticNumber,
+            parsed.prefix,
+            candidateNumber,
+            parsed.padding,
+        );
         if (!candidateDoc) continue;
 
         row.selectedDocId = candidateDoc.docId;
