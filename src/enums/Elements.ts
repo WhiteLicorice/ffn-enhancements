@@ -105,4 +105,20 @@ export enum Elements {
 
     /** The panel that appears after saving (whether successfully or not) */
     SUCCESS_PANEL = 'SUCCESS_PANEL',
+
+    // =============================
+    // STORY EDIT CONTENT (/story/story_edit_content.php)
+    // =============================
+
+    /** The existing FFN replace form used for chapter replacement. */
+    STORY_EDIT_REPLACE_FORM = 'STORY_EDIT_REPLACE_FORM',
+
+    /** The chapter selector used by FFN's native replace control. */
+    STORY_EDIT_CHAPTER_SELECT = 'STORY_EDIT_CHAPTER_SELECT',
+
+    /** The document selector used by FFN's native replace control. */
+    STORY_EDIT_DOC_SELECT = 'STORY_EDIT_DOC_SELECT',
+
+    /** The chapter listing rows shown on the story edit content page. */
+    STORY_EDIT_CHAPTER_ROWS = 'STORY_EDIT_CHAPTER_ROWS',
 }
