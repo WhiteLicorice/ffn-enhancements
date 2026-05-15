@@ -131,7 +131,7 @@ const DEFAULTS: FFNSettings = {
     pasteForceIntercept: false,
     ao3HtmlCompatibility: true,
     appendSeparator: false,
-    bulkReplaceAutofill: false,
+    bulkReplaceAutofill: true,
     scrollStep: 300,
     fetchMaxRetries: 3,
     fetchRetryBaseMs: 2000,

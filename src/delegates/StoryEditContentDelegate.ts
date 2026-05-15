@@ -29,7 +29,7 @@ export const StoryEditContentDelegate: IDelegate = {
                 return findReplaceUpdateToggle(doc);
 
             case Elements.STORY_EDIT_ERROR_PANEL:
-                return doc.querySelector<HTMLElement>('.panel_error, .gui_error, .alert-error, .error');
+                return findErrorPanel(doc);
 
             default:
                 return null;
@@ -46,6 +46,13 @@ export const StoryEditContentDelegate: IDelegate = {
         }
     },
 };
+
+function findErrorPanel(doc: Document = document): HTMLElement | null {
+    const candidates = Array.from(doc.querySelectorAll<HTMLElement>(
+        '#replace_err, .panel_error, .gui_error, .alert-error, .error'
+    ));
+    return candidates.find(candidate => !!normalizeText(candidate.textContent || '')) || candidates[0] || null;
+}
 
 function findReplaceForm(doc: Document = document): HTMLFormElement | null {
     const forms = Array.from(doc.forms);

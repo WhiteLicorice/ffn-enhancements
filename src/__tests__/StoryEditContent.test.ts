@@ -106,6 +106,14 @@ describe('StoryEditContent parsing', () => {
 });
 
 describe('StoryEditContent mapping state', () => {
+    beforeEach(() => {
+        vi.spyOn(SettingsManager, 'get').mockReturnValue(true);
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it('tracks manual mappings and skips unmapped rows', () => {
         const mappings = makeMappings(3);
         const docs = [
@@ -171,22 +179,18 @@ describe('StoryEditContent mapping state', () => {
     it('does not autofill when Bulk Replace autofill is disabled', () => {
         const mappings = makeMappings(4);
         const docs = makeDocs('StoryName', 1, 4);
-        const getSpy = vi.spyOn(SettingsManager, 'get').mockReturnValue(false);
+        vi.mocked(SettingsManager.get).mockReturnValue(false);
 
-        try {
-            StoryEditContent._setManualDocSelection(mappings, docs, 1, 'StoryName-2');
+        StoryEditContent._setManualDocSelection(mappings, docs, 1, 'StoryName-2');
 
-            expect(mappings.map(row => row.selectedDocName)).toEqual([
-                '',
-                'StoryName002',
-                '',
-                '',
-            ]);
-            expect(mappings[1].source).toBe('manual');
-            expect(mappings.some(row => row.source === 'autofill')).toBe(false);
-        } finally {
-            getSpy.mockRestore();
-        }
+        expect(mappings.map(row => row.selectedDocName)).toEqual([
+            '',
+            'StoryName002',
+            '',
+            '',
+        ]);
+        expect(mappings[1].source).toBe('manual');
+        expect(mappings.some(row => row.source === 'autofill')).toBe(false);
     });
 
     it('autofilled rows do not cascade new autofill chains', () => {
@@ -398,7 +402,7 @@ describe('StoryEditContent bulk replace execution', () => {
     });
 });
 
-describe('StoryReplaceService hidden page submitter', () => {
+describe('StoryReplaceService hidden iframe submitter', () => {
     beforeEach(() => {
         cleanupDOM();
         vi.useFakeTimers();
@@ -418,61 +422,36 @@ describe('StoryReplaceService hidden page submitter', () => {
         doc.close();
     }
 
-    it('loads StoryEditContent in a hidden iframe and submits its native replace form', async () => {
-        const promise = StoryReplaceService.submitReplaceForm('/story/story_edit_content.php?storyid=1', '101', '201');
-        const frame = document.querySelector('iframe') as HTMLIFrameElement;
-
-        expect(frame).not.toBeNull();
-        expect(frame.src).toBe('http://localhost:3000/story/story_edit_content.php?storyid=1');
-
-        writeFrameHtml(frame, `
-            <form id="replacechapter" method="post" action="?storyid=1">
-                <select name="storytextid">
-                    <option value="101">1. Chapter</option>
-                </select>
-                <select name="docid">
-                    <option value="201">StoryName001</option>
-                </select>
-                <input type="hidden" name="action" value="replace">
-            </form>
-        `);
-        const form = frame.contentDocument?.querySelector('form') as HTMLFormElement;
-        const submitSpy = vi.fn(function (this: HTMLFormElement) {
-            expect(this.ownerDocument).toBe(frame.contentDocument);
-            expect((this.elements.namedItem('storytextid') as HTMLSelectElement).value).toBe('101');
-            expect((this.elements.namedItem('docid') as HTMLSelectElement).value).toBe('201');
+    it('posts an isolated replace form to a hidden iframe target', async () => {
+        const submitSpy = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
+            const frame = document.querySelector(`iframe[name="${this.target}"]`) as HTMLIFrameElement;
+            expect(frame).not.toBeNull();
+            expect(this.method).toBe('post');
+            expect(this.action).toBe('http://localhost:3000/story/story_edit_content.php?storyid=1');
+            expect((this.elements.namedItem('storytextid') as HTMLInputElement).value).toBe('101');
+            expect((this.elements.namedItem('docid') as HTMLInputElement).value).toBe('201');
             expect((this.elements.namedItem('action') as HTMLInputElement).value).toBe('replace');
 
             writeFrameHtml(frame, '<div class="panel_success">Success</div>');
             frame.dispatchEvent(new Event('load'));
         });
-        Object.defineProperty(form, 'submit', { value: submitSpy, configurable: true });
-        frame.dispatchEvent(new Event('load'));
+
+        const promise = StoryReplaceService.submitReplaceForm('/story/story_edit_content.php?storyid=1', '101', '201');
 
         await expect(promise).resolves.toEqual({ ok: true });
         expect(submitSpy).toHaveBeenCalledTimes(1);
         expect(document.querySelector('iframe')).toBeNull();
+        expect(document.querySelector('form[target^="ffne_story_replace_"]')).toBeNull();
     });
 
     it('returns a page error from the hidden replace response', async () => {
-        const promise = StoryReplaceService.submitReplaceForm('/story/story_edit_content.php?storyid=1', '101', '201');
-        const frame = document.querySelector('iframe') as HTMLIFrameElement;
-        writeFrameHtml(frame, `
-            <form id="replacechapter">
-                <select name="storytextid"><option value="101">1</option></select>
-                <select name="docid"><option value="201">Doc</option></select>
-                <input name="action" value="replace">
-            </form>
-        `);
-        const form = frame.contentDocument?.querySelector('form') as HTMLFormElement;
-        Object.defineProperty(form, 'submit', {
-            configurable: true,
-            value: vi.fn(() => {
-                writeFrameHtml(frame, '<div class="panel_error">No permission.</div>');
-                frame.dispatchEvent(new Event('load'));
-            }),
+        vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
+            const frame = document.querySelector(`iframe[name="${this.target}"]`) as HTMLIFrameElement;
+            writeFrameHtml(frame, '<div id="replace_err"></div><div class="panel_error">No permission.</div>');
+            frame.dispatchEvent(new Event('load'));
         });
-        frame.dispatchEvent(new Event('load'));
+
+        const promise = StoryReplaceService.submitReplaceForm('/story/story_edit_content.php?storyid=1', '101', '201');
 
         await expect(promise).resolves.toEqual({ ok: false, reason: 'No permission.' });
     });

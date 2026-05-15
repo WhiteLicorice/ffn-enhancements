@@ -1,7 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsPage } from '../modules/SettingsPage';
+import { SettingsManager } from '../modules/SettingsManager';
 
 describe('SettingsPage', () => {
+    beforeEach(() => {
+        SettingsManager.prime();
+    });
+
     afterEach(() => {
         SettingsPage.closeModal();
         document.body.innerHTML = '';
