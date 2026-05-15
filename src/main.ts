@@ -84,7 +84,11 @@ const bootstrap = () => {
          */
         safeInit('DocEditor', () => DocEditor.init());
     }
-    else if (path === '/story/story_edit_content.php') {
+    else if (path.includes('/story/story_edit_content.php')) {
+        /**
+         * Route: Story Edit Content
+         * Features: Bulk Replace
+         */
         safeInit('StoryEditContent', () => StoryEditContent.init());
     }
     else if (path.startsWith("/s/")) {

@@ -33,6 +33,13 @@ function _normalizeText(value: string): string {
     return value.replace(/\s+/g, ' ').trim();
 }
 
+function _parseFfnOptionName(value: string): string {
+    return _normalizeText(value)
+        .replace(/^\d+\.\s*/, '')
+        .replace(/\s*\([\d,]+\)\s*$/, '')
+        .trim();
+}
+
 function _escapeHtml(value: string): string {
     return value
         .replace(/&/g, '&amp;')
@@ -77,9 +84,11 @@ function _parsePublishedChapters(
     if (!chapterSelect) return [];
 
     const options = Array.from(chapterSelect.options)
-        .map((option, index) => ({ option, index }))
-        .filter(({ option }) => !!option.value.trim())
-        .map(({ option, index }) => ({
+        .filter((option) => {
+            const value = option.value.trim();
+            return !!value && value !== '0';
+        })
+        .map((option, index) => ({
             storyTextId: option.value.trim(),
             chapterNumber: _extractChapterNumber(option.textContent || option.label || '', index + 1),
             chapterLabel: _normalizeText(option.textContent || option.label || `Chapter ${index + 1}`),
@@ -144,8 +153,8 @@ function _parseDocOptions(docSelect: HTMLSelectElement | null): IStoryEditConten
     const docs: IStoryEditContentDoc[] = [];
     for (const option of Array.from(docSelect.options)) {
         const docId = option.value.trim();
-        const docName = _normalizeText(option.textContent || option.label || '');
-        if (!docId || !docName || seen.has(docId)) continue;
+        const docName = _parseFfnOptionName(option.textContent || option.label || '');
+        if (!docId || docId === '0' || !docName || seen.has(docId)) continue;
         seen.add(docId);
         docs.push({ docId, docName });
     }
@@ -343,7 +352,7 @@ export const StoryEditContent = {
         button.addEventListener('click', () => this.openBulkReplaceModal());
 
         const replaceControl = form.querySelector<HTMLElement>(
-            'input[name="action"][value="replace"], button[name="action"][value="replace"], input[type="submit"][value*="Replace"], button[type="submit"][value="replace"]'
+            'button[type="submit"], input[type="submit"]'
         );
         if (replaceControl?.parentElement) {
             replaceControl.insertAdjacentElement('afterend', button);

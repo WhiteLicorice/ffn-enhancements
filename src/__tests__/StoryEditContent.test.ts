@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StoryEditContent } from '../modules/StoryEditContent';
 import { DocFetchService } from '../services/DocFetchService';
+import { StoryReplaceService } from '../services/StoryReplaceService';
 import type {
     IStoryEditContentChapter,
     IStoryEditContentDoc,
@@ -64,15 +65,15 @@ describe('StoryEditContent parsing', () => {
             <form action="/story/story_edit_content.php">
                 <input type="hidden" name="action" value="replace">
                 <select name="storytextid">
-                    <option value="">Select Chapter</option>
+                    <option value="0">Select Chapter</option>
                     <option value="101">Chapter 1 - One</option>
                     <option value="102">Chapter 2 - Two</option>
                     <option value="103">Chapter 3 - Three</option>
                 </select>
                 <select name="docid">
-                    <option value="">Select Doc</option>
-                    <option value="201">StoryName001</option>
-                    <option value="202">StoryName002</option>
+                    <option value="0">Select Doc</option>
+                    <option value="201">1. StoryName001 (3,128)</option>
+                    <option value="202">2. StoryName002 (2,853)</option>
                 </select>
                 <input type="submit" value="Replace">
             </form>
@@ -254,12 +255,13 @@ describe('StoryEditContent bulk replace execution', () => {
         StoryEditContent._setManualDocSelection(mappings, docs, 0, 'StoryName-1');
         StoryEditContent._setManualDocSelection(mappings, docs, 1, 'StoryName-1');
         const validateSpy = vi.spyOn(DocFetchService, 'validatePrivateDocHasContentWithResult');
+        const replaceSpy = vi.spyOn(StoryReplaceService, 'submitReplaceForm');
 
         const { status } = await runBulkReplaceWithState(mappings, docs);
 
         expect(status.textContent).toContain('duplicate doc mappings');
         expect(validateSpy).not.toHaveBeenCalled();
-        expect(globalThis.fetch).not.toHaveBeenCalled();
+        expect(replaceSpy).not.toHaveBeenCalled();
     });
 
     it('blocks chapter replace POSTs when the source document is empty', async () => {
@@ -271,32 +273,26 @@ describe('StoryEditContent bulk replace execution', () => {
             ok: false,
             reason: 'Source document is empty.',
         });
+        const replaceSpy = vi.spyOn(StoryReplaceService, 'submitReplaceForm');
 
         const { status, results } = await runBulkReplaceWithState(mappings, docs);
 
         expect(status.textContent).toContain('No chapters were replaced');
         expect(results.innerHTML).toContain('Source document is empty.');
-        expect(globalThis.fetch).not.toHaveBeenCalled();
+        expect(replaceSpy).not.toHaveBeenCalled();
     });
 
-    it('posts the expected replace body and treats a successful response as success', async () => {
+    it('submits the expected hidden-page replace request and treats success as success', async () => {
         const mappings = makeMappings(1);
         const docs = makeDocs('StoryName', 1, 1);
         StoryEditContent._setManualDocSelection(mappings, docs, 0, 'StoryName-1');
 
         vi.spyOn(DocFetchService, 'validatePrivateDocHasContentWithResult').mockResolvedValue({ ok: true });
-        vi.mocked(globalThis.fetch).mockResolvedValue({
-            ok: true,
-            text: async () => '<html><body>Success</body></html>',
-        } as Response);
+        const replaceSpy = vi.spyOn(StoryReplaceService, 'submitReplaceForm').mockResolvedValue({ ok: true });
 
         const { status } = await runBulkReplaceWithState(mappings, docs);
 
-        expect(globalThis.fetch).toHaveBeenCalledWith('/story/story_edit_content.php', expect.objectContaining({
-            method: 'POST',
-            credentials: 'same-origin',
-            body: 'storytextid=1001&docid=StoryName-1&action=replace',
-        }));
+        expect(replaceSpy).toHaveBeenCalledWith('/story/story_edit_content.php', '1001', 'StoryName-1');
         expect(status.textContent).toContain('Replaced all 1 chapter');
     });
 
@@ -306,11 +302,10 @@ describe('StoryEditContent bulk replace execution', () => {
         StoryEditContent._setManualDocSelection(mappings, docs, 0, 'StoryName-1');
 
         vi.spyOn(DocFetchService, 'validatePrivateDocHasContentWithResult').mockResolvedValue({ ok: true });
-        vi.mocked(globalThis.fetch).mockResolvedValue({
+        vi.spyOn(StoryReplaceService, 'submitReplaceForm').mockResolvedValue({
             ok: false,
-            status: 500,
-            text: async () => 'Server error',
-        } as Response);
+            reason: 'Replace request failed with HTTP 500.',
+        });
 
         const { results } = await runBulkReplaceWithState(mappings, docs);
 
@@ -333,5 +328,85 @@ describe('StoryEditContent bulk replace execution', () => {
         expect(container.innerHTML).toContain('Failed Replacements');
         expect(container.innerHTML).toContain('Chapter 7');
         expect(container.innerHTML).toContain('StoryName007');
+    });
+});
+
+describe('StoryReplaceService hidden page submitter', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        vi.useFakeTimers();
+        vi.restoreAllMocks();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        cleanupDOM();
+    });
+
+    function writeFrameHtml(iframe: HTMLIFrameElement, html: string) {
+        const doc = iframe.contentDocument;
+        if (!doc) throw new Error('Missing iframe document');
+        doc.open();
+        doc.write(html);
+        doc.close();
+    }
+
+    it('loads StoryEditContent in a hidden iframe and submits its native replace form', async () => {
+        const promise = StoryReplaceService.submitReplaceForm('/story/story_edit_content.php?storyid=1', '101', '201');
+        const frame = document.querySelector('iframe') as HTMLIFrameElement;
+
+        expect(frame).not.toBeNull();
+        expect(frame.src).toBe('http://localhost:3000/story/story_edit_content.php?storyid=1');
+
+        writeFrameHtml(frame, `
+            <form id="replacechapter" method="post" action="?storyid=1">
+                <select name="storytextid">
+                    <option value="101">1. Chapter</option>
+                </select>
+                <select name="docid">
+                    <option value="201">StoryName001</option>
+                </select>
+                <input type="hidden" name="action" value="replace">
+            </form>
+        `);
+        const form = frame.contentDocument?.querySelector('form') as HTMLFormElement;
+        const submitSpy = vi.fn(function (this: HTMLFormElement) {
+            expect(this.ownerDocument).toBe(frame.contentDocument);
+            expect((this.elements.namedItem('storytextid') as HTMLSelectElement).value).toBe('101');
+            expect((this.elements.namedItem('docid') as HTMLSelectElement).value).toBe('201');
+            expect((this.elements.namedItem('action') as HTMLInputElement).value).toBe('replace');
+
+            writeFrameHtml(frame, '<div class="panel_success">Success</div>');
+            frame.dispatchEvent(new Event('load'));
+        });
+        Object.defineProperty(form, 'submit', { value: submitSpy, configurable: true });
+        frame.dispatchEvent(new Event('load'));
+
+        await expect(promise).resolves.toEqual({ ok: true });
+        expect(submitSpy).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('iframe')).toBeNull();
+    });
+
+    it('returns a page error from the hidden replace response', async () => {
+        const promise = StoryReplaceService.submitReplaceForm('/story/story_edit_content.php?storyid=1', '101', '201');
+        const frame = document.querySelector('iframe') as HTMLIFrameElement;
+        writeFrameHtml(frame, `
+            <form id="replacechapter">
+                <select name="storytextid"><option value="101">1</option></select>
+                <select name="docid"><option value="201">Doc</option></select>
+                <input name="action" value="replace">
+            </form>
+        `);
+        const form = frame.contentDocument?.querySelector('form') as HTMLFormElement;
+        Object.defineProperty(form, 'submit', {
+            configurable: true,
+            value: vi.fn(() => {
+                writeFrameHtml(frame, '<div class="panel_error">No permission.</div>');
+                frame.dispatchEvent(new Event('load'));
+            }),
+        });
+        frame.dispatchEvent(new Event('load'));
+
+        await expect(promise).resolves.toEqual({ ok: false, reason: 'No permission.' });
     });
 });
