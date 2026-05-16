@@ -505,6 +505,7 @@ describe('DocManager AO3 migration modal', () => {
         DocManager.openAo3MigrationModal();
         const input = document.getElementById('ffne-dm-ao3-work-url') as HTMLInputElement;
         const stripInput = document.getElementById('ffne-dm-ao3-strip-marker') as HTMLInputElement;
+        expect(input.placeholder).toBe('https://archiveofourown.org/works/123456789/');
         input.value = 'https://archiveofourown.org/works/77945481';
         stripInput.value = 'Notes:';
         document.getElementById('ffne-dm-ao3-load')?.dispatchEvent(new MouseEvent('click'));

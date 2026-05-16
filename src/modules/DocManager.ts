@@ -1203,7 +1203,7 @@ export const DocManager = {
                 </div>
                 <div class="ffne-dm-modal-body">
                     <div class="ffne-dm-form-row">
-                        <input id="ffne-dm-ao3-work-url" class="ffne-dm-input" type="url" placeholder="https://archiveofourown.org/works/77945481">
+                        <input id="ffne-dm-ao3-work-url" class="ffne-dm-input" type="url" placeholder="https://archiveofourown.org/works/123456789/">
                         <button type="button" id="ffne-dm-ao3-load" class="ffne-dm-btn">Load Chapters</button>
                     </div>
                     <label class="ffne-dm-checkbox">
