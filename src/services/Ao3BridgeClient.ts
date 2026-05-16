@@ -103,6 +103,9 @@ export const Ao3BridgeClient = {
     ): Promise<Ao3BridgeResult> {
         const timeoutMs = options.timeoutMs ?? AO3_BRIDGE_DEFAULT_TIMEOUT_MS;
         const pollIntervalMs = options.pollIntervalMs ?? AO3_BRIDGE_POLL_INTERVAL_MS;
+        // A fresh heartbeat means an AO3 top-level tab is already running the bridge.
+        // Without one, open AO3 in the foreground so the user can clear Cloudflare
+        // or sign in before the pending GM-storage request is processed.
         const hadFreshBridge = this._hasFreshHeartbeat();
 
         GM_deleteValue(AO3_BRIDGE_RESULT_KEY);
@@ -160,6 +163,9 @@ export const Ao3BridgeClient = {
                     return;
                 }
 
+                // Only treat stale heartbeat as fatal when this request started
+                // with an already-open AO3 bridge. If AO3 was opened just now,
+                // the user may still be clearing Cloudflare or signing in.
                 if (options.failOnStaleHeartbeat && !this._hasFreshHeartbeat()) {
                     finish({
                         id: request.id,

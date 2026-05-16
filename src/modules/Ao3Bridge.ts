@@ -62,6 +62,8 @@ export const Ao3Bridge = {
     },
 
     _writeHeartbeat(): void {
+        // FFN uses this heartbeat to decide whether it can reuse an existing
+        // AO3 bridge tab or needs to open AO3 in the foreground.
         GM_setValue(AO3_BRIDGE_HEARTBEAT_KEY, serializeAo3BridgeHeartbeat({
             at: Date.now(),
             url: window.location.href,
@@ -86,6 +88,9 @@ export const Ao3Bridge = {
         }
 
         if (!this._isReadyForRequests()) {
+            // Leave the request in storage. Once the user finishes AO3 sign-in
+            // or Cloudflare and the page becomes logged-in, the heartbeat poll
+            // will pick up and process the same pending request.
             this._setStatus('Sign in to AO3 or complete the browser check to continue FFN migration.');
             return;
         }

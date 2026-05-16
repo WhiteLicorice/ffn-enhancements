@@ -1215,7 +1215,7 @@ export const DocManager = {
                         <input id="ffne-dm-ao3-strip-marker" class="ffne-dm-input" type="text" placeholder="Standalone line only, e.g. Notes:">
                     </div>
                     <div id="ffne-dm-ao3-summary" class="ffne-dm-summary ffne-dm-warning">
-                        Enter an AO3 work URL, then load the chapter index from AO3.
+                        Enter an AO3 work URL, then load chapters. AO3 may open in a foreground tab. Complete any browser check or sign-in there and keep that tab open until migration finishes.
                     </div>
                     <div id="ffne-dm-ao3-mappings"></div>
                     <div id="ffne-dm-ao3-results" class="ffne-dm-import-results" hidden></div>
@@ -1253,7 +1253,7 @@ export const DocManager = {
                 return;
             }
 
-            if (status) status.textContent = 'Loading AO3 chapters...';
+            if (status) status.textContent = 'Opening AO3 if needed and loading chapters...';
             log('Loading AO3 chapter index.', { workUrl: normalizedWorkUrl });
             const response = await Ao3BridgeClient.fetchChapterIndex(normalizedWorkUrl);
             if (!response.ok) {
@@ -1320,6 +1320,7 @@ export const DocManager = {
             const confirmed = confirm(
                 `Bulk Migrate to AO3 will replace ${plan.mappedCount} AO3 chapter(s).\n\n` +
                 'Guardrails active: duplicate source docs are blocked, empty source docs are skipped before AO3 updates, and failed updates retry once.\n\n' +
+                'AO3 bridge: keep the AO3 tab open until migration finishes. If AO3 asks for sign-in or a browser check, complete it there and return to this tab.\n\n' +
                 'This will overwrite the selected AO3 chapter bodies. Continue?'
             );
             if (!confirmed) {
