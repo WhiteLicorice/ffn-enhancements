@@ -20,6 +20,8 @@ export default defineConfig({
           'GM_registerMenuCommand',
           'GM_unregisterMenuCommand',
           'GM_addValueChangeListener',
+          'GM_deleteValue',
+          'GM_openInTab',
           'GM_setClipboard',
         ],
         license: 'GPL-3.0-or-later',

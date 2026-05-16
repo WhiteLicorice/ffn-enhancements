@@ -1,4 +1,5 @@
 import { GM_xmlhttpRequest } from '$';
+import { isCloudflareChallenge } from './cloudflareChallenge';
 
 export interface GmTextRequestOptions {
     method: 'GET' | 'POST';
@@ -6,6 +7,8 @@ export interface GmTextRequestOptions {
     headers?: Record<string, string>;
     data?: string;
     timeout?: number;
+    cookie?: string;
+    fetch?: boolean;
 }
 
 export interface GmTextResponse {
@@ -14,6 +17,7 @@ export interface GmTextResponse {
     responseText: string;
     finalUrl: string;
     reason?: string;
+    isCfChallenge: boolean;
 }
 
 interface GmTextLoadResponse {
@@ -30,13 +34,17 @@ export function gmRequestText(options: GmTextRequestOptions): Promise<GmTextResp
             headers: options.headers,
             data: options.data,
             timeout: options.timeout,
+            cookie: options.cookie,
+            fetch: options.fetch,
             onload: (response: GmTextLoadResponse) => {
                 const status = response.status || 0;
+                const text = response.responseText || '';
                 resolve({
                     ok: status >= 200 && status < 400,
                     status,
-                    responseText: response.responseText || '',
+                    responseText: text,
                     finalUrl: response.finalUrl || options.url,
+                    isCfChallenge: isCloudflareChallenge(status, text),
                 });
             },
             onerror: () => {
@@ -46,6 +54,7 @@ export function gmRequestText(options: GmTextRequestOptions): Promise<GmTextResp
                     responseText: '',
                     finalUrl: options.url,
                     reason: 'Network error.',
+                    isCfChallenge: false,
                 });
             },
             ontimeout: () => {
@@ -55,6 +64,7 @@ export function gmRequestText(options: GmTextRequestOptions): Promise<GmTextResp
                     responseText: '',
                     finalUrl: options.url,
                     reason: 'Request timed out.',
+                    isCfChallenge: false,
                 });
             },
         });

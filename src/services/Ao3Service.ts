@@ -3,16 +3,39 @@ import { Elements } from '../enums/Elements';
 import { IAo3Chapter } from '../interfaces/IAo3Migration';
 import { Core } from '../modules/Core';
 import { gmRequestText } from '../utils/gmRequestText';
+import { isCloudflareChallenge } from '../utils/cloudflareChallenge';
 
-interface Ao3ChapterIndexResult {
+export interface Ao3TextRequestOptions {
+    method: 'GET' | 'POST';
+    url: string;
+    headers?: Record<string, string>;
+    data?: string;
+    timeout?: number;
+}
+
+export interface Ao3TextResponse {
+    ok: boolean;
+    status: number;
+    responseText: string;
+    finalUrl: string;
+    reason?: string;
+    isCfChallenge: boolean;
+}
+
+export type Ao3TextRequester = (options: Ao3TextRequestOptions) => Promise<Ao3TextResponse>;
+
+export interface Ao3ChapterIndexResult {
     ok: boolean;
     chapters: IAo3Chapter[];
     reason?: string;
+    status?: number;
 }
 
-interface Ao3UpdateResult {
+export interface Ao3UpdateResult {
     ok: boolean;
     reason?: string;
+    status?: number;
+    finalUrl?: string;
 }
 
 interface Ao3UpdatePayloadResult {
@@ -74,6 +97,50 @@ function appendControl(params: URLSearchParams, control: Element): void {
 export const Ao3Service = {
     MODULE_NAME: 'Ao3Service',
 
+    defaultRequester: gmRequestText as Ao3TextRequester,
+
+    createSameOriginFetchRequester: function (): Ao3TextRequester {
+        return async (options: Ao3TextRequestOptions): Promise<Ao3TextResponse> => {
+            try {
+                const response = await fetch(options.url, {
+                    method: options.method,
+                    headers: options.headers,
+                    body: options.data,
+                    credentials: 'same-origin',
+                    redirect: 'follow',
+                });
+                const responseText = await response.text();
+                return {
+                    ok: response.status >= 200 && response.status < 400,
+                    status: response.status,
+                    responseText,
+                    finalUrl: response.url || options.url,
+                    isCfChallenge: isCloudflareChallenge(response.status, responseText),
+                };
+            } catch (err) {
+                const reason = err instanceof Error ? err.message : String(err);
+                return {
+                    ok: false,
+                    status: 0,
+                    responseText: '',
+                    finalUrl: options.url,
+                    reason: `Network error: ${reason}`,
+                    isCfChallenge: false,
+                };
+            }
+        };
+    },
+
+    _cfActionableMessage(response: { isCfChallenge: boolean }, action: string): string | null {
+        if (!response.isCfChallenge) return null;
+        return [
+            'AO3 is under a DDoS protection challenge (Cloudflare "Under Attack" mode).',
+            `The ${action} could not be completed.`,
+            'Open archiveofourown.org in your browser, complete the security challenge,',
+            'then reload this page and try again.',
+        ].join(' ');
+    },
+
     normalizeWorkUrl(input: string): string | null {
         const trimmed = input.trim();
         if (!trimmed) return null;
@@ -93,8 +160,12 @@ export const Ao3Service = {
         return `https://archiveofourown.org/works/${match[1]}`;
     },
 
-    async fetchChapterIndex(workUrl: string): Promise<Ao3ChapterIndexResult> {
+    async fetchChapterIndex(
+        workUrl: string,
+        requester?: Ao3TextRequester,
+    ): Promise<Ao3ChapterIndexResult> {
         const log = Core.getLogger(this.MODULE_NAME, 'fetchChapterIndex');
+        const requestText = requester || this.defaultRequester;
         const normalized = this.normalizeWorkUrl(workUrl);
         if (!normalized) {
             log('AO3 chapter index fetch blocked by invalid work URL.', { input: workUrl });
@@ -102,11 +173,20 @@ export const Ao3Service = {
         }
 
         log('Fetching AO3 chapter index.', { workUrl: normalized });
-        const response = await gmRequestText({
+        const response = await requestText({
             method: 'GET',
             url: `${normalized}/navigate`,
         });
         if (!response.ok) {
+            const cfReason = this._cfActionableMessage(response, 'chapter index request');
+            if (cfReason) {
+                log('AO3 chapter index request blocked by Cloudflare challenge.', {
+                    workUrl: normalized,
+                    status: response.status,
+                });
+                return { ok: false, chapters: [], reason: cfReason, status: response.status };
+            }
+
             log('AO3 chapter index request failed.', {
                 workUrl: normalized,
                 status: response.status,
@@ -116,6 +196,7 @@ export const Ao3Service = {
                 ok: false,
                 chapters: [],
                 reason: response.reason || `AO3 chapter index request failed with HTTP ${response.status}.`,
+                status: response.status,
             };
         }
 
@@ -138,8 +219,13 @@ export const Ao3Service = {
         return { ok: true, chapters };
     },
 
-    async updateChapterContent(chapter: IAo3Chapter, html: string): Promise<Ao3UpdateResult> {
+    async updateChapterContent(
+        chapter: IAo3Chapter,
+        html: string,
+        requester?: Ao3TextRequester,
+    ): Promise<Ao3UpdateResult> {
         const log = Core.getLogger(this.MODULE_NAME, 'updateChapterContent');
+        const requestText = requester || this.defaultRequester;
         if (!html.trim()) {
             log('AO3 chapter update blocked by empty replacement HTML.', {
                 chapterId: chapter.chapterId,
@@ -153,11 +239,19 @@ export const Ao3Service = {
             editUrl: chapter.editUrl,
             replacementLength: html.length,
         });
-        const editResponse = await gmRequestText({
+        const editResponse = await requestText({
             method: 'GET',
             url: chapter.editUrl,
         });
         if (!editResponse.ok) {
+            const cfReason = this._cfActionableMessage(editResponse, 'chapter edit page request');
+            if (cfReason) {
+                log('AO3 edit page request blocked by Cloudflare challenge.', {
+                    chapterId: chapter.chapterId,
+                });
+                return { ok: false, reason: cfReason, status: editResponse.status, finalUrl: editResponse.finalUrl };
+            }
+
             log('AO3 chapter edit page request failed.', {
                 chapterId: chapter.chapterId,
                 status: editResponse.status,
@@ -166,6 +260,8 @@ export const Ao3Service = {
             return {
                 ok: false,
                 reason: editResponse.reason || `AO3 edit page request failed with HTTP ${editResponse.status}.`,
+                status: editResponse.status,
+                finalUrl: editResponse.finalUrl,
             };
         }
 
@@ -189,7 +285,7 @@ export const Ao3Service = {
             actionUrl: payload.actionUrl,
             payloadLength: payload.body.length,
         });
-        const updateResponse = await gmRequestText({
+        const updateResponse = await requestText({
             method: 'POST',
             url: payload.actionUrl,
             headers: {
@@ -198,6 +294,14 @@ export const Ao3Service = {
             data: payload.body,
         });
         if (!updateResponse.ok) {
+            const cfReason = this._cfActionableMessage(updateResponse, 'chapter update submission');
+            if (cfReason) {
+                log('AO3 chapter update POST blocked by Cloudflare challenge.', {
+                    chapterId: chapter.chapterId,
+                });
+                return { ok: false, reason: cfReason, status: updateResponse.status, finalUrl: updateResponse.finalUrl };
+            }
+
             log('AO3 chapter update POST failed.', {
                 chapterId: chapter.chapterId,
                 status: updateResponse.status,
@@ -206,6 +310,8 @@ export const Ao3Service = {
             return {
                 ok: false,
                 reason: updateResponse.reason || `AO3 chapter update failed with HTTP ${updateResponse.status}.`,
+                status: updateResponse.status,
+                finalUrl: updateResponse.finalUrl,
             };
         }
 
