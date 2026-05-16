@@ -54,6 +54,12 @@ describe('convertStyleAlignToAttr', () => {
             .toBe('<p align="center">Centered</p>');
     });
 
+    it('handles single-quoted text-align and British centre values', () => {
+        const input = "<p style='font-weight: bold; text-align: centre;'>Centered</p>";
+        expect(convertStyleAlignToAttr(input))
+            .toBe('<p style="font-weight: bold" align="center">Centered</p>');
+    });
+
     it('handles multiple elements with text-align', () => {
         const input = '<p style="text-align: center">A</p><p style="text-align: right">B</p>';
         const result = convertStyleAlignToAttr(input);
@@ -79,6 +85,12 @@ describe('convertStyleAlignToAttr', () => {
         const input = '<div style="text-align: center"><p>Inner</p></div>';
         expect(convertStyleAlignToAttr(input))
             .toBe('<div align="center"><p>Inner</p></div>');
+    });
+
+    it('converts center tags to AO3-compatible aligned divs', () => {
+        const input = '<center><p>Centered</p></center>';
+        expect(convertStyleAlignToAttr(input))
+            .toBe('<div align="center"><p>Centered</p></div>');
     });
 });
 
@@ -116,16 +128,28 @@ describe('appendFormatSeparator', () => {
 });
 
 describe('stripContentAfterMarker', () => {
-    it('strips the marker and all following content', () => {
+    it('strips the marker and all following content when the marker is standalone on one line', () => {
         const input = '<p>Body</p>\nNotes:\n<p>Remove this</p>';
 
         expect(stripContentAfterMarker(input, 'Notes:')).toBe('<p>Body</p>\n');
     });
 
-    it('adds one newline at the strip point when the marker is not already preceded by one', () => {
-        const input = '<p>Body</p>Notes:\n<p>Remove this</p>';
+    it('strips a standalone marker line wrapped in formatting and alignment tags', () => {
+        const input = '<p>Body</p>\n<p align="center"><strong> Notes: </strong></p>\n<p>Remove this</p>';
 
         expect(stripContentAfterMarker(input, 'Notes:')).toBe('<p>Body</p>\n');
+    });
+
+    it('does not strip an inline marker that is not standalone on its own line', () => {
+        const input = '<p>Body</p>Notes:\n<p>Remove this</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe(input);
+    });
+
+    it('does not strip a line with other text around the marker', () => {
+        const input = '<p>Body</p>\n<p>Notes: keep this context</p>\n<p>Keep this too</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe(input);
     });
 
     it('leaves content unchanged when the marker is blank or missing', () => {
@@ -143,7 +167,7 @@ describe('stripContentAfterMarker', () => {
         });
 
         const result = applyExportTransforms(
-            '<p>Body</p>\nNotes:\n<p>Remove this</p>',
+            '<p>Body</p>\n<p><strong>Notes:</strong></p>\n<p>Remove this</p>',
             DocDownloadFormat.HTML,
             {
                 convertLineBreaks: true,

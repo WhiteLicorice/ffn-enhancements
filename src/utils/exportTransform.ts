@@ -7,22 +7,41 @@ import { SettingsManager } from '../modules/SettingsManager';
  * accepts the align attribute on paragraph-level elements.
  */
 export function convertStyleAlignToAttr(html: string): string {
-    return html.replace(
-        /style\s*=\s*"([^"]*text-align\s*:\s*(center|right|left|justify)[^"]*)"/gi,
-        (_match: string, styleValue: string, align: string) => {
-            const cleaned = styleValue
-                .replace(
-                    new RegExp(`\\s*text-align\\s*:\\s*${align}\\s*;?`, 'i'),
-                    ''
-                )
-                .trim();
-            const alignAttr = `align="${align.toLowerCase()}"`;
-            if (cleaned) {
-                return `style="${cleaned}" ${alignAttr}`;
+    return html
+        .replace(/<\s*center\b([^>]*)>/gi, (_match: string, attrs: string) => `<div${attrs || ''} align="center">`)
+        .replace(/<\/\s*center\s*>/gi, '</div>')
+        .replace(
+            /style\s*=\s*(["'])(.*?)\1/gi,
+            (match: string, _quote: string, styleValue: string) => {
+                let align: string | null = null;
+                const remainingDeclarations = styleValue
+                    .split(';')
+                    .map(declaration => declaration.trim())
+                    .filter(Boolean)
+                    .filter(declaration => {
+                        const [rawProperty, ...rawValueParts] = declaration.split(':');
+                        const property = rawProperty.trim().toLowerCase();
+                        const value = rawValueParts.join(':').trim().toLowerCase();
+                        if (property !== 'text-align') return true;
+
+                        const normalizedAlign = value === 'centre' ? 'center' : value;
+                        if (!['center', 'right', 'left', 'justify'].includes(normalizedAlign)) {
+                            return true;
+                        }
+
+                        align = normalizedAlign;
+                        return false;
+                    });
+
+                if (!align) return match;
+
+                const alignAttr = `align="${align}"`;
+                if (remainingDeclarations.length > 0) {
+                    return `style="${remainingDeclarations.join('; ')}" ${alignAttr}`;
+                }
+                return alignAttr;
             }
-            return alignAttr;
-        }
-    );
+        );
 }
 
 /**
@@ -108,27 +127,52 @@ interface StripMarkerResult {
     preserveTerminalLineBreak: boolean;
 }
 
+function decodeBasicHtmlEntities(value: string): string {
+    return value
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&#160;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'");
+}
+
+function normalizeStandaloneMarkerLine(value: string): string {
+    return decodeBasicHtmlEntities(value)
+        .replace(/<[^>]*>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 function stripContentAfterMarkerWithResult(content: string, marker: string | undefined): StripMarkerResult {
-    const normalizedMarker = marker?.trim() || '';
+    const normalizedMarker = normalizeStandaloneMarkerLine(marker?.trim() || '');
     if (!normalizedMarker) {
         return { content, stripped: false, preserveTerminalLineBreak: false };
     }
 
-    const markerIndex = content.indexOf(normalizedMarker);
-    if (markerIndex === -1) {
-        return { content, stripped: false, preserveTerminalLineBreak: false };
+    const linePattern = /([^\r\n]*)(\r\n|\n|\r|$)/g;
+    let lineStartIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = linePattern.exec(content)) !== null) {
+        const [fullLine, lineText, lineEnding] = match;
+        if (fullLine === '' && lineEnding === '') break;
+
+        if (normalizeStandaloneMarkerLine(lineText) === normalizedMarker) {
+            const strippedContent = content.slice(0, lineStartIndex);
+            return {
+                content: strippedContent,
+                stripped: true,
+                preserveTerminalLineBreak: /[\r\n]$/.test(strippedContent),
+            };
+        }
+
+        lineStartIndex += fullLine.length;
+        if (lineEnding === '') break;
     }
 
-    let strippedContent = content.slice(0, markerIndex);
-    if (!/[\r\n]$/.test(strippedContent)) {
-        strippedContent += '\n';
-    }
-
-    return {
-        content: strippedContent,
-        stripped: true,
-        preserveTerminalLineBreak: /[\r\n]$/.test(strippedContent),
-    };
+    return { content, stripped: false, preserveTerminalLineBreak: false };
 }
 
 export function stripContentAfterMarker(content: string, marker: string | undefined): string {

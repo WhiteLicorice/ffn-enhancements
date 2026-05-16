@@ -94,16 +94,24 @@ export const Ao3Service = {
     },
 
     async fetchChapterIndex(workUrl: string): Promise<Ao3ChapterIndexResult> {
+        const log = Core.getLogger(this.MODULE_NAME, 'fetchChapterIndex');
         const normalized = this.normalizeWorkUrl(workUrl);
         if (!normalized) {
+            log('AO3 chapter index fetch blocked by invalid work URL.', { input: workUrl });
             return { ok: false, chapters: [], reason: 'Enter a valid AO3 work URL.' };
         }
 
+        log('Fetching AO3 chapter index.', { workUrl: normalized });
         const response = await gmRequestText({
             method: 'GET',
             url: `${normalized}/navigate`,
         });
         if (!response.ok) {
+            log('AO3 chapter index request failed.', {
+                workUrl: normalized,
+                status: response.status,
+                reason: response.reason,
+            });
             return {
                 ok: false,
                 chapters: [],
@@ -113,28 +121,48 @@ export const Ao3Service = {
 
         const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
         if (!this._isLoggedInDocument(doc)) {
+            log('AO3 chapter index response did not look logged in.', { workUrl: normalized });
             return { ok: false, chapters: [], reason: 'AO3 login required. Open AO3 in this browser and sign in first.' };
         }
 
         const chapters = this._parseChapterIndex(doc, normalized);
         if (chapters.length === 0) {
+            log('AO3 chapter index response contained no parseable chapter links.', { workUrl: normalized });
             return { ok: false, chapters: [], reason: 'Could not find any AO3 chapters on the navigate page.' };
         }
 
+        log('AO3 chapter index parsed.', {
+            workUrl: normalized,
+            chapterCount: chapters.length,
+        });
         return { ok: true, chapters };
     },
 
     async updateChapterContent(chapter: IAo3Chapter, html: string): Promise<Ao3UpdateResult> {
         const log = Core.getLogger(this.MODULE_NAME, 'updateChapterContent');
         if (!html.trim()) {
+            log('AO3 chapter update blocked by empty replacement HTML.', {
+                chapterId: chapter.chapterId,
+                editUrl: chapter.editUrl,
+            });
             return { ok: false, reason: 'Replacement chapter content is empty.' };
         }
 
+        log('Fetching AO3 chapter edit page.', {
+            chapterId: chapter.chapterId,
+            editUrl: chapter.editUrl,
+            replacementLength: html.length,
+        });
         const editResponse = await gmRequestText({
             method: 'GET',
             url: chapter.editUrl,
         });
         if (!editResponse.ok) {
+            log('AO3 chapter edit page request failed.', {
+                chapterId: chapter.chapterId,
+                status: editResponse.status,
+                reason: editResponse.reason,
+            });
             return {
                 ok: false,
                 reason: editResponse.reason || `AO3 edit page request failed with HTTP ${editResponse.status}.`,
@@ -143,14 +171,24 @@ export const Ao3Service = {
 
         const editDoc = new DOMParser().parseFromString(editResponse.responseText, 'text/html');
         if (!this._isLoggedInDocument(editDoc)) {
+            log('AO3 chapter edit page response did not look logged in.', { chapterId: chapter.chapterId });
             return { ok: false, reason: 'AO3 login expired before the chapter edit page loaded.' };
         }
 
         const payload = this._buildUpdatePayload(editDoc, chapter, html);
         if (!payload.ok || !payload.actionUrl || payload.body === undefined) {
+            log('AO3 chapter update payload could not be built.', {
+                chapterId: chapter.chapterId,
+                reason: payload.reason,
+            });
             return { ok: false, reason: payload.reason || 'Could not build the AO3 chapter update payload.' };
         }
 
+        log('Posting AO3 chapter update payload.', {
+            chapterId: chapter.chapterId,
+            actionUrl: payload.actionUrl,
+            payloadLength: payload.body.length,
+        });
         const updateResponse = await gmRequestText({
             method: 'POST',
             url: payload.actionUrl,
@@ -160,6 +198,11 @@ export const Ao3Service = {
             data: payload.body,
         });
         if (!updateResponse.ok) {
+            log('AO3 chapter update POST failed.', {
+                chapterId: chapter.chapterId,
+                status: updateResponse.status,
+                reason: updateResponse.reason,
+            });
             return {
                 ok: false,
                 reason: updateResponse.reason || `AO3 chapter update failed with HTTP ${updateResponse.status}.`,
@@ -168,6 +211,7 @@ export const Ao3Service = {
 
         const resultDoc = new DOMParser().parseFromString(updateResponse.responseText, 'text/html');
         if (!this._isLoggedInDocument(resultDoc)) {
+            log('AO3 chapter update response did not look logged in.', { chapterId: chapter.chapterId });
             return { ok: false, reason: 'AO3 login expired before the update finished.' };
         }
 
@@ -176,6 +220,11 @@ export const Ao3Service = {
             log('AO3 chapter update failed validation.', {
                 chapterId: chapter.chapterId,
                 reason: result.reason,
+            });
+        } else {
+            log('AO3 chapter update response validated.', {
+                chapterId: chapter.chapterId,
+                finalUrl: updateResponse.finalUrl,
             });
         }
         return result;

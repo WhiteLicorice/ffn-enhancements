@@ -599,7 +599,7 @@ describe('DocManager AO3 migration execution', () => {
             DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters),
             false,
         );
-        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p style="text-align: center;">Centered</p>');
+        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue("<center><p style='text-align: centre;'>Centered</p></center>");
         vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
             if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
@@ -611,7 +611,7 @@ describe('DocManager AO3 migration execution', () => {
 
         expect(updateSpy).toHaveBeenCalledWith(
             chapters[0],
-            '<p align="center">Centered</p>'
+            '<div align="center"><p align="center">Centered</p></div>'
         );
     });
 
@@ -657,6 +657,28 @@ describe('DocManager AO3 migration execution', () => {
         await runAo3MigrationWithPlan(plan);
 
         expect(updateSpy).toHaveBeenCalledWith(chapters[0], '<p>Body</p>\n');
+    });
+
+    it('does not strip note markers unless they are standalone on one line', async () => {
+        const chapters = [makeAo3Chapter(1)];
+        const plan = DocManager._buildAo3MigrationPlan(
+            'https://archiveofourown.org/works/77945481',
+            chapters,
+            DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters),
+            false,
+            'Notes:',
+        );
+        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p>Body</p>Notes:\n<p>Keep this</p>');
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
+            return 0;
+        });
+        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent').mockResolvedValue({ ok: true });
+
+        await runAo3MigrationWithPlan(plan);
+
+        expect(updateSpy).toHaveBeenCalledWith(chapters[0], '<p>Body</p>Notes:\n<p>Keep this</p>');
     });
 
     it('blocks AO3 POSTs when stripping notes leaves no source content', async () => {
