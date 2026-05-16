@@ -9,3 +9,10 @@ export const GM_unregisterMenuCommand = vi.fn();
 export const GM_xmlhttpRequest = vi.fn();
 export const GM_openInTab = vi.fn();
 export const GM_setClipboard = vi.fn();
+export const GM_cookie = {
+    list: vi.fn((_details: any, callback: any) => {
+        if (callback) callback([], null);
+    }),
+    set: vi.fn(),
+    delete: vi.fn(),
+};

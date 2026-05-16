@@ -3,6 +3,7 @@ import { Elements } from '../enums/Elements';
 import { IAo3Chapter } from '../interfaces/IAo3Migration';
 import { Core } from '../modules/Core';
 import { gmRequestText } from '../utils/gmRequestText';
+import { GM_cookie } from '$';
 
 interface Ao3ChapterIndexResult {
     ok: boolean;
@@ -74,6 +75,28 @@ function appendControl(params: URLSearchParams, control: Element): void {
 export const Ao3Service = {
     MODULE_NAME: 'Ao3Service',
 
+    _fetchAo3Cookies: async function (): Promise<string> {
+        return new Promise((resolve) => {
+            try {
+                GM_cookie.list(
+                    { domain: 'archiveofourown.org' },
+                    (cookies, error) => {
+                        if (error || !cookies || cookies.length === 0) {
+                            resolve('');
+                            return;
+                        }
+                        const cookieStr = cookies
+                            .map(c => `${c.name}=${c.value}`)
+                            .join('; ');
+                        resolve(cookieStr);
+                    }
+                );
+            } catch {
+                resolve('');
+            }
+        });
+    },
+
     _cfActionableMessage(response: { isCfChallenge: boolean }, action: string): string | null {
         if (!response.isCfChallenge) return null;
         return [
@@ -112,9 +135,11 @@ export const Ao3Service = {
         }
 
         log('Fetching AO3 chapter index.', { workUrl: normalized });
+        const ao3Cookies = await this._fetchAo3Cookies();
         const response = await gmRequestText({
             method: 'GET',
             url: `${normalized}/navigate`,
+            cookie: ao3Cookies,
         });
         if (!response.ok) {
             const cfReason = this._cfActionableMessage(response, 'chapter index request');
@@ -172,9 +197,11 @@ export const Ao3Service = {
             editUrl: chapter.editUrl,
             replacementLength: html.length,
         });
+        const ao3Cookies = await this._fetchAo3Cookies();
         const editResponse = await gmRequestText({
             method: 'GET',
             url: chapter.editUrl,
+            cookie: ao3Cookies,
         });
         if (!editResponse.ok) {
             const cfReason = this._cfActionableMessage(editResponse, 'chapter edit page request');
@@ -223,6 +250,7 @@ export const Ao3Service = {
                 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
             },
             data: payload.body,
+            cookie: ao3Cookies,
         });
         if (!updateResponse.ok) {
             const cfReason = this._cfActionableMessage(updateResponse, 'chapter update submission');
