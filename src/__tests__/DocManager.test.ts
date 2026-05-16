@@ -584,6 +584,7 @@ describe('DocManager bulk import execution', () => {
         const promise = DocManager.runBulkImport(mockEvent(btn), plan, status, results);
         await promise;
         await flushMicrotasks();
+        return { btn, status, results };
     }
 
     it('normalizes Markdown before saving', async () => {
@@ -598,6 +599,77 @@ describe('DocManager bulk import execution', () => {
         await runBulkImportWithPlan(plan);
 
         expect(replaceSpy).toHaveBeenCalledWith('101', 'Doc Name', '<div>Heading</div><p><strong>Bold</strong></p>');
+    });
+
+    it('updates import preview rows while each import runs', async () => {
+        mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
+        const item = makeItem('Doc Name', '101');
+        const plan = DocManager._buildBulkImportPlan(
+            [makeFile('Doc Name.md', 'Import/Doc Name.md', '**Bold**')],
+            [item],
+            'markdown',
+        );
+        const preview = document.createElement('div');
+        const startButton = makeBtn();
+        const status = document.createElement('div');
+        const results = document.createElement('div');
+        const runButton = makeBtn();
+        document.body.append(preview, status, results);
+        DocManager._renderBulkImportPreview(preview, startButton, plan);
+
+        const previewRow = preview.querySelector<HTMLTableRowElement>('tr[data-row-file]');
+        const statusCell = preview.querySelector<HTMLElement>('[data-ffne-status]');
+        expect(statusCell?.textContent).toBe('Matched');
+
+        const save = {
+            resolve: null as ((value: { ok: true }) => void) | null,
+        };
+        vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockImplementation(() => new Promise(resolve => {
+            save.resolve = resolve;
+        }));
+
+        const promise = DocManager.runBulkImport(mockEvent(runButton), plan, status, results);
+        for (let i = 0; i < 10 && !save.resolve; i++) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            await flushMicrotasks();
+        }
+
+        expect(previewRow?.classList.contains('ffne-dm-row-running')).toBe(true);
+        expect(statusCell?.textContent).toBe('Importing');
+
+        if (!save.resolve) throw new Error('Import save did not start.');
+        save.resolve({ ok: true });
+        await promise;
+        await flushMicrotasks();
+
+        expect(previewRow?.classList.contains('ffne-dm-row-success')).toBe(true);
+        expect(statusCell?.textContent).toBe('Done');
+    });
+
+    it('marks import preview rows as failed after retry exhaustion', async () => {
+        mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
+        const item = makeItem('Doc Name', '101');
+        const plan = DocManager._buildBulkImportPlan(
+            [makeFile('Doc Name.md', 'Import/Doc Name.md', '**Bold**')],
+            [item],
+            'markdown',
+        );
+        const preview = document.createElement('div');
+        const startButton = makeBtn();
+        document.body.append(preview);
+        DocManager._renderBulkImportPreview(preview, startButton, plan);
+        const previewRow = preview.querySelector<HTMLTableRowElement>('tr[data-row-file]');
+        const statusCell = preview.querySelector<HTMLElement>('[data-ffne-status]');
+        vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({
+            ok: false,
+            reason: 'Save rejected.',
+        });
+
+        const { results } = await runBulkImportWithPlan(plan);
+
+        expect(previewRow?.classList.contains('ffne-dm-row-failed')).toBe(true);
+        expect(statusCell?.textContent).toBe('Failed');
+        expect(results.innerHTML).toContain('Save rejected.');
     });
 
     it('normalizes HTML before saving', async () => {

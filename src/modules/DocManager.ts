@@ -61,7 +61,7 @@ const SUPPORTED_BULK_IMPORT_EXTENSIONS = new Set(
     Object.values(BULK_IMPORT_FORMAT_OPTIONS).flatMap(option => option.extensions)
 );
 
-type BulkImportRowStatus = 'matched' | 'missing' | 'duplicate';
+type BulkImportRowStatus = 'matched' | 'missing' | 'duplicate' | 'running' | 'retrying' | 'success' | 'failed';
 
 interface BulkImportPreviewRow {
     docId: string;
@@ -69,6 +69,7 @@ interface BulkImportPreviewRow {
     expectedFileName: string;
     status: BulkImportRowStatus;
     file: File | null;
+    modalRow: HTMLTableRowElement | null;
 }
 
 interface BulkImportPlan {
@@ -503,6 +504,7 @@ function _buildBulkImportPlan(
                 expectedFileName: fileName,
                 status: 'missing',
                 file: matchedFiles[0] || null,
+                modalRow: null,
             });
         }
     }
@@ -524,6 +526,7 @@ function _buildBulkImportPlan(
                 expectedFileName: fileName,
                 status: 'duplicate',
                 file: null,
+                modalRow: null,
             });
             continue;
         }
@@ -545,6 +548,7 @@ function _buildBulkImportPlan(
                 expectedFileName: matchedFiles.map(entry => entry.fileName).join(' / '),
                 status: 'duplicate',
                 file: null,
+                modalRow: null,
             });
             continue;
         }
@@ -555,6 +559,7 @@ function _buildBulkImportPlan(
             expectedFileName: matchedFiles[0].fileName,
             status: 'matched',
             file: matchedFiles[0].file,
+            modalRow: null,
         });
         fileByDocId.set(item.docId, matchedFiles[0].file);
         matchedCount++;
@@ -574,6 +579,56 @@ function _buildBulkImportPlan(
         fileByDocId,
         hasBlockingErrors: blockedFiles.length > 0 || duplicateFileNames.length > 0 || duplicateDocNames.length > 0,
     };
+}
+
+function _getBulkImportRowStatusLabel(status: BulkImportRowStatus): string {
+    switch (status) {
+        case 'matched':
+            return 'Matched';
+        case 'missing':
+            return 'Missing';
+        case 'duplicate':
+            return 'Duplicate';
+        case 'running':
+            return 'Importing';
+        case 'retrying':
+            return 'Retrying';
+        case 'success':
+            return 'Done';
+        case 'failed':
+            return 'Failed';
+    }
+}
+
+function _renderBulkImportRowStatus(row: BulkImportPreviewRow): void {
+    if (!row.modalRow) return;
+
+    row.modalRow.classList.remove('ffne-dm-row-running', 'ffne-dm-row-success', 'ffne-dm-row-failed');
+    if (row.status === 'running' || row.status === 'retrying') {
+        row.modalRow.classList.add('ffne-dm-row-running');
+    }
+    if (row.status === 'success') {
+        row.modalRow.classList.add('ffne-dm-row-success');
+    }
+    if (row.status === 'failed') {
+        row.modalRow.classList.add('ffne-dm-row-failed');
+    }
+
+    const statusCell = row.modalRow.querySelector<HTMLElement>('[data-ffne-status]');
+    if (!statusCell) return;
+    statusCell.className = `ffne-dm-status-${row.status}`;
+    statusCell.textContent = _getBulkImportRowStatusLabel(row.status);
+}
+
+function _setBulkImportItemStatus(
+    plan: BulkImportPlan,
+    item: IBulkItem,
+    status: Extract<BulkImportRowStatus, 'running' | 'retrying' | 'success' | 'failed'>,
+): void {
+    const row = plan.rows.find(candidate => candidate.docId === item.docId);
+    if (!row) return;
+    row.status = status;
+    _renderBulkImportRowStatus(row);
 }
 
 const BULK_IMPORT_STRIP_CONTENT_TAGS = new Set([
@@ -1311,9 +1366,22 @@ export const DocManager = {
                 vertical-align: top;
                 cursor: default;
             }
+            .ffne-dm-row-running {
+                background: #fff4c2;
+            }
+            .ffne-dm-row-success {
+                background: #edf9ed;
+            }
+            .ffne-dm-row-failed {
+                background: #fff0f0;
+            }
             .ffne-dm-status-matched { color: #236423; font-weight: 700; }
             .ffne-dm-status-missing { color: #777; }
             .ffne-dm-status-duplicate { color: #8b0000; font-weight: 700; }
+            .ffne-dm-status-running,
+            .ffne-dm-status-retrying { color: #8a5c00; font-weight: 700; }
+            .ffne-dm-status-success { color: #236423; font-weight: 700; }
+            .ffne-dm-status-failed { color: #8b0000; font-weight: 700; }
             .ffne-dm-status-mapped { color: #236423; font-weight: 700; }
             .ffne-dm-status-skipped { color: #777; }
             .ffne-dm-footer {
@@ -1904,10 +1972,10 @@ export const DocManager = {
             : '';
 
         const rowsHtml = plan.rows.map(row => `
-            <tr>
+            <tr data-row-doc-id="${_escapeHtml(row.docId)}" data-row-file="${_escapeHtml(row.expectedFileName)}">
                 <td>${_escapeHtml(row.docName)}</td>
                 <td>${_escapeHtml(row.expectedFileName)}</td>
-                <td class="ffne-dm-status-${row.status}">${row.status}</td>
+                <td data-ffne-status></td>
             </tr>
         `).join('');
 
@@ -1937,6 +2005,14 @@ export const DocManager = {
                 <tbody>${rowsHtml || `<tr><td colspan="3">No top-level ${_escapeHtml(formatOption.fileLabel)} files found.</td></tr>`}</tbody>
             </table>
         `;
+
+        preview.querySelectorAll<HTMLTableRowElement>('tr[data-row-file]').forEach(rowEl => {
+            const expectedFileName = rowEl.getAttribute('data-row-file') || '';
+            const row = plan.rows.find(candidate => candidate.expectedFileName === expectedFileName);
+            if (!row) return;
+            row.modalRow = rowEl;
+            _renderBulkImportRowStatus(row);
+        });
     },
 
     /**
@@ -2655,6 +2731,7 @@ export const DocManager = {
             verb: 'Import',
             filterRows: (items) => items.filter(item => plan.fileByDocId.has(item.docId)),
             onItemStart: (item, pass, index, total) => {
+                _setBulkImportItemStatus(plan, item, pass === 2 ? 'retrying' : 'running');
                 if (!statusEl) return;
                 const verb = pass === 2 ? 'Retrying' : 'Importing';
                 statusEl.textContent = `${verb} ${index}/${total}: ${item.docName} from ${fileLabelFor(item)}...`;
@@ -2663,6 +2740,7 @@ export const DocManager = {
                 const file = plan.fileByDocId.get(item.docId);
                 if (!file) {
                     setFailure(item, `No matched ${_getBulkImportConfirmedLabel(plan.format)} file was found.`);
+                    _setBulkImportItemStatus(plan, item, 'failed');
                     return false;
                 }
 
@@ -2677,6 +2755,7 @@ export const DocManager = {
                         if (!markdown.trim()) {
                             log(`Skipping "${item.docName}" because matched file is empty.`);
                             setFailure(item, 'Matched Markdown file is empty.');
+                            _setBulkImportItemStatus(plan, item, 'failed');
                             return false;
                         }
                         html = _markdownToImportHtml(markdown);
@@ -2685,6 +2764,7 @@ export const DocManager = {
                         if (!sourceHtml.trim()) {
                             log(`Skipping "${item.docName}" because matched file is empty.`);
                             setFailure(item, 'Matched HTML file is empty.');
+                            _setBulkImportItemStatus(plan, item, 'failed');
                             return false;
                         }
                         html = _htmlToImportHtml(sourceHtml);
@@ -2695,12 +2775,14 @@ export const DocManager = {
                     if (!html.trim()) {
                         log(`Skipping "${item.docName}" because ${plan.format} conversion produced no HTML.`);
                         setFailure(item, `${_getBulkImportConfirmedLabel(plan.format)} conversion produced no importable HTML.`);
+                        _setBulkImportItemStatus(plan, item, 'failed');
                         return false;
                     }
 
                     const result = await DocFetchService.replacePrivateDocContentWithResult(item.docId, item.title, html);
                     if (!result.ok) {
                         setFailure(item, result.reason || 'FFN did not confirm the save.');
+                        _setBulkImportItemStatus(plan, item, 'failed');
                         return false;
                     }
 
@@ -2710,15 +2792,18 @@ export const DocManager = {
                     log(`Failed to import "${item.docName}".`, err);
                     const reason = err instanceof Error ? err.message : String(err);
                     setFailure(item, `Unexpected error: ${reason}`);
+                    _setBulkImportItemStatus(plan, item, 'failed');
                     return false;
                 } finally {
                     item.row.style.backgroundColor = originalBg;
                 }
             },
             onItemSuccess: (item, pass) => {
+                _setBulkImportItemStatus(plan, item, 'success');
                 DocManager.updateLifeColumn(item.row, `bulk import pass ${pass}: ${item.title}`);
             },
             onPermanentFailure: (item) => {
+                _setBulkImportItemStatus(plan, item, 'failed');
                 log(`Permanent import failure for "${item.docName}".`);
                 failures.push({
                     docName: item.docName,
