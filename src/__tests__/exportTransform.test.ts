@@ -1,9 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
+    applyExportTransforms,
     convertStyleAlignToAttr,
     appendFormatSeparator,
+    stripContentAfterMarker,
 } from '../utils/exportTransform';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
+import { SettingsManager } from '../modules/SettingsManager';
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 // ─── convertStyleAlignToAttr ───────────────────────────────────────────────
 
@@ -47,6 +54,12 @@ describe('convertStyleAlignToAttr', () => {
             .toBe('<p align="center">Centered</p>');
     });
 
+    it('handles single-quoted text-align and British centre values', () => {
+        const input = "<p style='font-weight: bold; text-align: centre;'>Centered</p>";
+        expect(convertStyleAlignToAttr(input))
+            .toBe('<p style="font-weight: bold" align="center">Centered</p>');
+    });
+
     it('handles multiple elements with text-align', () => {
         const input = '<p style="text-align: center">A</p><p style="text-align: right">B</p>';
         const result = convertStyleAlignToAttr(input);
@@ -72,6 +85,12 @@ describe('convertStyleAlignToAttr', () => {
         const input = '<div style="text-align: center"><p>Inner</p></div>';
         expect(convertStyleAlignToAttr(input))
             .toBe('<div align="center"><p>Inner</p></div>');
+    });
+
+    it('converts center tags to AO3-compatible aligned divs', () => {
+        const input = '<center><p>Centered</p></center>';
+        expect(convertStyleAlignToAttr(input))
+            .toBe('<div align="center"><p>Centered</p></div>');
     });
 });
 
@@ -105,5 +124,69 @@ describe('appendFormatSeparator', () => {
     it('handles whitespace-only content', () => {
         const result = appendFormatSeparator('   ', DocDownloadFormat.MARKDOWN);
         expect(result).toBe('\n\n---');
+    });
+});
+
+describe('stripContentAfterMarker', () => {
+    it('strips the marker and all following content when the marker is standalone on one line', () => {
+        const input = '<p>Body</p>\nNotes:\n<p>Remove this</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe('<p>Body</p>\n');
+    });
+
+    it('strips a standalone marker line wrapped in formatting and alignment tags', () => {
+        const input = '<p>Body</p>\n<p align="center"><strong> Notes: </strong></p>\n<p>Remove this</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe('<p>Body</p>\n');
+    });
+
+    it('strips a standalone marker paragraph even when there are no literal newlines', () => {
+        const input = '<p>Body</p><p align="center"><strong> Notes: </strong></p><p>Remove this</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe('<p>Body</p>');
+    });
+
+    it('does not strip an inline marker that is not standalone on its own line', () => {
+        const input = '<p>Body</p>Notes:\n<p>Remove this</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe(input);
+    });
+
+    it('does not strip a marker inside a paragraph with surrounding content', () => {
+        const input = '<p>Body Notes: still body text</p><p>Keep this</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe(input);
+    });
+
+    it('does not strip a line with other text around the marker', () => {
+        const input = '<p>Body</p>\n<p>Notes: keep this context</p>\n<p>Keep this too</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe(input);
+    });
+
+    it('leaves content unchanged when the marker is blank or missing', () => {
+        const input = '<p>Body</p>';
+
+        expect(stripContentAfterMarker(input, '')).toBe(input);
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe(input);
+    });
+
+    it('does not turn the strip-point newline into a br before appending the HTML separator', () => {
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'appendSeparator') return true;
+            if (key === 'ao3HtmlCompatibility') return false;
+            return 0;
+        });
+
+        const result = applyExportTransforms(
+            '<p>Body</p>\n<p><strong>Notes:</strong></p>\n<p>Remove this</p>',
+            DocDownloadFormat.HTML,
+            {
+                convertLineBreaks: true,
+                stripAfterMarker: 'Notes:',
+            },
+        );
+
+        expect(result).toBe('<p>Body</p>\n<hr>\n<p>&nbsp;</p>');
     });
 });

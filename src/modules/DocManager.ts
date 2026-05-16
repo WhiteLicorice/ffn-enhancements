@@ -10,14 +10,22 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { DocIframeHandler } from './DocIframeHandler';
 import { IBulkOperationConfig, IBulkItem } from '../interfaces/IBulkOperationConfig';
-import { applyExportTransforms } from '../utils/exportTransform';
+import { applyExportTransforms, stripContentAfterMarker } from '../utils/exportTransform';
 import { writeToClipboard } from '../utils/clipboard';
 import { SimpleMarkdownParser } from './SimpleMarkdownParser';
 import { runBulkOperation } from '../utils/runBulkOperation';
+import { Ao3Service } from '../services/Ao3Service';
+import {
+    IAo3Chapter,
+    IAo3MigrationFailure,
+    IAo3MigrationMappingRow,
+    IAo3MigrationPlan,
+} from '../interfaces/IAo3Migration';
 
 const ADVANCED_DRAWER_ID = 'ffne-docmanager-advanced-drawer';
 const ADVANCED_MODAL_ID = 'ffne-docmanager-advanced-modal';
 const IMPORT_MODAL_ID = 'ffne-docmanager-import-modal';
+const AO3_MODAL_ID = 'ffne-docmanager-ao3-modal';
 const ADVANCED_STYLE_ID = 'ffne-docmanager-advanced-styles';
 const MARKDOWN_EXTENSION = '.md';
 const BLOCKED_IMPORT_EXTENSIONS = new Set(['.htm', '.html', '.docx']);
@@ -49,6 +57,21 @@ interface BulkImportFailure {
     docName: string;
     fileName: string;
     reason: string;
+}
+
+interface Ao3MigrationState {
+    normalizedWorkUrl: string;
+    chapters: IAo3Chapter[];
+    sourceItems: IBulkItem[];
+    rows: IAo3MigrationMappingRow[];
+    convertLineBreaks: boolean;
+    stripNotesMarker: string;
+}
+
+interface ParsedSemanticDocName {
+    prefix: string;
+    number: number;
+    padding: number;
 }
 
 function _sanitizeDocTitle(title: string): string {
@@ -116,6 +139,241 @@ function _escapeHtml(value: string): string {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function _parseSemanticDocName(value: string): ParsedSemanticDocName | null {
+    const match = value.trim().match(/^(.*?)(\d+)$/);
+    if (!match) return null;
+
+    const parsed = Number.parseInt(match[2], 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+
+    return {
+        prefix: match[1],
+        number: parsed,
+        padding: match[2].length,
+    };
+}
+
+function _buildSourceDocMaps(items: IBulkItem[]) {
+    const byNumber = new Map<number, IBulkItem | null>();
+    const bySemanticNumber = new Map<string, IBulkItem | null>();
+
+    items.forEach(item => {
+        const parsed = _parseSemanticDocName(item.docName);
+        if (!parsed) return;
+
+        if (byNumber.has(parsed.number)) {
+            byNumber.set(parsed.number, null);
+        } else {
+            byNumber.set(parsed.number, item);
+        }
+
+        const semanticKey = `${parsed.prefix}\u0000${parsed.number}`;
+        if (bySemanticNumber.has(semanticKey)) {
+            bySemanticNumber.set(semanticKey, null);
+            return;
+        }
+        bySemanticNumber.set(semanticKey, item);
+    });
+
+    return {
+        byId: new Map(items.map(item => [item.docId, item])),
+        byName: new Map(items.map(item => [item.docName, item])),
+        byNumber,
+        bySemanticNumber,
+    };
+}
+
+function _createAo3MigrationRows(items: IBulkItem[], chapters: IAo3Chapter[]): IAo3MigrationMappingRow[] {
+    const { byNumber } = _buildSourceDocMaps(items);
+    return chapters.map(chapter => {
+        const matchedSourceItem = byNumber.get(chapter.chapterNumber) || null;
+        return {
+            chapter,
+            selectedSourceItem: matchedSourceItem,
+            mappingSource: matchedSourceItem ? 'auto' : 'unmapped',
+            hasBeenAutofilled: false,
+            status: matchedSourceItem ? 'mapped' : 'skipped',
+            modalRow: null,
+        };
+    });
+}
+
+function _getSemanticSourceDocMatch(
+    byName: Map<string, IBulkItem>,
+    bySemanticNumber: Map<string, IBulkItem | null>,
+    prefix: string,
+    candidateNumber: number,
+    padding: number,
+): IBulkItem | null {
+    const paddedName = `${prefix}${String(candidateNumber).padStart(padding, '0')}`;
+    const exactMatch = byName.get(paddedName);
+    if (exactMatch) return exactMatch;
+
+    return bySemanticNumber.get(`${prefix}\u0000${candidateNumber}`) || null;
+}
+
+function _applyAo3SourceAutofill(
+    rows: IAo3MigrationMappingRow[],
+    sourceItems: IBulkItem[],
+    anchorIndex: number,
+    selectedDocId: string,
+): IAo3MigrationMappingRow[] {
+    const log = Core.getLogger('doc-manager', '_applyAo3SourceAutofill');
+    const anchor = rows[anchorIndex];
+    if (!anchor || !selectedDocId) return rows;
+
+    const { byId, byName, bySemanticNumber } = _buildSourceDocMaps(sourceItems);
+    const anchorItem = byId.get(selectedDocId);
+    const parsed = anchorItem ? _parseSemanticDocName(anchorItem.docName) : null;
+    if (!anchorItem || !parsed) {
+        log(`No semantic doc suffix found for selected source doc "${anchorItem?.docName || selectedDocId}".`);
+        return rows;
+    }
+
+    let appliedCount = 0;
+    rows.forEach((row, index) => {
+        if (index === anchorIndex) return;
+        if (row.mappingSource === 'manual' || row.hasBeenAutofilled) return;
+
+        const offset = row.chapter.chapterNumber - anchor.chapter.chapterNumber;
+        const candidateNumber = parsed.number + offset;
+        if (!Number.isFinite(candidateNumber) || candidateNumber <= 0) return;
+
+        const candidateItem = _getSemanticSourceDocMatch(
+            byName,
+            bySemanticNumber,
+            parsed.prefix,
+            candidateNumber,
+            parsed.padding,
+        );
+        if (!candidateItem) return;
+
+        row.selectedSourceItem = candidateItem;
+        row.mappingSource = 'autofill';
+        row.hasBeenAutofilled = true;
+        row.status = 'mapped';
+        appliedCount++;
+    });
+
+    log(`Autofill from "${anchorItem.docName}" applied to ${appliedCount} AO3 chapter row(s).`, {
+        anchorIndex,
+        anchorChapter: anchor.chapter.chapterNumber,
+    });
+
+    return rows;
+}
+
+function _setManualAo3SourceSelection(
+    rows: IAo3MigrationMappingRow[],
+    sourceItems: IBulkItem[],
+    rowIndex: number,
+    docId: string,
+): IAo3MigrationMappingRow[] {
+    const row = rows[rowIndex];
+    if (!row) return rows;
+
+    const { byId } = _buildSourceDocMaps(sourceItems);
+    const selectedSourceItem = byId.get(docId) || null;
+    row.selectedSourceItem = selectedSourceItem;
+    row.mappingSource = selectedSourceItem ? 'manual' : 'unmapped';
+    row.status = selectedSourceItem ? 'mapped' : 'skipped';
+
+    const log = Core.getLogger('doc-manager', '_setManualAo3SourceSelection');
+    if (selectedSourceItem && SettingsManager.get('bulkReplaceAutofill')) {
+        log(`Manual source doc selection "${selectedSourceItem.docName}" on AO3 row ${rowIndex}; running semantic autofill.`);
+        _applyAo3SourceAutofill(rows, sourceItems, rowIndex, selectedSourceItem.docId);
+    } else if (selectedSourceItem) {
+        log(`Manual source doc selection "${selectedSourceItem.docName}" on AO3 row ${rowIndex}; semantic autofill disabled.`);
+    } else {
+        log(`AO3 row ${rowIndex} unmapped by manual source doc selection.`);
+    }
+
+    return rows;
+}
+
+function _buildAo3MigrationPlan(
+    normalizedWorkUrl: string,
+    chapters: IAo3Chapter[],
+    rows: IAo3MigrationMappingRow[],
+    convertLineBreaks: boolean,
+    stripNotesMarker: string = '',
+): IAo3MigrationPlan {
+    const counts = new Map<string, number>();
+    let mappedCount = 0;
+    let skippedCount = 0;
+
+    rows.forEach(row => {
+        if (!row.selectedSourceItem) {
+            skippedCount++;
+            row.status = 'skipped';
+            return;
+        }
+
+        mappedCount++;
+        row.status = 'mapped';
+        counts.set(row.selectedSourceItem.docId, (counts.get(row.selectedSourceItem.docId) || 0) + 1);
+    });
+
+    const duplicateSourceDocIds = Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([docId]) => docId);
+    const duplicateSet = new Set(duplicateSourceDocIds);
+
+    rows.forEach(row => {
+        if (row.selectedSourceItem && duplicateSet.has(row.selectedSourceItem.docId)) {
+            row.status = 'duplicate';
+        }
+    });
+
+    return {
+        normalizedWorkUrl,
+        chapters,
+        rows,
+        mappedCount,
+        skippedCount,
+        duplicateSourceDocIds,
+        convertLineBreaks,
+        stripNotesMarker: stripNotesMarker.trim(),
+        hasBlockingErrors: duplicateSourceDocIds.length > 0,
+    };
+}
+
+function _renderAo3MigrationFailures(
+    container: HTMLElement | null | undefined,
+    failures: IAo3MigrationFailure[],
+): void {
+    if (!container) return;
+
+    if (failures.length === 0) {
+        container.hidden = true;
+        container.innerHTML = '';
+        return;
+    }
+
+    const rowsHtml = failures.map(failure => `
+        <tr>
+            <td>${_escapeHtml(failure.sourceDoc)}</td>
+            <td>${_escapeHtml(failure.ao3Chapter)}</td>
+            <td>${_escapeHtml(failure.reason)}</td>
+        </tr>
+    `).join('');
+
+    container.hidden = false;
+    container.innerHTML = `
+        <div class="ffne-dm-import-results-title">Failed AO3 Migrations</div>
+        <table class="ffne-dm-preview" contenteditable="false">
+            <thead>
+                <tr>
+                    <th>Source Doc</th>
+                    <th>AO3 Chapter</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+        </table>
+    `;
 }
 
 function _buildBulkImportPlan(files: File[], items: IBulkItem[] = _collectBulkItems()): BulkImportPlan {
@@ -310,7 +568,9 @@ export const DocManager = {
 
     _advancedEscHandler: null as ((e: KeyboardEvent) => void) | null,
     _importEscHandler: null as ((e: KeyboardEvent) => void) | null,
+    _ao3EscHandler: null as ((e: KeyboardEvent) => void) | null,
     _bulkImportPlan: null as BulkImportPlan | null,
+    _ao3MigrationState: null as Ao3MigrationState | null,
 
     /**
      * Scans table header for "Life" cell to resolve column index dynamically.
@@ -532,6 +792,9 @@ export const DocManager = {
             .ffne-dm-modal-sm {
                 width: min(460px, calc(100vw - 32px));
             }
+            .ffne-dm-modal-wide {
+                width: min(1080px, calc(100vw - 32px));
+            }
             .ffne-dm-modal-header {
                 display: flex;
                 align-items: center;
@@ -588,6 +851,36 @@ export const DocManager = {
                 flex-wrap: wrap;
                 margin-bottom: 10px;
             }
+            .ffne-dm-input,
+            .ffne-dm-select {
+                font: inherit;
+                padding: 4px 6px;
+                border: 1px solid #b9c9d9;
+                min-width: 0;
+            }
+            .ffne-dm-input {
+                flex: 1 1 280px;
+            }
+            .ffne-dm-checkbox {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 12px;
+                color: #333;
+            }
+            .ffne-dm-form-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin-bottom: 10px;
+            }
+            .ffne-dm-form-row label {
+                flex: 0 0 auto;
+            }
+            .ffne-dm-field-row label {
+                min-width: 130px;
+            }
             .ffne-dm-file-input {
                 display: none;
             }
@@ -606,6 +899,10 @@ export const DocManager = {
                 padding: 7px 8px;
                 background: #f7f9fb;
                 border: 1px solid #d8e2ec;
+                line-height: 1.45;
+            }
+            .ffne-dm-summary-detail {
+                margin-top: 3px;
             }
             .ffne-dm-warning {
                 color: #8a3b00;
@@ -624,6 +921,15 @@ export const DocManager = {
                 cursor: default;
                 user-select: none;
             }
+            .ffne-dm-preview-scroll {
+                max-height: min(460px, calc(100vh - 310px));
+                overflow: auto;
+                border: 1px solid #d8e2ec;
+                margin-top: 8px;
+            }
+            .ffne-dm-preview-scroll .ffne-dm-preview {
+                margin-top: 0;
+            }
             .ffne-dm-preview th {
                 background: #f0f4f8;
                 color: #333;
@@ -641,6 +947,8 @@ export const DocManager = {
             .ffne-dm-status-matched { color: #236423; font-weight: 700; }
             .ffne-dm-status-missing { color: #777; }
             .ffne-dm-status-duplicate { color: #8b0000; font-weight: 700; }
+            .ffne-dm-status-mapped { color: #236423; font-weight: 700; }
+            .ffne-dm-status-skipped { color: #777; }
             .ffne-dm-footer {
                 display: flex;
                 justify-content: flex-end;
@@ -698,6 +1006,10 @@ export const DocManager = {
                             <span class="ffne-dm-routine-title">Bulk Import</span>
                             <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-import">Open</button>
                         </div>
+                        <div class="ffne-dm-routine">
+                            <span class="ffne-dm-routine-title">Bulk Migrate to AO3</span>
+                            <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-migrate-ao3">Open</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -720,6 +1032,12 @@ export const DocManager = {
             ?.addEventListener('click', () => {
                 this.closeAdvancedRoutinesModal();
                 this.openBulkImportModal();
+            });
+
+        overlay.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-migrate-ao3"]')
+            ?.addEventListener('click', () => {
+                this.closeAdvancedRoutinesModal();
+                this.openAo3MigrationModal();
             });
 
         this._advancedEscHandler = (e: KeyboardEvent) => {
@@ -863,6 +1181,288 @@ export const DocManager = {
         }
 
         this._bulkImportPlan = null;
+    },
+
+    openAo3MigrationModal: function () {
+        if (document.getElementById(AO3_MODAL_ID)) return;
+
+        const log = Core.getLogger(this.MODULE_NAME, 'openAo3MigrationModal');
+        log('Opening AO3 migration modal.');
+
+        this._injectAdvancedStyles();
+        this._ao3MigrationState = null;
+
+        const overlay = document.createElement('div');
+        overlay.id = AO3_MODAL_ID;
+        overlay.className = 'ffne-dm-overlay';
+        overlay.innerHTML = `
+            <div class="ffne-dm-modal ffne-dm-modal-wide" role="dialog" aria-modal="true" aria-labelledby="ffne-dm-ao3-title">
+                <div class="ffne-dm-modal-header">
+                    <h3 id="ffne-dm-ao3-title">Bulk Migrate to AO3</h3>
+                    <button type="button" class="ffne-dm-close" aria-label="Close">x</button>
+                </div>
+                <div class="ffne-dm-modal-body">
+                    <div class="ffne-dm-form-row">
+                        <input id="ffne-dm-ao3-work-url" class="ffne-dm-input" type="url" placeholder="https://archiveofourown.org/works/123456789/">
+                        <button type="button" id="ffne-dm-ao3-load" class="ffne-dm-btn">Load Chapters</button>
+                    </div>
+                    <label class="ffne-dm-checkbox">
+                        <input id="ffne-dm-ao3-linebreaks" type="checkbox">
+                        <span>Convert source line breaks for AO3</span>
+                    </label>
+                    <div class="ffne-dm-form-row ffne-dm-field-row">
+                        <label for="ffne-dm-ao3-strip-marker">Strip Out Notes (optional)</label>
+                        <input id="ffne-dm-ao3-strip-marker" class="ffne-dm-input" type="text" placeholder="Standalone line only, e.g. Notes:">
+                    </div>
+                    <div id="ffne-dm-ao3-summary" class="ffne-dm-summary ffne-dm-warning">
+                        Enter an AO3 work URL, then load the chapter index from AO3.
+                    </div>
+                    <div id="ffne-dm-ao3-mappings"></div>
+                    <div id="ffne-dm-ao3-results" class="ffne-dm-import-results" hidden></div>
+                    <div class="ffne-dm-footer">
+                        <span id="ffne-dm-ao3-status" class="ffne-dm-run-status"></span>
+                        <button type="button" id="ffne-dm-ao3-start" class="ffne-dm-btn" disabled>Migrate</button>
+                        <button type="button" class="ffne-dm-btn" data-ffne-action="close-ao3">Close</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const workUrlInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-ao3-work-url');
+        const loadButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-ao3-load');
+        const linebreakCheckbox = overlay.querySelector<HTMLInputElement>('#ffne-dm-ao3-linebreaks');
+        const stripMarkerInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-ao3-strip-marker');
+        const summary = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-summary');
+        const mappings = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-mappings');
+        const results = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-results');
+        const status = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-status');
+        const startButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-ao3-start');
+
+        loadButton?.addEventListener('click', async () => {
+            const normalizedWorkUrl = Ao3Service.normalizeWorkUrl(workUrlInput?.value || '');
+            if (!normalizedWorkUrl) {
+                log('AO3 chapter load blocked by invalid work URL.', { input: workUrlInput?.value || '' });
+                if (summary) {
+                    summary.className = 'ffne-dm-summary ffne-dm-error';
+                    summary.textContent = 'Enter a valid AO3 work URL.';
+                }
+                if (startButton) startButton.disabled = true;
+                if (mappings) mappings.innerHTML = '';
+                if (status) status.textContent = '';
+                _renderAo3MigrationFailures(results, []);
+                return;
+            }
+
+            if (status) status.textContent = 'Loading AO3 chapters...';
+            log('Loading AO3 chapter index.', { workUrl: normalizedWorkUrl });
+            const response = await Ao3Service.fetchChapterIndex(normalizedWorkUrl);
+            if (!response.ok) {
+                log('AO3 chapter index load failed.', {
+                    workUrl: normalizedWorkUrl,
+                    reason: response.reason,
+                });
+                if (summary) {
+                    summary.className = 'ffne-dm-summary ffne-dm-error';
+                    summary.textContent = response.reason || 'Could not load AO3 chapters.';
+                }
+                if (mappings) mappings.innerHTML = '';
+                if (startButton) startButton.disabled = true;
+                if (status) status.textContent = '';
+                _renderAo3MigrationFailures(results, []);
+                return;
+            }
+
+            const sourceItems = _collectBulkItems();
+            this._ao3MigrationState = {
+                normalizedWorkUrl,
+                chapters: response.chapters,
+                sourceItems,
+                rows: _createAo3MigrationRows(sourceItems, response.chapters),
+                convertLineBreaks: !!linebreakCheckbox?.checked,
+                stripNotesMarker: stripMarkerInput?.value.trim() || '',
+            };
+            log('AO3 chapter index loaded and migration rows prepared.', {
+                workUrl: normalizedWorkUrl,
+                chapterCount: response.chapters.length,
+                sourceDocCount: sourceItems.length,
+                convertLineBreaks: !!linebreakCheckbox?.checked,
+                stripNotesEnabled: !!stripMarkerInput?.value.trim(),
+            });
+            if (status) status.textContent = `Loaded ${response.chapters.length} AO3 chapter(s).`;
+            _renderAo3MigrationFailures(results, []);
+            this._refreshAo3MigrationPreview(summary || null, mappings || null, startButton || null);
+        });
+
+        linebreakCheckbox?.addEventListener('change', () => {
+            if (!this._ao3MigrationState) return;
+            this._ao3MigrationState.convertLineBreaks = !!linebreakCheckbox.checked;
+            this._refreshAo3MigrationPreview(summary || null, mappings || null, startButton || null);
+        });
+
+        stripMarkerInput?.addEventListener('input', () => {
+            if (!this._ao3MigrationState) return;
+            this._ao3MigrationState.stripNotesMarker = stripMarkerInput.value.trim();
+            this._refreshAo3MigrationPreview(summary || null, mappings || null, startButton || null);
+        });
+
+        startButton?.addEventListener('click', async (e) => {
+            const plan = this._ao3MigrationState
+                ? _buildAo3MigrationPlan(
+                    this._ao3MigrationState.normalizedWorkUrl,
+                    this._ao3MigrationState.chapters,
+                    this._ao3MigrationState.rows,
+                    this._ao3MigrationState.convertLineBreaks,
+                    this._ao3MigrationState.stripNotesMarker,
+                )
+                : null;
+            if (!plan || plan.hasBlockingErrors || plan.mappedCount === 0) return;
+
+            const confirmed = confirm(
+                `Bulk Migrate to AO3 will replace ${plan.mappedCount} AO3 chapter(s).\n\n` +
+                'Guardrails active: duplicate source docs are blocked, empty source docs are skipped before AO3 updates, and failed updates retry once.\n\n' +
+                'This will overwrite the selected AO3 chapter bodies. Continue?'
+            );
+            if (!confirmed) {
+                log('AO3 migration cancelled at confirmation.', {
+                    mappedCount: plan.mappedCount,
+                    workUrl: plan.normalizedWorkUrl,
+                });
+                return;
+            }
+
+            log('AO3 migration confirmed by user.', {
+                mappedCount: plan.mappedCount,
+                skippedCount: plan.skippedCount,
+                workUrl: plan.normalizedWorkUrl,
+                convertLineBreaks: plan.convertLineBreaks,
+                stripNotesEnabled: !!plan.stripNotesMarker,
+                forceAo3HtmlCompatibility: true,
+            });
+            await this.runBulkAo3Migration(e as MouseEvent, plan, status || undefined, results || undefined);
+            this._refreshAo3MigrationPreview(summary || null, mappings || null, startButton || null);
+        });
+
+        overlay.querySelector<HTMLButtonElement>('.ffne-dm-close')
+            ?.addEventListener('click', () => this.closeAo3MigrationModal());
+        overlay.querySelector<HTMLButtonElement>('[data-ffne-action="close-ao3"]')
+            ?.addEventListener('click', () => this.closeAo3MigrationModal());
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.closeAo3MigrationModal();
+        });
+
+        this._ao3EscHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') this.closeAo3MigrationModal();
+        };
+        document.addEventListener('keydown', this._ao3EscHandler);
+
+        document.body.appendChild(overlay);
+    },
+
+    closeAo3MigrationModal: function () {
+        const modal = document.getElementById(AO3_MODAL_ID);
+        if (modal) modal.remove();
+
+        if (this._ao3EscHandler) {
+            document.removeEventListener('keydown', this._ao3EscHandler);
+            this._ao3EscHandler = null;
+        }
+
+        this._ao3MigrationState = null;
+    },
+
+    _refreshAo3MigrationPreview: function (
+        summaryEl: HTMLElement | null,
+        mappingsEl: HTMLElement | null,
+        startButton: HTMLButtonElement | null,
+    ) {
+        const state = this._ao3MigrationState;
+        if (!summaryEl || !mappingsEl || !startButton || !state) return;
+
+        const plan = _buildAo3MigrationPlan(
+            state.normalizedWorkUrl,
+            state.chapters,
+            state.rows,
+            state.convertLineBreaks,
+            state.stripNotesMarker,
+        );
+
+        startButton.disabled = plan.hasBlockingErrors || plan.mappedCount === 0;
+
+        const duplicateLabels = plan.rows
+            .filter(row => row.status === 'duplicate' && row.selectedSourceItem)
+            .map(row => row.selectedSourceItem?.docName || '')
+            .filter((value, index, values) => !!value && values.indexOf(value) === index);
+        const summaryClass = plan.hasBlockingErrors
+            ? 'ffne-dm-summary ffne-dm-error'
+            : 'ffne-dm-summary';
+        const visibleDuplicateLabels = duplicateLabels.slice(0, 6);
+        const duplicateHtml = duplicateLabels.length > 0
+            ? `<strong>Duplicate source docs:</strong> ${visibleDuplicateLabels.map(_escapeHtml).join(', ')}${duplicateLabels.length > visibleDuplicateLabels.length ? `, and ${duplicateLabels.length - visibleDuplicateLabels.length} more` : ''}`
+            : '';
+
+        summaryEl.className = summaryClass;
+        summaryEl.innerHTML = `
+            <div>
+                <strong>${plan.chapters.length}</strong> AO3 chapter(s),
+                <strong>${state.sourceItems.length}</strong> source doc(s),
+                <strong>${plan.mappedCount}</strong> mapped,
+                <strong>${plan.skippedCount}</strong> skipped.
+            </div>
+            ${plan.stripNotesMarker ? `<div class="ffne-dm-summary-detail"><strong>Strip marker:</strong> ${_escapeHtml(plan.stripNotesMarker)}</div>` : ''}
+            ${duplicateHtml ? `<div class="ffne-dm-summary-detail">${duplicateHtml}</div>` : ''}
+        `;
+
+        const optionsHtml = state.sourceItems.map(item => `
+            <option value="${_escapeHtml(item.docId)}">${_escapeHtml(item.docName)}</option>
+        `).join('');
+        const rowsHtml = plan.rows.map((row, index) => `
+            <tr data-row-index="${index}">
+                <td>${_escapeHtml(row.chapter.label)}</td>
+                <td>
+                    <select class="ffne-dm-select" data-ffne-ao3-source="${index}">
+                        <option value="">Skip this AO3 chapter</option>
+                        ${optionsHtml}
+                    </select>
+                </td>
+                <td>${_escapeHtml(row.mappingSource)}</td>
+                <td class="ffne-dm-status-${row.status}">${_escapeHtml(row.status)}</td>
+            </tr>
+        `).join('');
+
+        const tableBodyHtml = plan.rows.length > 0
+            ? rowsHtml
+            : '<tr><td colspan="4">No AO3 chapters found.</td></tr>';
+
+        mappingsEl.innerHTML = `
+            <div class="ffne-dm-preview-scroll">
+                <table class="ffne-dm-preview" contenteditable="false">
+                    <thead>
+                        <tr>
+                            <th>AO3 Chapter</th>
+                            <th>Source Doc</th>
+                            <th>Mapping Source</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>${tableBodyHtml}</tbody>
+                </table>
+            </div>
+        `;
+
+        plan.rows.forEach((row, index) => {
+            const rowEl = mappingsEl.querySelector<HTMLTableRowElement>(`tr[data-row-index="${index}"]`);
+            row.modalRow = rowEl;
+            const select = mappingsEl.querySelector<HTMLSelectElement>(`select[data-ffne-ao3-source="${index}"]`);
+            if (select) {
+                select.value = row.selectedSourceItem?.docId || '';
+                select.addEventListener('change', () => {
+                    if (!this._ao3MigrationState) return;
+                    _setManualAo3SourceSelection(this._ao3MigrationState.rows, this._ao3MigrationState.sourceItems, index, select.value);
+                    this._refreshAo3MigrationPreview(summaryEl, mappingsEl, startButton);
+                });
+            }
+        });
     },
 
     _renderBulkImportPreview: function (
@@ -1329,6 +1929,238 @@ export const DocManager = {
     },
 
     /**
+     * Handles bulk FFN doc migration into existing AO3 chapters.
+     */
+    runBulkAo3Migration: async function (
+        e: MouseEvent,
+        plan: IAo3MigrationPlan,
+        statusEl?: HTMLElement,
+        resultsEl?: HTMLElement,
+    ) {
+        const log = Core.getLogger(this.MODULE_NAME, 'runBulkAo3Migration');
+        const btn = e.currentTarget as HTMLButtonElement;
+        const failureReasons = new Map<string, string>();
+        const failures: IAo3MigrationFailure[] = [];
+
+        const setFailure = (row: IAo3MigrationMappingRow, reason: string) => {
+            failureReasons.set(row.chapter.chapterId, reason);
+        };
+
+        const sourceLabelFor = (row: IAo3MigrationMappingRow): string => {
+            return row.selectedSourceItem?.docName || '(no source doc)';
+        };
+
+        if (plan.hasBlockingErrors || plan.mappedCount === 0) {
+            if (statusEl) {
+                statusEl.textContent = plan.hasBlockingErrors
+                    ? 'Migration blocked by duplicate source doc mappings.'
+                    : 'No source docs are mapped.';
+            }
+            log('AO3 migration blocked before execution.', {
+                mappedCount: plan.mappedCount,
+                duplicateSourceDocIds: plan.duplicateSourceDocIds,
+            });
+            _renderAo3MigrationFailures(resultsEl, []);
+            return;
+        }
+
+        if (statusEl) {
+            statusEl.textContent = `Preparing to migrate ${plan.mappedCount} AO3 chapter(s)...`;
+        }
+        _renderAo3MigrationFailures(resultsEl, []);
+        log('AO3 migration preparing bulk runner.', {
+            workUrl: plan.normalizedWorkUrl,
+            mappedCount: plan.mappedCount,
+            skippedCount: plan.skippedCount,
+            convertLineBreaks: plan.convertLineBreaks,
+            stripNotesEnabled: !!plan.stripNotesMarker,
+            forceAo3HtmlCompatibility: true,
+        });
+
+        await runBulkOperation<IAo3MigrationMappingRow>(e, {
+            verb: 'Migrate',
+            getItems: () => plan.rows,
+            filterRows: (rows) => rows.filter(row => !!row.selectedSourceItem),
+            preBatch: (totalCount) => {
+                log('AO3 migration batch started.', {
+                    totalCount,
+                    workUrl: plan.normalizedWorkUrl,
+                    guardrails: [
+                        'confirmation before destructive updates',
+                        'duplicate source mappings blocked',
+                        'empty source docs blocked before AO3 POST',
+                        'two-pass retry with configured bulk delays',
+                        'per-row failure reporting',
+                    ],
+                });
+            },
+            onItemStart: (row, pass, index, total) => {
+                log('AO3 migration row started.', {
+                    pass,
+                    index,
+                    total,
+                    sourceDoc: sourceLabelFor(row),
+                    ao3Chapter: row.chapter.label,
+                    ao3ChapterId: row.chapter.chapterId,
+                });
+                if (!statusEl) return;
+                const verb = pass === 2 ? 'Retrying' : 'Migrating';
+                statusEl.textContent = `${verb} ${index}/${total}: ${sourceLabelFor(row)} -> ${row.chapter.label}...`;
+            },
+            processItem: async (row) => {
+                const sourceItem = row.selectedSourceItem;
+                if (!sourceItem) {
+                    setFailure(row, 'No source doc is mapped.');
+                    return false;
+                }
+
+                const originalTableBg = sourceItem.row.style.backgroundColor;
+                const originalModalBg = row.modalRow?.style.backgroundColor || '';
+                sourceItem.row.style.backgroundColor = '#fff4c2';
+                sourceItem.row.style.transition = 'background-color 0.3s ease';
+                if (row.modalRow) {
+                    row.modalRow.style.backgroundColor = '#fff4c2';
+                    row.modalRow.style.transition = 'background-color 0.3s ease';
+                }
+
+                try {
+                    log('Fetching FFN source doc for AO3 migration.', {
+                        sourceDoc: sourceItem.docName,
+                        docId: sourceItem.docId,
+                        ao3Chapter: row.chapter.label,
+                    });
+                    const sourceHtml = await DocFetchService.fetchPrivateDocAsHtml(sourceItem.docId, sourceItem.title);
+                    if (sourceHtml === null) {
+                        log('AO3 migration blocked because source doc could not be loaded.', {
+                            sourceDoc: sourceItem.docName,
+                            docId: sourceItem.docId,
+                            ao3Chapter: row.chapter.label,
+                        });
+                        setFailure(row, 'Could not load the FFN source document.');
+                        return false;
+                    }
+
+                    if (!sourceHtml.trim()) {
+                        log('AO3 migration blocked because source doc is empty.', {
+                            sourceDoc: sourceItem.docName,
+                            docId: sourceItem.docId,
+                            ao3Chapter: row.chapter.label,
+                        });
+                        setFailure(row, 'Source document is empty.');
+                        return false;
+                    }
+
+                    const strippedSourceHtml = stripContentAfterMarker(sourceHtml, plan.stripNotesMarker);
+                    if (plan.stripNotesMarker) {
+                        log(strippedSourceHtml === sourceHtml
+                            ? 'Strip marker was not found as a standalone line; source content unchanged.'
+                            : 'Strip marker matched a standalone line; notes content stripped.', {
+                            sourceDoc: sourceItem.docName,
+                            marker: plan.stripNotesMarker,
+                            beforeLength: sourceHtml.length,
+                            afterLength: strippedSourceHtml.length,
+                        });
+                    }
+                    if (!strippedSourceHtml.trim()) {
+                        log('AO3 migration blocked because source doc became empty after stripping notes.', {
+                            sourceDoc: sourceItem.docName,
+                            docId: sourceItem.docId,
+                            marker: plan.stripNotesMarker,
+                        });
+                        setFailure(row, 'Source document is empty after stripping notes.');
+                        return false;
+                    }
+
+                    const transformedHtml = applyExportTransforms(sourceHtml, DocDownloadFormat.HTML, {
+                        forceAo3HtmlCompatibility: true,
+                        convertLineBreaks: plan.convertLineBreaks,
+                        stripAfterMarker: plan.stripNotesMarker,
+                    });
+                    log('AO3 migration source content transformed.', {
+                        sourceDoc: sourceItem.docName,
+                        ao3Chapter: row.chapter.label,
+                        originalLength: sourceHtml.length,
+                        transformedLength: transformedHtml.length,
+                        forceAo3HtmlCompatibility: true,
+                        convertLineBreaks: plan.convertLineBreaks,
+                        stripNotesEnabled: !!plan.stripNotesMarker,
+                    });
+                    if (!transformedHtml.trim()) {
+                        setFailure(row, 'Transformed chapter content is empty.');
+                        return false;
+                    }
+
+                    log('Submitting AO3 chapter update.', {
+                        sourceDoc: sourceItem.docName,
+                        ao3Chapter: row.chapter.label,
+                        ao3ChapterId: row.chapter.chapterId,
+                        editUrl: row.chapter.editUrl,
+                    });
+                    const result = await Ao3Service.updateChapterContent(row.chapter, transformedHtml);
+                    if (!result.ok) {
+                        log('AO3 chapter update was not confirmed.', {
+                            sourceDoc: sourceItem.docName,
+                            ao3Chapter: row.chapter.label,
+                            reason: result.reason,
+                        });
+                        setFailure(row, result.reason || 'AO3 did not confirm the update.');
+                        return false;
+                    }
+
+                    log('AO3 chapter update confirmed.', {
+                        sourceDoc: sourceItem.docName,
+                        ao3Chapter: row.chapter.label,
+                        ao3ChapterId: row.chapter.chapterId,
+                    });
+                    failureReasons.delete(row.chapter.chapterId);
+                    return true;
+                } catch (err) {
+                    const reason = err instanceof Error ? err.message : String(err);
+                    log(`AO3 migration failed for "${sourceItem.docName}" to "${row.chapter.label}".`, err);
+                    setFailure(row, `Unexpected error: ${reason}`);
+                    return false;
+                } finally {
+                    sourceItem.row.style.backgroundColor = originalTableBg;
+                    if (row.modalRow) {
+                        row.modalRow.style.backgroundColor = originalModalBg;
+                    }
+                }
+            },
+            onPermanentFailure: (row) => {
+                log('AO3 migration row failed permanently after retry.', {
+                    sourceDoc: sourceLabelFor(row),
+                    ao3Chapter: row.chapter.label,
+                    reason: failureReasons.get(row.chapter.chapterId),
+                });
+                failures.push({
+                    sourceDoc: sourceLabelFor(row),
+                    ao3Chapter: row.chapter.label,
+                    reason: failureReasons.get(row.chapter.chapterId) || 'AO3 migration failed after retry.',
+                });
+            },
+            onFinalize: ({ successCount, totalCount }) => {
+                const failedCount = totalCount - successCount;
+                _renderAo3MigrationFailures(resultsEl, failures);
+                log('AO3 migration finalized.', {
+                    successCount,
+                    failedCount,
+                    totalCount,
+                });
+                if (successCount === totalCount) {
+                    btn.innerText = 'Done';
+                    if (statusEl) statusEl.textContent = `Migrated all ${successCount} AO3 chapter(s).`;
+                } else if (successCount > 0) {
+                    btn.innerText = `${successCount}/${totalCount}`;
+                    if (statusEl) statusEl.textContent = `Migrated ${successCount}; failed ${failedCount}.`;
+                } else {
+                    btn.innerText = 'Failed';
+                    if (statusEl) statusEl.textContent = 'No AO3 chapters migrated.';
+                }
+            },
+        });
+    },
+
+    /**
      * Handles Markdown-only bulk import for matched DocManager rows.
      */
     runBulkImport: async function (
@@ -1450,6 +2282,11 @@ export const DocManager = {
     // Exported for tests — verifies button-reference lifecycle in onFinalize callbacks.
     _runBulkOperation,
     _buildBulkImportPlan,
+    _createAo3MigrationRows,
+    _setManualAo3SourceSelection,
+    _applyAo3SourceAutofill,
+    _buildAo3MigrationPlan,
+    _renderAo3MigrationFailures,
     _getTopLevelFileName,
     _markdownToImportHtml,
     _sanitizeImportHtml,
