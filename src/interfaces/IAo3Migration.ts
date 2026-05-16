@@ -29,6 +29,7 @@ export interface IAo3MigrationPlan {
     skippedCount: number;
     duplicateTargets: string[];
     convertLineBreaks: boolean;
+    stripNotesMarker: string;
     hasBlockingErrors: boolean;
 }
 

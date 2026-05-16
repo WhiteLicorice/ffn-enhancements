@@ -453,7 +453,9 @@ describe('DocManager AO3 migration modal', () => {
 
         DocManager.openAo3MigrationModal();
         const input = document.getElementById('ffne-dm-ao3-work-url') as HTMLInputElement;
+        const stripInput = document.getElementById('ffne-dm-ao3-strip-marker') as HTMLInputElement;
         input.value = 'https://archiveofourown.org/works/77945481';
+        stripInput.value = 'Notes:';
         document.getElementById('ffne-dm-ao3-load')?.dispatchEvent(new MouseEvent('click'));
         await flushMicrotasks();
 
@@ -462,6 +464,7 @@ describe('DocManager AO3 migration modal', () => {
         expect(rows[0].textContent).toContain('P1');
         expect((rows[0].querySelector('select') as HTMLSelectElement).value).toBe('9001');
         expect((rows[1].querySelector('select') as HTMLSelectElement).value).toBe('9002');
+        expect(document.getElementById('ffne-dm-ao3-summary')?.textContent).toContain('Notes:');
     });
 });
 
@@ -577,6 +580,47 @@ describe('DocManager AO3 migration execution', () => {
 
         expect(updateSpy.mock.calls[0][1]).toBe('<p>Line 1\nLine 2</p>');
         expect(updateSpy.mock.calls[1][1]).toBe('<p>Line 1<br>Line 2</p>');
+    });
+
+    it('strips notes from source docs before AO3 updates', async () => {
+        const chapters = [makeAo3Chapter(1)];
+        const plan = DocManager._buildAo3MigrationPlan(
+            'https://archiveofourown.org/works/77945481',
+            chapters,
+            DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters),
+            false,
+            'Notes:',
+        );
+        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p>Body</p>\nNotes:\n<p>Remove this</p>');
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
+            return 0;
+        });
+        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent').mockResolvedValue({ ok: true });
+
+        await runAo3MigrationWithPlan(plan);
+
+        expect(updateSpy).toHaveBeenCalledWith(chapters[0], '<p>Body</p>\n');
+    });
+
+    it('blocks AO3 POSTs when stripping notes leaves no source content', async () => {
+        const chapters = [makeAo3Chapter(1)];
+        const plan = DocManager._buildAo3MigrationPlan(
+            'https://archiveofourown.org/works/77945481',
+            chapters,
+            DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters),
+            false,
+            'Notes:',
+        );
+        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('Notes:\nOnly notes');
+        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent');
+
+        const { status, results } = await runAo3MigrationWithPlan(plan);
+
+        expect(status.textContent).toContain('No AO3 chapters migrated');
+        expect(results.innerHTML).toContain('Source document is empty after stripping notes.');
+        expect(updateSpy).not.toHaveBeenCalled();
     });
 
     it('renders a failure table for failed AO3 migrations', async () => {

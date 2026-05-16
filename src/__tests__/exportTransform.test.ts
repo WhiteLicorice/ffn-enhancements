@@ -1,9 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
+    applyExportTransforms,
     convertStyleAlignToAttr,
     appendFormatSeparator,
+    stripContentAfterMarker,
 } from '../utils/exportTransform';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
+import { SettingsManager } from '../modules/SettingsManager';
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 // ─── convertStyleAlignToAttr ───────────────────────────────────────────────
 
@@ -105,5 +112,45 @@ describe('appendFormatSeparator', () => {
     it('handles whitespace-only content', () => {
         const result = appendFormatSeparator('   ', DocDownloadFormat.MARKDOWN);
         expect(result).toBe('\n\n---');
+    });
+});
+
+describe('stripContentAfterMarker', () => {
+    it('strips the marker and all following content', () => {
+        const input = '<p>Body</p>\nNotes:\n<p>Remove this</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe('<p>Body</p>\n');
+    });
+
+    it('adds one newline at the strip point when the marker is not already preceded by one', () => {
+        const input = '<p>Body</p>Notes:\n<p>Remove this</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe('<p>Body</p>\n');
+    });
+
+    it('leaves content unchanged when the marker is blank or missing', () => {
+        const input = '<p>Body</p>';
+
+        expect(stripContentAfterMarker(input, '')).toBe(input);
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe(input);
+    });
+
+    it('does not turn the strip-point newline into a br before appending the HTML separator', () => {
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'appendSeparator') return true;
+            if (key === 'ao3HtmlCompatibility') return false;
+            return 0;
+        });
+
+        const result = applyExportTransforms(
+            '<p>Body</p>\nNotes:\n<p>Remove this</p>',
+            DocDownloadFormat.HTML,
+            {
+                convertLineBreaks: true,
+                stripAfterMarker: 'Notes:',
+            },
+        );
+
+        expect(result).toBe('<p>Body</p>\n<hr>\n<p>&nbsp;</p>');
     });
 });

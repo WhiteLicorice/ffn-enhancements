@@ -10,7 +10,7 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { DocIframeHandler } from './DocIframeHandler';
 import { IBulkOperationConfig, IBulkItem } from '../interfaces/IBulkOperationConfig';
-import { applyExportTransforms } from '../utils/exportTransform';
+import { applyExportTransforms, stripContentAfterMarker } from '../utils/exportTransform';
 import { writeToClipboard } from '../utils/clipboard';
 import { SimpleMarkdownParser } from './SimpleMarkdownParser';
 import { runBulkOperation } from '../utils/runBulkOperation';
@@ -64,6 +64,7 @@ interface Ao3MigrationState {
     chapters: IAo3Chapter[];
     rows: IAo3MigrationMappingRow[];
     convertLineBreaks: boolean;
+    stripNotesMarker: string;
 }
 
 function _sanitizeDocTitle(title: string): string {
@@ -189,6 +190,7 @@ function _buildAo3MigrationPlan(
     chapters: IAo3Chapter[],
     rows: IAo3MigrationMappingRow[],
     convertLineBreaks: boolean,
+    stripNotesMarker: string = '',
 ): IAo3MigrationPlan {
     const counts = new Map<string, number>();
     let mappedCount = 0;
@@ -225,6 +227,7 @@ function _buildAo3MigrationPlan(
         skippedCount,
         duplicateTargets,
         convertLineBreaks,
+        stripNotesMarker: stripNotesMarker.trim(),
         hasBlockingErrors: duplicateTargets.length > 0,
     };
 }
@@ -1074,6 +1077,10 @@ export const DocManager = {
                         <input id="ffne-dm-ao3-linebreaks" type="checkbox">
                         <span>Convert source line breaks for AO3</span>
                     </label>
+                    <div class="ffne-dm-form-row">
+                        <label for="ffne-dm-ao3-strip-marker">Strip Out Notes</label>
+                        <input id="ffne-dm-ao3-strip-marker" class="ffne-dm-input" type="text" placeholder="Notes:">
+                    </div>
                     <div id="ffne-dm-ao3-summary" class="ffne-dm-summary ffne-dm-warning">
                         Enter an AO3 work URL, then load the chapter index from AO3.
                     </div>
@@ -1091,6 +1098,7 @@ export const DocManager = {
         const workUrlInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-ao3-work-url');
         const loadButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-ao3-load');
         const linebreakCheckbox = overlay.querySelector<HTMLInputElement>('#ffne-dm-ao3-linebreaks');
+        const stripMarkerInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-ao3-strip-marker');
         const summary = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-summary');
         const mappings = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-mappings');
         const results = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-results');
@@ -1130,6 +1138,7 @@ export const DocManager = {
                 chapters: response.chapters,
                 rows: _createAo3MigrationRows(_collectBulkItems(), response.chapters),
                 convertLineBreaks: !!linebreakCheckbox?.checked,
+                stripNotesMarker: stripMarkerInput?.value.trim() || '',
             };
             if (status) status.textContent = `Loaded ${response.chapters.length} AO3 chapter(s).`;
             _renderAo3MigrationFailures(results, []);
@@ -1142,6 +1151,12 @@ export const DocManager = {
             this._refreshAo3MigrationPreview(summary || null, mappings || null, startButton || null);
         });
 
+        stripMarkerInput?.addEventListener('input', () => {
+            if (!this._ao3MigrationState) return;
+            this._ao3MigrationState.stripNotesMarker = stripMarkerInput.value.trim();
+            this._refreshAo3MigrationPreview(summary || null, mappings || null, startButton || null);
+        });
+
         startButton?.addEventListener('click', async (e) => {
             const plan = this._ao3MigrationState
                 ? _buildAo3MigrationPlan(
@@ -1149,6 +1164,7 @@ export const DocManager = {
                     this._ao3MigrationState.chapters,
                     this._ao3MigrationState.rows,
                     this._ao3MigrationState.convertLineBreaks,
+                    this._ao3MigrationState.stripNotesMarker,
                 )
                 : null;
             if (!plan || plan.hasBlockingErrors || plan.mappedCount === 0) return;
@@ -1205,6 +1221,7 @@ export const DocManager = {
             state.chapters,
             state.rows,
             state.convertLineBreaks,
+            state.stripNotesMarker,
         );
 
         startButton.disabled = plan.hasBlockingErrors || plan.mappedCount === 0;
@@ -1227,6 +1244,7 @@ export const DocManager = {
                 <strong>${plan.mappedCount}</strong> mapped,
                 <strong>${plan.skippedCount}</strong> skipped.
             </div>
+            ${plan.stripNotesMarker ? `<div><strong>Strip marker:</strong> ${_escapeHtml(plan.stripNotesMarker)}</div>` : ''}
             ${duplicateHtml}
         `;
 
@@ -1818,9 +1836,16 @@ export const DocManager = {
                         return false;
                     }
 
+                    const strippedSourceHtml = stripContentAfterMarker(sourceHtml, plan.stripNotesMarker);
+                    if (!strippedSourceHtml.trim()) {
+                        setFailure(item, 'Source document is empty after stripping notes.');
+                        return false;
+                    }
+
                     const transformedHtml = applyExportTransforms(sourceHtml, DocDownloadFormat.HTML, {
                         forceAo3HtmlCompatibility: true,
                         convertLineBreaks: plan.convertLineBreaks,
+                        stripAfterMarker: plan.stripNotesMarker,
                     });
                     if (!transformedHtml.trim()) {
                         setFailure(item, 'Transformed chapter content is empty.');

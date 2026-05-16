@@ -102,9 +102,43 @@ export function convertTextLineBreaksToBr(html: string): string {
     return result;
 }
 
+interface StripMarkerResult {
+    content: string;
+    stripped: boolean;
+    preserveTerminalLineBreak: boolean;
+}
+
+function stripContentAfterMarkerWithResult(content: string, marker: string | undefined): StripMarkerResult {
+    const normalizedMarker = marker?.trim() || '';
+    if (!normalizedMarker) {
+        return { content, stripped: false, preserveTerminalLineBreak: false };
+    }
+
+    const markerIndex = content.indexOf(normalizedMarker);
+    if (markerIndex === -1) {
+        return { content, stripped: false, preserveTerminalLineBreak: false };
+    }
+
+    let strippedContent = content.slice(0, markerIndex);
+    if (!/[\r\n]$/.test(strippedContent)) {
+        strippedContent += '\n';
+    }
+
+    return {
+        content: strippedContent,
+        stripped: true,
+        preserveTerminalLineBreak: /[\r\n]$/.test(strippedContent),
+    };
+}
+
+export function stripContentAfterMarker(content: string, marker: string | undefined): string {
+    return stripContentAfterMarkerWithResult(content, marker).content;
+}
+
 export interface ExportTransformOptions {
     forceAo3HtmlCompatibility?: boolean;
     convertLineBreaks?: boolean;
+    stripAfterMarker?: string;
 }
 
 /**
@@ -119,7 +153,8 @@ export function applyExportTransforms(
     format: DocDownloadFormat,
     options: ExportTransformOptions = {},
 ): string {
-    let result = content;
+    const stripResult = stripContentAfterMarkerWithResult(content, options.stripAfterMarker);
+    let result = stripResult.content;
 
     if (
         format === DocDownloadFormat.HTML &&
@@ -129,7 +164,14 @@ export function applyExportTransforms(
     }
 
     if (format === DocDownloadFormat.HTML && options.convertLineBreaks) {
-        result = convertTextLineBreaksToBr(result);
+        const terminalLineBreak = stripResult.preserveTerminalLineBreak
+            ? result.match(/(\r\n|\r|\n)$/)?.[0] || ''
+            : '';
+        if (terminalLineBreak) {
+            result = convertTextLineBreaksToBr(result.slice(0, -terminalLineBreak.length)) + terminalLineBreak;
+        } else {
+            result = convertTextLineBreaksToBr(result);
+        }
     }
 
     if (SettingsManager.get('appendSeparator')) {
