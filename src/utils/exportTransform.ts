@@ -145,12 +145,7 @@ function normalizeStandaloneMarkerLine(value: string): string {
         .trim();
 }
 
-function stripContentAfterMarkerWithResult(content: string, marker: string | undefined): StripMarkerResult {
-    const normalizedMarker = normalizeStandaloneMarkerLine(marker?.trim() || '');
-    if (!normalizedMarker) {
-        return { content, stripped: false, preserveTerminalLineBreak: false };
-    }
-
+function findStandaloneMarkerLineStart(content: string, normalizedMarker: string): number {
     const linePattern = /([^\r\n]*)(\r\n|\n|\r|$)/g;
     let lineStartIndex = 0;
     let match: RegExpExecArray | null;
@@ -160,16 +155,48 @@ function stripContentAfterMarkerWithResult(content: string, marker: string | und
         if (fullLine === '' && lineEnding === '') break;
 
         if (normalizeStandaloneMarkerLine(lineText) === normalizedMarker) {
-            const strippedContent = content.slice(0, lineStartIndex);
-            return {
-                content: strippedContent,
-                stripped: true,
-                preserveTerminalLineBreak: /[\r\n]$/.test(strippedContent),
-            };
+            return lineStartIndex;
         }
 
         lineStartIndex += fullLine.length;
         if (lineEnding === '') break;
+    }
+
+    return -1;
+}
+
+function findStandaloneMarkerBlockStart(content: string, normalizedMarker: string): number {
+    const blockPattern = /<\s*(p|div|center|h[1-6]|li|blockquote)\b[^>]*>[\s\S]*?<\/\s*\1\s*>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = blockPattern.exec(content)) !== null) {
+        if (normalizeStandaloneMarkerLine(match[0]) === normalizedMarker) {
+            return match.index;
+        }
+    }
+
+    return -1;
+}
+
+function stripContentAfterMarkerWithResult(content: string, marker: string | undefined): StripMarkerResult {
+    const normalizedMarker = normalizeStandaloneMarkerLine(marker?.trim() || '');
+    if (!normalizedMarker) {
+        return { content, stripped: false, preserveTerminalLineBreak: false };
+    }
+
+    const lineStart = findStandaloneMarkerLineStart(content, normalizedMarker);
+    const blockStart = findStandaloneMarkerBlockStart(content, normalizedMarker);
+    const markerStart = [lineStart, blockStart]
+        .filter(index => index >= 0)
+        .sort((a, b) => a - b)[0];
+
+    if (markerStart !== undefined) {
+        const strippedContent = content.slice(0, markerStart);
+        return {
+            content: strippedContent,
+            stripped: true,
+            preserveTerminalLineBreak: /[\r\n]$/.test(strippedContent),
+        };
     }
 
     return { content, stripped: false, preserveTerminalLineBreak: false };

@@ -140,8 +140,20 @@ describe('stripContentAfterMarker', () => {
         expect(stripContentAfterMarker(input, 'Notes:')).toBe('<p>Body</p>\n');
     });
 
+    it('strips a standalone marker paragraph even when there are no literal newlines', () => {
+        const input = '<p>Body</p><p align="center"><strong> Notes: </strong></p><p>Remove this</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe('<p>Body</p>');
+    });
+
     it('does not strip an inline marker that is not standalone on its own line', () => {
         const input = '<p>Body</p>Notes:\n<p>Remove this</p>';
+
+        expect(stripContentAfterMarker(input, 'Notes:')).toBe(input);
+    });
+
+    it('does not strip a marker inside a paragraph with surrounding content', () => {
+        const input = '<p>Body Notes: still body text</p><p>Keep this</p>';
 
         expect(stripContentAfterMarker(input, 'Notes:')).toBe(input);
     });

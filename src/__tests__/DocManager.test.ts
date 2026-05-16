@@ -647,7 +647,7 @@ describe('DocManager AO3 migration execution', () => {
             false,
             'Notes:',
         );
-        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p>Body</p>\nNotes:\n<p>Remove this</p>');
+        vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p>Body</p><p align="center"><strong>Notes:</strong></p><p>Remove this</p>');
         vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
             if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
@@ -657,7 +657,7 @@ describe('DocManager AO3 migration execution', () => {
 
         await runAo3MigrationWithPlan(plan);
 
-        expect(updateSpy).toHaveBeenCalledWith(chapters[0], '<p>Body</p>\n');
+        expect(updateSpy).toHaveBeenCalledWith(chapters[0], '<p>Body</p>');
     });
 
     it('does not strip note markers unless they are standalone on one line', async () => {
