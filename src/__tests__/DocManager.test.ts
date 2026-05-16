@@ -525,7 +525,7 @@ describe('DocManager DOCX import conversion', () => {
 describe('DocManager bulk import execution', () => {
     beforeEach(() => {
         cleanupDOM();
-        vi.useFakeTimers();
+        Core.activeDelegate = DocManagerDelegate;
         vi.restoreAllMocks();
         vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
@@ -534,7 +534,7 @@ describe('DocManager bulk import execution', () => {
     });
 
     afterEach(() => {
-        vi.useRealTimers();
+        Core.activeDelegate = null;
         cleanupDOM();
     });
 
@@ -545,16 +545,15 @@ describe('DocManager bulk import execution', () => {
         document.body.append(status, results);
 
         const promise = DocManager.runBulkImport(mockEvent(btn), plan, status, results);
-        await vi.runAllTimersAsync();
         await promise;
-        await vi.runAllTimersAsync();
+        await flushMicrotasks();
     }
 
     it('normalizes Markdown before saving', async () => {
         mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
         const plan = DocManager._buildBulkImportPlan(
             [makeFile('Doc Name.md', 'Import/Doc Name.md', '# Heading\n\n**Bold**')],
-            undefined,
+            [makeItem('Doc Name', '101')],
             'markdown',
         );
         const replaceSpy = vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({ ok: true });
@@ -568,7 +567,7 @@ describe('DocManager bulk import execution', () => {
         mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
         const plan = DocManager._buildBulkImportPlan(
             [makeFile('Doc Name.html', 'Import/Doc Name.html', '<h2>Heading</h2><p style="text-align:center"><a href="https://example.com">Link</a></p>', 'text/html')],
-            undefined,
+            [makeItem('Doc Name', '101')],
             'html',
         );
         const replaceSpy = vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({ ok: true });
@@ -588,7 +587,7 @@ describe('DocManager bulk import execution', () => {
                 <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Bold</w:t></w:r></w:p>
             `),
         );
-        const plan = DocManager._buildBulkImportPlan([docxFile], undefined, 'docx');
+        const plan = DocManager._buildBulkImportPlan([docxFile], [makeItem('Doc Name', '101')], 'docx');
         const replaceSpy = vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({ ok: true });
 
         await runBulkImportWithPlan(plan);

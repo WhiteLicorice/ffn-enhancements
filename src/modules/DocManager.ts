@@ -670,6 +670,11 @@ function _sanitizeImportHtml(html: string): string {
     const sanitizedDoc = document.implementation.createHTMLDocument('');
     const sanitizedRoot = sanitizedDoc.createElement('div');
     _sanitizeImportChildren(sourceRoot, sanitizedDoc).forEach(child => sanitizedRoot.appendChild(child));
+    Array.from(sanitizedRoot.childNodes).forEach(child => {
+        if (child.nodeType === Node.TEXT_NODE && !child.textContent?.trim()) {
+            sanitizedRoot.removeChild(child);
+        }
+    });
     return sanitizedRoot.innerHTML;
 }
 
