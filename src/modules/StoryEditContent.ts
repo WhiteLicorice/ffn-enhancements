@@ -448,6 +448,9 @@ export const StoryEditContent = {
         }
         log(`Opening Bulk Replace modal for ${chapters.length} chapter(s) and ${docs.length} doc(s).`);
 
+        // GOTCHA: replaceForm.action returns the <input name="action"> DOM element
+        // when such an input exists, not the action URL string. Always use
+        // getAttribute('action') to read the form's action URL.
         this._state = {
             actionUrl: replaceForm.getAttribute('action') || window.location.href,
             chapters,

@@ -118,6 +118,10 @@ export const StoryReplaceService = {
                 form.target = iframe.name;
                 form.style.display = 'none';
 
+                // GOTCHA: FFN's replace form holds CSRF tokens (e.g. __cf_bm) as
+                // hidden inputs. Building a bare form without them triggers 403
+                // from Cloudflare. Copy all hidden inputs except the ones we
+                // explicitly overwrite below.
                 const realForm = Core.getElement(Elements.STORY_EDIT_REPLACE_FORM) as HTMLFormElement | null;
                 if (realForm) {
                     realForm.querySelectorAll<HTMLInputElement>('input[type="hidden"]').forEach(input => {
