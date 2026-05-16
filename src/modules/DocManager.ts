@@ -587,7 +587,7 @@ const BULK_IMPORT_BLOCK_TAGS = new Set([
 const BULK_IMPORT_CONTAINER_TAGS = new Set([
     'span', 'font', 'a', 'section', 'article', 'aside', 'header', 'footer', 'main',
     'nav', 'figure', 'ul', 'ol', 'dl', 'table', 'thead', 'tbody', 'tfoot', 'tr',
-    'colgroup', 'col', 'tbody', 'thead', 'tfoot', 'ruby', 'rt', 'rp', 'small',
+    'colgroup', 'col', 'ruby', 'rt', 'rp', 'small',
     'big', 'sub', 'sup', 'code', 'samp', 'kbd', 'mark', 'del', 's', 'strike',
 ]);
 
@@ -636,11 +636,16 @@ function _sanitizeImportNode(node: Node, doc: Document): Node[] {
 
     if (tag === 'img') {
         const alt = (node.getAttribute('alt') || '').trim();
-        return alt ? [doc.createTextNode(alt)] : [];
+        return [doc.createTextNode(alt || '[Image]')];
     }
 
     if (BULK_IMPORT_INLINE_TAGS.has(tag)) {
-        const normalizedTag = tag === 'b' ? 'strong' : tag === 'i' ? 'em' : tag;
+        let normalizedTag = tag;
+        if (tag === 'b') {
+            normalizedTag = 'strong';
+        } else if (tag === 'i') {
+            normalizedTag = 'em';
+        }
         const el = doc.createElement(normalizedTag);
         _sanitizeImportChildren(node, doc).forEach(child => el.appendChild(child));
         return _hasRenderableImportContent(el) ? [el] : [];
@@ -694,10 +699,15 @@ function _getXmlChild(node: Element, localName: string): Element | null {
     return _getXmlChildren(node, localName)[0] || null;
 }
 
+function _getXmlAttributeValue(node: Element | null | undefined, attributeName: string): string {
+    if (!node) return '';
+    return (node.getAttribute(`w:${attributeName}`) || node.getAttribute(attributeName) || '').toLowerCase();
+}
+
 function _getDocxParagraphAlignment(paragraph: Element): 'left' | 'center' | null {
     const pPr = _getXmlChild(paragraph, 'pPr');
     const jc = pPr ? _getXmlChild(pPr, 'jc') : null;
-    const value = (jc?.getAttribute('w:val') || jc?.getAttribute('val') || '').toLowerCase();
+    const value = _getXmlAttributeValue(jc, 'val');
     if (value === 'center' || value === 'left') return value;
     return null;
 }
@@ -716,7 +726,7 @@ function _readDocxRunHtml(run: Element): string {
     const isBold = !!(runProperties && _getXmlChild(runProperties, 'b'));
     const isItalic = !!(runProperties && _getXmlChild(runProperties, 'i'));
     const underline = runProperties ? _getXmlChild(runProperties, 'u') : null;
-    const underlineValue = (underline?.getAttribute('w:val') || underline?.getAttribute('val') || '').toLowerCase();
+    const underlineValue = _getXmlAttributeValue(underline, 'val');
     const isUnderline = !!underline && underlineValue !== 'none';
 
     let content = '';
