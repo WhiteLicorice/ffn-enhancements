@@ -14,7 +14,7 @@ import { applyExportTransforms, stripContentAfterMarker } from '../utils/exportT
 import { writeToClipboard } from '../utils/clipboard';
 import { SimpleMarkdownParser } from './SimpleMarkdownParser';
 import { runBulkOperation, AbortBulkOperation } from '../utils/runBulkOperation';
-import { Ao3Service } from '../services/Ao3Service';
+import { Ao3BridgeClient } from '../services/Ao3BridgeClient';
 import {
     IAo3Chapter,
     IAo3MigrationFailure,
@@ -1239,7 +1239,7 @@ export const DocManager = {
         const startButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-ao3-start');
 
         loadButton?.addEventListener('click', async () => {
-            const normalizedWorkUrl = Ao3Service.normalizeWorkUrl(workUrlInput?.value || '');
+            const normalizedWorkUrl = Ao3BridgeClient.normalizeWorkUrl(workUrlInput?.value || '');
             if (!normalizedWorkUrl) {
                 log('AO3 chapter load blocked by invalid work URL.', { input: workUrlInput?.value || '' });
                 if (summary) {
@@ -1255,7 +1255,7 @@ export const DocManager = {
 
             if (status) status.textContent = 'Loading AO3 chapters...';
             log('Loading AO3 chapter index.', { workUrl: normalizedWorkUrl });
-            const response = await Ao3Service.fetchChapterIndex(normalizedWorkUrl);
+            const response = await Ao3BridgeClient.fetchChapterIndex(normalizedWorkUrl);
             if (!response.ok) {
                 log('AO3 chapter index load failed.', {
                     workUrl: normalizedWorkUrl,
@@ -1942,6 +1942,7 @@ export const DocManager = {
         const failureReasons = new Map<string, string>();
         const failures: IAo3MigrationFailure[] = [];
         const failedRows: IAo3MigrationMappingRow[] = [];
+        let bulkAbortReason: string | null = null;
 
         const setFailure = (row: IAo3MigrationMappingRow, reason: string) => {
             failureReasons.set(row.chapter.chapterId, reason);
@@ -2097,7 +2098,7 @@ export const DocManager = {
                         ao3ChapterId: row.chapter.chapterId,
                         editUrl: row.chapter.editUrl,
                     });
-                    const result = await Ao3Service.updateChapterContent(row.chapter, transformedHtml);
+                    const result = await Ao3BridgeClient.updateChapterContent(row.chapter, transformedHtml);
                     if (!result.ok) {
                         log('AO3 chapter update was not confirmed.', {
                             sourceDoc: sourceItem.docName,
@@ -2108,8 +2109,11 @@ export const DocManager = {
 
                         if (result.reason && (
                             result.reason.includes('Cloudflare') ||
-                            result.reason.includes('DDoS protection')
+                            result.reason.includes('DDoS protection') ||
+                            result.reason.includes('AO3 bridge') ||
+                            result.reason.includes('AO3 login')
                         )) {
+                            bulkAbortReason = result.reason;
                             throw new AbortBulkOperation(result.reason);
                         }
 
@@ -2124,6 +2128,9 @@ export const DocManager = {
                     failureReasons.delete(row.chapter.chapterId);
                     return true;
                 } catch (err) {
+                    if (err instanceof AbortBulkOperation) {
+                        throw err;
+                    }
                     const reason = err instanceof Error ? err.message : String(err);
                     log(`AO3 migration failed for "${sourceItem.docName}" to "${row.chapter.label}".`, err);
                     setFailure(row, `Unexpected error: ${reason}`);
@@ -2144,7 +2151,7 @@ export const DocManager = {
                 failures.push({
                     sourceDoc: sourceLabelFor(row),
                     ao3Chapter: row.chapter.label,
-                    reason: failureReasons.get(row.chapter.chapterId) || 'AO3 migration failed after retry.',
+                    reason: failureReasons.get(row.chapter.chapterId) || bulkAbortReason || 'AO3 migration failed after retry.',
                 });
                 failedRows.push(row);
             },

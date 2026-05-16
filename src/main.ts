@@ -10,6 +10,7 @@ import { StoryReader } from './modules/StoryReader';
 import { StoryDownloader } from './modules/StoryDownloader';
 import { LayoutManager } from './modules/LayoutManager';
 import { StoryEditContent } from './modules/StoryEditContent';
+import { Ao3Bridge } from './modules/Ao3Bridge';
 
 /**
  * The Entry Point / Router.
@@ -26,6 +27,7 @@ import { StoryEditContent } from './modules/StoryEditContent';
 const path = window.location.pathname;
 const hostname = window.location.hostname;
 const isFfnHost = hostname === 'www.fanfiction.net' || hostname === 'fanfiction.net';
+const isAo3Host = hostname === 'archiveofourown.org';
 
 // Register all sitewide modules with EarlyBoot.
 // Order of registration determines execution order and CSS cascade layering.
@@ -65,6 +67,11 @@ const bootstrap = () => {
      */
     Core.log('Router', 'main', `Here at ${window.location.origin}${path}`, path);
     Core.startup(window.location);
+
+    if (isAo3Host) {
+        safeInit('Ao3Bridge', () => Ao3Bridge.init());
+        return;
+    }
 
     if (!isFfnHost) return;
 

@@ -1,0 +1,199 @@
+import { GM_deleteValue, GM_getValue, GM_openInTab, GM_setValue } from '$';
+import type { IAo3Chapter } from '../interfaces/IAo3Migration';
+import {
+    AO3_BRIDGE_DEFAULT_TIMEOUT_MS,
+    AO3_BRIDGE_HEARTBEAT_KEY,
+    AO3_BRIDGE_HEARTBEAT_STALE_MS,
+    AO3_BRIDGE_POLL_INTERVAL_MS,
+    AO3_BRIDGE_REQUEST_KEY,
+    AO3_BRIDGE_RESULT_KEY,
+    Ao3BridgeRequest,
+    Ao3BridgeResult,
+    parseAo3BridgeHeartbeat,
+    parseAo3BridgeRequest,
+    parseAo3BridgeResult,
+    serializeAo3BridgeRequest,
+} from '../interfaces/IAo3Bridge';
+import { Core } from '../modules/Core';
+import { Ao3ChapterIndexResult, Ao3Service, Ao3UpdateResult } from './Ao3Service';
+
+interface SendOptions {
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+}
+
+function makeRequestId(): string {
+    return `ffne-ao3-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function requestMatchesResult(request: Ao3BridgeRequest, result: Ao3BridgeResult | null): result is Ao3BridgeResult {
+    return !!result && result.id === request.id && result.kind === request.kind;
+}
+
+function timeoutReason(timeoutMs: number): string {
+    return [
+        `AO3 bridge did not respond within ${Math.round(timeoutMs / 1000)} seconds.`,
+        'Keep the AO3 tab open, complete any Cloudflare challenge, sign in, then retry.',
+    ].join(' ');
+}
+
+export const Ao3BridgeClient = {
+    MODULE_NAME: 'Ao3BridgeClient',
+
+    normalizeWorkUrl(input: string): string | null {
+        return Ao3Service.normalizeWorkUrl(input);
+    },
+
+    async fetchChapterIndex(workUrl: string, options: SendOptions = {}): Promise<Ao3ChapterIndexResult> {
+        const normalized = Ao3Service.normalizeWorkUrl(workUrl);
+        if (!normalized) return { ok: false, chapters: [], reason: 'Enter a valid AO3 work URL.' };
+
+        const result = await this._sendRequest({
+            id: makeRequestId(),
+            kind: 'loadChapterIndex',
+            createdAt: Date.now(),
+            workUrl: normalized,
+        }, normalized, options);
+
+        if (!result.ok) {
+            return {
+                ok: false,
+                chapters: [],
+                reason: result.reason || 'AO3 bridge could not load the chapter index.',
+                status: result.status,
+            };
+        }
+
+        if (!result.chapters || result.chapters.length === 0) {
+            return { ok: false, chapters: [], reason: 'AO3 bridge returned no chapters.' };
+        }
+
+        return { ok: true, chapters: result.chapters };
+    },
+
+    async updateChapterContent(
+        chapter: IAo3Chapter,
+        html: string,
+        options: SendOptions = {},
+    ): Promise<Ao3UpdateResult> {
+        if (!html.trim()) return { ok: false, reason: 'Replacement chapter content is empty.' };
+
+        const result = await this._sendRequest({
+            id: makeRequestId(),
+            kind: 'updateChapterContent',
+            createdAt: Date.now(),
+            chapter,
+            html,
+        }, chapter.editUrl, options);
+
+        return result.ok
+            ? { ok: true, finalUrl: result.finalUrl }
+            : {
+                ok: false,
+                reason: result.reason || 'AO3 bridge could not update the chapter.',
+                status: result.status,
+                finalUrl: result.finalUrl,
+            };
+    },
+
+    async _sendRequest(
+        request: Ao3BridgeRequest,
+        openUrl: string,
+        options: SendOptions = {},
+    ): Promise<Ao3BridgeResult> {
+        const timeoutMs = options.timeoutMs ?? AO3_BRIDGE_DEFAULT_TIMEOUT_MS;
+        const pollIntervalMs = options.pollIntervalMs ?? AO3_BRIDGE_POLL_INTERVAL_MS;
+        const hadFreshBridge = this._hasFreshHeartbeat();
+
+        GM_deleteValue(AO3_BRIDGE_RESULT_KEY);
+        GM_setValue(AO3_BRIDGE_REQUEST_KEY, serializeAo3BridgeRequest(request));
+        this._ensureBridgeTab(openUrl, hadFreshBridge);
+
+        try {
+            return await this._waitForResult(request, {
+                timeoutMs,
+                pollIntervalMs,
+                failOnStaleHeartbeat: hadFreshBridge,
+            });
+        } finally {
+            this._cleanupRequest(request);
+        }
+    },
+
+    _ensureBridgeTab(openUrl: string, hadFreshBridge: boolean): void {
+        if (hadFreshBridge) return;
+
+        const log = Core.getLogger(this.MODULE_NAME, '_ensureBridgeTab');
+        try {
+            GM_openInTab(openUrl, { active: true, insert: true });
+            log('Opened AO3 bridge tab.', { openUrl });
+        } catch (err) {
+            log('Could not open AO3 bridge tab.', err);
+        }
+    },
+
+    _hasFreshHeartbeat(): boolean {
+        const heartbeat = parseAo3BridgeHeartbeat(GM_getValue(AO3_BRIDGE_HEARTBEAT_KEY));
+        return !!heartbeat && Date.now() - heartbeat.at <= AO3_BRIDGE_HEARTBEAT_STALE_MS;
+    },
+
+    _waitForResult(
+        request: Ao3BridgeRequest,
+        options: { timeoutMs: number; pollIntervalMs: number; failOnStaleHeartbeat: boolean },
+    ): Promise<Ao3BridgeResult> {
+        return new Promise((resolve) => {
+            const startedAt = Date.now();
+            let pollTimer: number | null = null;
+
+            const finish = (result: Ao3BridgeResult) => {
+                if (pollTimer !== null) {
+                    window.clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+                resolve(result);
+            };
+
+            const inspect = () => {
+                const result = parseAo3BridgeResult(GM_getValue(AO3_BRIDGE_RESULT_KEY));
+                if (requestMatchesResult(request, result)) {
+                    finish(result);
+                    return;
+                }
+
+                if (options.failOnStaleHeartbeat && !this._hasFreshHeartbeat()) {
+                    finish({
+                        id: request.id,
+                        kind: request.kind,
+                        ok: false,
+                        reason: 'AO3 bridge tab stopped responding. Reopen AO3 and retry the failed migration.',
+                    });
+                    return;
+                }
+
+                if (Date.now() - startedAt >= options.timeoutMs) {
+                    finish({
+                        id: request.id,
+                        kind: request.kind,
+                        ok: false,
+                        reason: timeoutReason(options.timeoutMs),
+                    });
+                }
+            };
+
+            pollTimer = window.setInterval(inspect, options.pollIntervalMs);
+            inspect();
+        });
+    },
+
+    _cleanupRequest(request: Ao3BridgeRequest): void {
+        const storedRequest = parseAo3BridgeRequest(GM_getValue(AO3_BRIDGE_REQUEST_KEY));
+        if (storedRequest?.id === request.id) {
+            GM_deleteValue(AO3_BRIDGE_REQUEST_KEY);
+        }
+
+        const storedResult = parseAo3BridgeResult(GM_getValue(AO3_BRIDGE_RESULT_KEY));
+        if (storedResult?.id === request.id) {
+            GM_deleteValue(AO3_BRIDGE_RESULT_KEY);
+        }
+    },
+};

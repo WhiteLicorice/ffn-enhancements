@@ -1,4 +1,5 @@
 import { GM_xmlhttpRequest } from '$';
+import { isCloudflareChallenge } from './cloudflareChallenge';
 
 export interface GmTextRequestOptions {
     method: 'GET' | 'POST';
@@ -25,19 +26,6 @@ interface GmTextLoadResponse {
     finalUrl?: string;
 }
 
-const CF_MARKERS = [
-    'cf-browser-verification',
-    'DDoS protection by Cloudflare',
-    'Checking your browser',
-    'challenge-platform',
-    '_cf_chl',
-];
-
-function _isCloudflareChallenge(status: number, responseText: string): boolean {
-    if (status !== 403) return false;
-    return CF_MARKERS.some(marker => responseText.includes(marker));
-}
-
 export function gmRequestText(options: GmTextRequestOptions): Promise<GmTextResponse> {
     return new Promise((resolve) => {
         GM_xmlhttpRequest({
@@ -56,7 +44,7 @@ export function gmRequestText(options: GmTextRequestOptions): Promise<GmTextResp
                     status,
                     responseText: text,
                     finalUrl: response.finalUrl || options.url,
-                    isCfChallenge: _isCloudflareChallenge(status, text),
+                    isCfChallenge: isCloudflareChallenge(status, text),
                 });
             },
             onerror: () => {
