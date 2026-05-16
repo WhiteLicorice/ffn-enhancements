@@ -7,6 +7,7 @@ import { DocFetchService } from '../services/DocFetchService';
 import { SettingsManager } from '../modules/SettingsManager';
 import { Core } from '../modules/Core';
 import { DocManagerDelegate } from '../delegates/DocManagerDelegate';
+import JSZip from 'jszip';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -42,8 +43,13 @@ function makeItem(docName: string, docId: string): IBulkItem {
     };
 }
 
-function makeFile(name: string, relativePath: string, content: string = '# Title'): File {
-    const file = new File([content], name, { type: 'text/markdown' });
+function makeFile(
+    name: string,
+    relativePath: string,
+    content: string | BlobPart = '# Title',
+    type: string = 'text/markdown',
+): File {
+    const file = new File([content], name, { type });
     Object.defineProperty(file, 'webkitRelativePath', {
         value: relativePath,
         configurable: true,
@@ -51,13 +57,44 @@ function makeFile(name: string, relativePath: string, content: string = '# Title
     return file;
 }
 
-function makeSelectedFile(name: string, content: string = '# Title'): File {
-    const file = new File([content], name, { type: 'text/markdown' });
+function makeSelectedFile(name: string, content: string | BlobPart = '# Title', type: string = 'text/markdown'): File {
+    const file = new File([content], name, { type });
     Object.defineProperty(file, 'webkitRelativePath', {
         value: '',
         configurable: true,
     });
     return file;
+}
+
+async function makeDocxFile(
+    name: string,
+    relativePath: string,
+    documentXml: string,
+): Promise<File> {
+    const zip = new JSZip();
+    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8"?>
+        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+            <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+            <Default Extension="xml" ContentType="application/xml"/>
+            <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+        </Types>`);
+    zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+            <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+        </Relationships>`);
+    zip.file('word/document.xml', documentXml);
+    const blob = await zip.generateAsync({
+        type: 'blob',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    return makeFile(name, relativePath, blob, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+}
+
+function wrapDocxDocumentXml(body: string): string {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+            <w:body>${body}</w:body>
+        </w:document>`;
 }
 
 function makeAo3Chapter(chapterNumber: number): IAo3Chapter {
@@ -186,53 +223,54 @@ describe('DocManager bulk import planner', () => {
             makeFile('A0.md.md', 'Import/A0.md.md'),
         ];
 
-        const plan = DocManager._buildBulkImportPlan(files, items);
+        const plan = DocManager._buildBulkImportPlan(files, items, 'markdown');
 
         expect(plan.matchedCount).toBe(2);
         expect(plan.missingCount).toBe(0);
         expect(plan.hasBlockingErrors).toBe(false);
+        expect(plan.format).toBe('markdown');
         expect(plan.fileByDocId.get('101')?.name).toBe('A0.md');
         expect(plan.fileByDocId.get('102')?.name).toBe('A0.md.md');
     });
 
-    it('blocks HTML and DOCX files in the selected directory', () => {
+    it('blocks mixed supported file types in a Markdown run', () => {
         const items = [makeItem('A0', '101')];
         const files = [
             makeFile('A0.md', 'Import/A0.md'),
-            makeFile('A0.html', 'Import/A0.html'),
-            makeFile('A0.htm', 'Import/A0.htm'),
-            makeFile('A1.docx', 'Import/A1.docx'),
+            makeFile('A0.html', 'Import/A0.html', '<p>HTML</p>', 'text/html'),
+            makeFile('A0.htm', 'Import/A0.htm', '<p>HTML</p>', 'text/html'),
+            makeFile('A1.docx', 'Import/A1.docx', 'docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
         ];
 
-        const plan = DocManager._buildBulkImportPlan(files, items);
+        const plan = DocManager._buildBulkImportPlan(files, items, 'markdown');
 
         expect(plan.matchedCount).toBe(1);
         expect(plan.hasBlockingErrors).toBe(true);
         expect(plan.blockedFiles).toEqual(['Import/A0.html', 'Import/A0.htm', 'Import/A1.docx']);
     });
 
-    it('ignores unrelated files and nested Markdown files', () => {
+    it('ignores unrelated files and nested files', () => {
         const items = [makeItem('A0', '101')];
         const files = [
             makeFile('A0.md', 'Import/Nested/A0.md'),
             makeFile('notes.txt', 'Import/notes.txt'),
         ];
 
-        const plan = DocManager._buildBulkImportPlan(files, items);
+        const plan = DocManager._buildBulkImportPlan(files, items, 'markdown');
 
         expect(plan.matchedCount).toBe(0);
         expect(plan.missingCount).toBe(0);
         expect(plan.ignoredFiles).toEqual(['Import/Nested/A0.md', 'Import/notes.txt']);
     });
 
-    it('shows selected Markdown files with no DocManager match as missing', () => {
+    it('shows selected files with no DocManager match as missing', () => {
         const items = [makeItem('A0', '101')];
         const files = [
             makeFile('A0.md', 'Import/A0.md'),
             makeFile('Missing.md', 'Import/Missing.md'),
         ];
 
-        const plan = DocManager._buildBulkImportPlan(files, items);
+        const plan = DocManager._buildBulkImportPlan(files, items, 'markdown');
 
         expect(plan.matchedCount).toBe(1);
         expect(plan.missingCount).toBe(1);
@@ -253,13 +291,43 @@ describe('DocManager bulk import planner', () => {
             makeSelectedFile('Missing.md'),
         ];
 
-        const plan = DocManager._buildBulkImportPlan(files, items);
+        const plan = DocManager._buildBulkImportPlan(files, items, 'markdown');
 
         expect(plan.matchedCount).toBe(1);
         expect(plan.missingCount).toBe(1);
         expect(plan.ignoredFiles).toEqual([]);
         expect(plan.rows.map(row => row.expectedFileName)).toEqual(['A0.md', 'Missing.md']);
         expect(plan.fileByDocId.get('101')?.name).toBe('A0.md');
+    });
+
+    it('matches HTML files by selected extensions only', () => {
+        const items = [makeItem('Doc Name', '101')];
+        const htmlFiles = [
+            makeFile('Doc Name.html', 'Import/Doc Name.html', '<p>HTML</p>', 'text/html'),
+            makeFile('Doc Name.htm', 'Import/Doc Name.htm', '<p>HTML</p>', 'text/html'),
+        ];
+
+        const htmlPlan = DocManager._buildBulkImportPlan([htmlFiles[0]], items, 'html');
+        const htmPlan = DocManager._buildBulkImportPlan([htmlFiles[1]], items, 'html');
+
+        expect(htmlPlan.matchedCount).toBe(1);
+        expect(htmlPlan.fileByDocId.get('101')?.name).toBe('Doc Name.html');
+        expect(htmPlan.matchedCount).toBe(1);
+        expect(htmPlan.fileByDocId.get('101')?.name).toBe('Doc Name.htm');
+    });
+
+    it('matches DOCX files by selected extension only', () => {
+        const items = [makeItem('Doc Name', '101')];
+        const files = [
+            makeFile('Doc Name.docx', 'Import/Doc Name.docx', 'docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+            makeFile('Doc Name.md', 'Import/Doc Name.md'),
+        ];
+
+        const plan = DocManager._buildBulkImportPlan(files, items, 'docx');
+
+        expect(plan.matchedCount).toBe(1);
+        expect(plan.blockedFiles).toEqual(['Import/Doc Name.md']);
+        expect(plan.fileByDocId.get('101')?.name).toBe('Doc Name.docx');
     });
 
     it('blocks duplicate Markdown filenames', () => {
@@ -269,11 +337,30 @@ describe('DocManager bulk import planner', () => {
             makeFile('A0.md', 'ImportB/A0.md'),
         ];
 
-        const plan = DocManager._buildBulkImportPlan(files, items);
+        const plan = DocManager._buildBulkImportPlan(files, items, 'markdown');
 
         expect(plan.hasBlockingErrors).toBe(true);
         expect(plan.duplicateFileNames).toEqual(['A0.md']);
         expect(plan.rows[0].status).toBe('duplicate');
+        expect(plan.fileByDocId.has('101')).toBe(false);
+    });
+
+    it('blocks duplicate HTML matches for the same DocManager doc', () => {
+        const items = [makeItem('A0', '101')];
+        const files = [
+            makeFile('A0.html', 'Import/A0.html', '<p>One</p>', 'text/html'),
+            makeFile('A0.htm', 'Import/A0.htm', '<p>Two</p>', 'text/html'),
+        ];
+
+        const plan = DocManager._buildBulkImportPlan(files, items, 'html');
+
+        expect(plan.hasBlockingErrors).toBe(true);
+        expect(plan.duplicateDocNames).toEqual(['A0']);
+        expect(plan.rows[0]).toMatchObject({
+            docId: '101',
+            docName: 'A0',
+            status: 'duplicate',
+        });
         expect(plan.fileByDocId.has('101')).toBe(false);
     });
 });
@@ -293,42 +380,220 @@ describe('DocManager bulk import modal', () => {
 
         const folderButton = document.getElementById('ffne-dm-browse-folder');
         const filesButton = document.getElementById('ffne-dm-browse-files');
+        const formatSelect = document.getElementById('ffne-dm-import-format') as HTMLSelectElement | null;
         const folderInput = document.getElementById('ffne-dm-import-folder-input') as HTMLInputElement | null;
         const filesInput = document.getElementById('ffne-dm-import-files-input') as HTMLInputElement | null;
+        const preview = document.getElementById('ffne-dm-import-preview') as HTMLElement | null;
+        const selection = document.getElementById('ffne-dm-import-selection') as HTMLElement | null;
         const results = document.getElementById('ffne-dm-import-results') as HTMLElement | null;
 
         expect(folderButton?.textContent).toBe('Browse Folder');
         expect(filesButton?.textContent).toBe('Browse Files');
+        expect(formatSelect?.value).toBe('markdown');
         expect(folderInput?.type).toBe('file');
         expect(folderInput?.multiple).toBe(true);
         expect(folderInput?.hasAttribute('webkitdirectory')).toBe(true);
+        expect(folderInput?.accept).toBe('.md,text/markdown');
         expect(filesInput?.type).toBe('file');
         expect(filesInput?.multiple).toBe(true);
         expect(filesInput?.hasAttribute('webkitdirectory')).toBe(false);
+        expect(filesInput?.accept).toBe('.md,text/markdown');
+        expect(preview?.textContent).toContain('Selected format: Markdown (.md).');
+        expect(selection?.textContent).toBe('No Markdown files selected.');
         expect(results?.hidden).toBe(true);
+    });
+
+    it('resets selected files and accept filters when the format changes', () => {
+        DocManager.openBulkImportModal();
+
+        const formatSelect = document.getElementById('ffne-dm-import-format') as HTMLSelectElement;
+        const folderInput = document.getElementById('ffne-dm-import-folder-input') as HTMLInputElement;
+        const filesInput = document.getElementById('ffne-dm-import-files-input') as HTMLInputElement;
+        const selection = document.getElementById('ffne-dm-import-selection') as HTMLElement;
+        const preview = document.getElementById('ffne-dm-import-preview') as HTMLElement;
+
+        Object.defineProperty(filesInput, 'files', {
+            value: [makeSelectedFile('A0.md')],
+            configurable: true,
+        });
+        filesInput.dispatchEvent(new Event('change'));
+
+        expect(selection.textContent).toContain('1 Markdown file selected.');
+
+        formatSelect.value = 'html';
+        formatSelect.dispatchEvent(new Event('change'));
+
+        expect(folderInput.accept).toBe('.html,.htm,text/html');
+        expect(filesInput.accept).toBe('.html,.htm,text/html');
+        expect(filesInput.value).toBe('');
+        expect(selection.textContent).toBe('No HTML files selected.');
+        expect(preview.textContent).toContain('Selected format: HTML (.html/.htm).');
     });
 });
 
 describe('DocManager bulk import conversion', () => {
-    it('converts Markdown to sanitized HTML', () => {
+    it('converts Markdown to normalized HTML', () => {
         const html = DocManager._markdownToImportHtml(
-            '# Heading\n\n<script>alert(1)</script>\n\n**Bold**'
+            '# Heading\n\n<script>alert(1)</script>\n\n**Bold**\n\n<u>Underline</u>'
         );
 
-        expect(html).toContain('<h1>Heading</h1>');
+        expect(html).toContain('<div>Heading</div>');
         expect(html).toContain('<strong>Bold</strong>');
+        expect(html).toContain('<u>Underline</u>');
         expect(html).not.toContain('<script>');
+        expect(html).not.toContain('<h1>');
     });
 
-    it('strips event attributes and dangerous URLs from imported HTML', () => {
+    it('strips unsupported formatting while keeping FFN-supported formatting', () => {
         const html = DocManager._sanitizeImportHtml(
-            '<p onclick="alert(1)">Text</p><a href="javascript:alert(1)">Bad</a>'
+            '<h2 style="color:red">Heading</h2><p class="x" style="text-align:center;color:blue"><strong>Bold</strong> <em>Italic</em> <u>Under</u> <s>Strike</s></p><ul><li>List item</li></ul><table><tr><td>Cell</td></tr></table><hr>'
+        );
+
+        expect(html).toContain('<div>Heading</div>');
+        expect(html).toContain('<p align="center"><strong>Bold</strong> <em>Italic</em> <u>Under</u> Strike</p>');
+        expect(html).toContain('<div>List item</div>');
+        expect(html).toContain('<div>Cell</div>');
+        expect(html).toContain('<hr>');
+        expect(html).not.toContain('class=');
+        expect(html).not.toContain('color:');
+        expect(html).not.toContain('<s>');
+        expect(html).not.toContain('<table>');
+    });
+
+    it('strips event attributes, links, images, and dangerous URLs from imported HTML', () => {
+        const html = DocManager._sanitizeImportHtml(
+            '<p onclick="alert(1)">Text</p><a href="javascript:alert(1)">Bad</a><img src="javascript:alert(1)" alt="Image alt">'
         );
 
         expect(html).toContain('<p>Text</p>');
-        expect(html).toContain('<a>Bad</a>');
+        expect(html).toContain('Bad');
+        expect(html).toContain('Image alt');
         expect(html).not.toContain('onclick');
         expect(html).not.toContain('javascript:');
+        expect(html).not.toContain('<a');
+        expect(html).not.toContain('<img');
+    });
+
+    it('converts HTML imports through the same sanitizer', () => {
+        const html = DocManager._htmlToImportHtml('<div style="text-align:left"><span class="x">Body</span></div>');
+
+        expect(html).toBe('<div align="left">Body</div>');
+    });
+});
+
+describe('DocManager DOCX import conversion', () => {
+    it('extracts plain text, formatting, alignment, line breaks, and horizontal rules', async () => {
+        const file = await makeDocxFile(
+            'Doc.docx',
+            'Import/Doc.docx',
+            wrapDocxDocumentXml(`
+                <w:p>
+                    <w:r><w:t>Plain</w:t></w:r>
+                </w:p>
+                <w:p>
+                    <w:r><w:rPr><w:b/></w:rPr><w:t>Bold</w:t></w:r>
+                    <w:r><w:t xml:space="preserve"> </w:t></w:r>
+                    <w:r><w:rPr><w:i/></w:rPr><w:t>Italic</w:t></w:r>
+                    <w:r><w:t xml:space="preserve"> </w:t></w:r>
+                    <w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>Underline</w:t></w:r>
+                </w:p>
+                <w:p>
+                    <w:pPr><w:jc w:val="center"/></w:pPr>
+                    <w:r><w:t>Centered</w:t></w:r>
+                </w:p>
+                <w:p>
+                    <w:r><w:t>Line 1</w:t></w:r>
+                    <w:r><w:br/></w:r>
+                    <w:r><w:t>Line 2</w:t></w:r>
+                </w:p>
+                <w:p>
+                    <w:pPr><w:pBdr><w:bottom w:val="single"/></w:pBdr></w:pPr>
+                </w:p>
+            `),
+        );
+
+        const html = await DocManager._docxToImportHtml(file);
+
+        expect(html).toContain('<p>Plain</p>');
+        expect(html).toContain('<p><strong>Bold</strong> <em>Italic</em> <u>Underline</u></p>');
+        expect(html).toContain('<p align="center">Centered</p>');
+        expect(html).toContain('<p>Line 1<br>Line 2</p>');
+        expect(html).toContain('<hr>');
+    });
+});
+
+describe('DocManager bulk import execution', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        vi.useFakeTimers();
+        vi.restoreAllMocks();
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
+            return 0;
+        });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        cleanupDOM();
+    });
+
+    async function runBulkImportWithPlan(plan: ReturnType<typeof DocManager._buildBulkImportPlan>) {
+        const btn = makeBtn();
+        const status = document.createElement('div');
+        const results = document.createElement('div');
+        document.body.append(status, results);
+
+        const promise = DocManager.runBulkImport(mockEvent(btn), plan, status, results);
+        await vi.runAllTimersAsync();
+        await promise;
+        await vi.runAllTimersAsync();
+    }
+
+    it('normalizes Markdown before saving', async () => {
+        mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
+        const plan = DocManager._buildBulkImportPlan(
+            [makeFile('Doc Name.md', 'Import/Doc Name.md', '# Heading\n\n**Bold**')],
+            undefined,
+            'markdown',
+        );
+        const replaceSpy = vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({ ok: true });
+
+        await runBulkImportWithPlan(plan);
+
+        expect(replaceSpy).toHaveBeenCalledWith('101', 'Doc Name', '<div>Heading</div><p><strong>Bold</strong></p>');
+    });
+
+    it('normalizes HTML before saving', async () => {
+        mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
+        const plan = DocManager._buildBulkImportPlan(
+            [makeFile('Doc Name.html', 'Import/Doc Name.html', '<h2>Heading</h2><p style="text-align:center"><a href="https://example.com">Link</a></p>', 'text/html')],
+            undefined,
+            'html',
+        );
+        const replaceSpy = vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({ ok: true });
+
+        await runBulkImportWithPlan(plan);
+
+        expect(replaceSpy).toHaveBeenCalledWith('101', 'Doc Name', '<div>Heading</div><p align="center">Link</p>');
+    });
+
+    it('normalizes DOCX before saving', async () => {
+        mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
+        const docxFile = await makeDocxFile(
+            'Doc Name.docx',
+            'Import/Doc Name.docx',
+            wrapDocxDocumentXml(`
+                <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>Centered</w:t></w:r></w:p>
+                <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Bold</w:t></w:r></w:p>
+            `),
+        );
+        const plan = DocManager._buildBulkImportPlan([docxFile], undefined, 'docx');
+        const replaceSpy = vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({ ok: true });
+
+        await runBulkImportWithPlan(plan);
+
+        expect(replaceSpy).toHaveBeenCalledWith('101', 'Doc Name', '<p align="center">Centered</p><p><strong>Bold</strong></p>');
     });
 });
 

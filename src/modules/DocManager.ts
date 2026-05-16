@@ -27,8 +27,39 @@ const ADVANCED_MODAL_ID = 'ffne-docmanager-advanced-modal';
 const IMPORT_MODAL_ID = 'ffne-docmanager-import-modal';
 const AO3_MODAL_ID = 'ffne-docmanager-ao3-modal';
 const ADVANCED_STYLE_ID = 'ffne-docmanager-advanced-styles';
-const MARKDOWN_EXTENSION = '.md';
-const BLOCKED_IMPORT_EXTENSIONS = new Set(['.htm', '.html', '.docx']);
+type BulkImportFormat = 'markdown' | 'html' | 'docx';
+
+interface BulkImportFormatOption {
+    label: string;
+    fileLabel: string;
+    extensions: string[];
+    accept: string;
+}
+
+const BULK_IMPORT_FORMAT_OPTIONS: Record<BulkImportFormat, BulkImportFormatOption> = {
+    markdown: {
+        label: 'Markdown (.md)',
+        fileLabel: 'Markdown',
+        extensions: ['.md'],
+        accept: '.md,text/markdown',
+    },
+    html: {
+        label: 'HTML (.html/.htm)',
+        fileLabel: 'HTML',
+        extensions: ['.html', '.htm'],
+        accept: '.html,.htm,text/html',
+    },
+    docx: {
+        label: 'DOCX (.docx)',
+        fileLabel: 'DOCX',
+        extensions: ['.docx'],
+        accept: '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    },
+};
+
+const SUPPORTED_BULK_IMPORT_EXTENSIONS = new Set(
+    Object.values(BULK_IMPORT_FORMAT_OPTIONS).flatMap(option => option.extensions)
+);
 
 type BulkImportRowStatus = 'matched' | 'missing' | 'duplicate';
 
@@ -41,11 +72,13 @@ interface BulkImportPreviewRow {
 }
 
 interface BulkImportPlan {
+    format: BulkImportFormat;
     totalFiles: number;
     totalDocs: number;
     matchedCount: number;
     missingCount: number;
     duplicateFileNames: string[];
+    duplicateDocNames: string[];
     blockedFiles: string[];
     ignoredFiles: string[];
     rows: BulkImportPreviewRow[];
@@ -130,6 +163,28 @@ function _getTopLevelFileName(file: File): string | null {
 function _getLowerExtension(fileName: string): string {
     const idx = fileName.lastIndexOf('.');
     return idx >= 0 ? fileName.slice(idx).toLowerCase() : '';
+}
+
+function _getBulkImportFormatOption(format: BulkImportFormat): BulkImportFormatOption {
+    return BULK_IMPORT_FORMAT_OPTIONS[format];
+}
+
+function _getBulkImportExpectedFileNames(docName: string, format: BulkImportFormat): string[] {
+    return _getBulkImportFormatOption(format).extensions.map(extension => `${docName}${extension}`);
+}
+
+function _getBulkImportDefaultSummary(format: BulkImportFormat): string {
+    const option = _getBulkImportFormatOption(format);
+    return `Selected format: ${option.label}. Select a folder or ${option.fileLabel} files.`;
+}
+
+function _getBulkImportDefaultSelection(format: BulkImportFormat): string {
+    const option = _getBulkImportFormatOption(format);
+    return `No ${option.fileLabel} files selected.`;
+}
+
+function _getBulkImportConfirmedLabel(format: BulkImportFormat): string {
+    return _getBulkImportFormatOption(format).fileLabel;
 }
 
 function _escapeHtml(value: string): string {
@@ -376,14 +431,22 @@ function _renderAo3MigrationFailures(
     `;
 }
 
-function _buildBulkImportPlan(files: File[], items: IBulkItem[] = _collectBulkItems()): BulkImportPlan {
-    const markdownFilesByName = new Map<string, File[]>();
+function _buildBulkImportPlan(
+    files: File[],
+    items: IBulkItem[] = _collectBulkItems(),
+    format: BulkImportFormat = 'markdown',
+): BulkImportPlan {
+    const formatOption = _getBulkImportFormatOption(format);
+    const filesByName = new Map<string, File[]>();
     const blockedFiles: string[] = [];
     const ignoredFiles: string[] = [];
+    const duplicateDocNames: string[] = [];
     const itemByExpectedFileName = new Map<string, IBulkItem>();
 
     for (const item of items) {
-        itemByExpectedFileName.set(`${item.docName}${MARKDOWN_EXTENSION}`, item);
+        _getBulkImportExpectedFileNames(item.docName, format).forEach(fileName => {
+            itemByExpectedFileName.set(fileName, item);
+        });
     }
 
     for (const file of files) {
@@ -391,35 +454,68 @@ function _buildBulkImportPlan(files: File[], items: IBulkItem[] = _collectBulkIt
         const fileName = _getPathFileName(displayPath);
         const extension = _getLowerExtension(fileName);
 
-        if (BLOCKED_IMPORT_EXTENSIONS.has(extension)) {
+        if (SUPPORTED_BULK_IMPORT_EXTENSIONS.has(extension) && !formatOption.extensions.includes(extension)) {
             blockedFiles.push(displayPath);
             continue;
         }
 
         const topLevelFileName = _getTopLevelFileName(file);
-        if (!topLevelFileName || extension !== MARKDOWN_EXTENSION) {
+        if (!topLevelFileName || !formatOption.extensions.includes(extension)) {
             ignoredFiles.push(displayPath);
             continue;
         }
 
-        const existing = markdownFilesByName.get(topLevelFileName) || [];
+        const existing = filesByName.get(topLevelFileName) || [];
         existing.push(file);
-        markdownFilesByName.set(topLevelFileName, existing);
+        filesByName.set(topLevelFileName, existing);
     }
 
-    const duplicateFileNames = Array.from(markdownFilesByName.entries())
+    const duplicateFileNames = Array.from(filesByName.entries())
         .filter(([, matchedFiles]) => matchedFiles.length > 1)
         .map(([fileName]) => fileName);
 
     const duplicateSet = new Set(duplicateFileNames);
-    const rows: BulkImportPreviewRow[] = [];
     const fileByDocId = new Map<string, File>();
-    let matchedCount = 0;
-    let missingCount = 0;
+    const matchedFilesByDocId = new Map<string, Array<{ fileName: string; file: File }>>();
+    const missingRows: BulkImportPreviewRow[] = [];
 
-    for (const [fileName, matchedFiles] of markdownFilesByName) {
+    for (const [fileName, matchedFiles] of filesByName) {
         const item = itemByExpectedFileName.get(fileName);
-        const targetDocName = fileName.slice(0, -MARKDOWN_EXTENSION.length);
+        const targetDocName = item
+            ? item.docName
+            : fileName.slice(0, -_getLowerExtension(fileName).length);
+
+        if (duplicateSet.has(fileName)) {
+            continue;
+        }
+
+        if (item && matchedFiles.length === 1) {
+            const existing = matchedFilesByDocId.get(item.docId) || [];
+            existing.push({ fileName, file: matchedFiles[0] });
+            matchedFilesByDocId.set(item.docId, existing);
+            continue;
+        }
+
+        if (!item) {
+            missingRows.push({
+                docId: '',
+                docName: targetDocName,
+                expectedFileName: fileName,
+                status: 'missing',
+                file: matchedFiles[0] || null,
+            });
+        }
+    }
+
+    const duplicateDocSet = new Set<string>();
+    const rows: BulkImportPreviewRow[] = [];
+    let matchedCount = 0;
+
+    for (const [fileName] of filesByName) {
+        const item = itemByExpectedFileName.get(fileName);
+        const targetDocName = item
+            ? item.docName
+            : fileName.slice(0, -_getLowerExtension(fileName).length);
 
         if (duplicateSet.has(fileName)) {
             rows.push({
@@ -432,68 +528,251 @@ function _buildBulkImportPlan(files: File[], items: IBulkItem[] = _collectBulkIt
             continue;
         }
 
-        if (item && matchedFiles.length === 1) {
+        if (!item) {
+            const row = missingRows.find(candidate => candidate.expectedFileName === fileName);
+            if (row) rows.push(row);
+            continue;
+        }
+
+        const matchedFiles = matchedFilesByDocId.get(item.docId) || [];
+        if (matchedFiles.length > 1) {
+            if (duplicateDocSet.has(item.docId)) continue;
+            duplicateDocSet.add(item.docId);
+            duplicateDocNames.push(item.docName);
             rows.push({
                 docId: item.docId,
                 docName: item.docName,
-                expectedFileName: fileName,
-                status: 'matched',
-                file: matchedFiles[0],
+                expectedFileName: matchedFiles.map(entry => entry.fileName).join(' / '),
+                status: 'duplicate',
+                file: null,
             });
-            fileByDocId.set(item.docId, matchedFiles[0]);
-            matchedCount++;
             continue;
         }
 
         rows.push({
-            docId: '',
-            docName: targetDocName,
-            expectedFileName: fileName,
-            status: 'missing',
-            file: matchedFiles[0] || null,
+            docId: item.docId,
+            docName: item.docName,
+            expectedFileName: matchedFiles[0].fileName,
+            status: 'matched',
+            file: matchedFiles[0].file,
         });
-        missingCount++;
+        fileByDocId.set(item.docId, matchedFiles[0].file);
+        matchedCount++;
     }
 
     return {
+        format,
         totalFiles: files.length,
         totalDocs: items.length,
         matchedCount,
-        missingCount,
+        missingCount: missingRows.length,
         duplicateFileNames,
+        duplicateDocNames,
         blockedFiles,
         ignoredFiles,
         rows,
         fileByDocId,
-        hasBlockingErrors: blockedFiles.length > 0 || duplicateFileNames.length > 0,
+        hasBlockingErrors: blockedFiles.length > 0 || duplicateFileNames.length > 0 || duplicateDocNames.length > 0,
     };
 }
 
-function _sanitizeImportHtml(html: string): string {
-    const doc = new DOMParser().parseFromString(`<div id="ffne-import-root">${html}</div>`, 'text/html');
-    const root = doc.getElementById('ffne-import-root');
-    if (!root) return '';
+const BULK_IMPORT_STRIP_CONTENT_TAGS = new Set([
+    'script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'noscript',
+]);
+const BULK_IMPORT_INLINE_TAGS = new Set(['strong', 'b', 'em', 'i', 'u']);
+const BULK_IMPORT_BLOCK_TAGS = new Set([
+    'p', 'div', 'blockquote', 'pre', 'address', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'li', 'dt', 'dd', 'figcaption', 'td', 'th', 'caption',
+]);
+const BULK_IMPORT_CONTAINER_TAGS = new Set([
+    'span', 'font', 'a', 'section', 'article', 'aside', 'header', 'footer', 'main',
+    'nav', 'figure', 'ul', 'ol', 'dl', 'table', 'thead', 'tbody', 'tfoot', 'tr',
+    'colgroup', 'col', 'tbody', 'thead', 'tfoot', 'ruby', 'rt', 'rp', 'small',
+    'big', 'sub', 'sup', 'code', 'samp', 'kbd', 'mark', 'del', 's', 'strike',
+]);
 
-    root.querySelectorAll('script, style, iframe, object, embed, link, meta').forEach(el => el.remove());
-    root.querySelectorAll('*').forEach(el => {
-        Array.from(el.attributes).forEach(attr => {
-            const name = attr.name.toLowerCase();
-            const value = attr.value.trim().toLowerCase();
-            if (name.startsWith('on')) {
-                el.removeAttribute(attr.name);
-                return;
-            }
-            if ((name === 'href' || name === 'src') && /^(javascript|data):/.test(value)) {
-                el.removeAttribute(attr.name);
-            }
-        });
+function _extractAllowedAlignment(el: Element): 'left' | 'center' | null {
+    const alignAttr = (el.getAttribute('align') || '').trim().toLowerCase();
+    if (alignAttr === 'left' || alignAttr === 'center') return alignAttr;
+
+    const styleAttr = el.getAttribute('style') || '';
+    const match = styleAttr.match(/(?:^|;)\s*text-align\s*:\s*([^;]+)/i);
+    if (!match) return null;
+
+    const styleValue = match[1].trim().toLowerCase();
+    if (styleValue === 'left' || styleValue === 'center') return styleValue;
+    return null;
+}
+
+function _hasRenderableImportContent(node: Node): boolean {
+    if (node.nodeType === Node.TEXT_NODE) {
+        return !!node.textContent?.trim();
+    }
+
+    if (!(node instanceof Element)) return false;
+    if (node.tagName.toLowerCase() === 'br' || node.tagName.toLowerCase() === 'hr') return true;
+    return Array.from(node.childNodes).some(child => _hasRenderableImportContent(child));
+}
+
+function _sanitizeImportChildren(source: Node, doc: Document): Node[] {
+    const sanitized: Node[] = [];
+    Array.from(source.childNodes).forEach(child => {
+        sanitized.push(..._sanitizeImportNode(child, doc));
     });
+    return sanitized;
+}
 
-    return root.innerHTML;
+function _sanitizeImportNode(node: Node, doc: Document): Node[] {
+    if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent ? [doc.createTextNode(node.textContent)] : [];
+    }
+
+    if (!(node instanceof Element)) return [];
+
+    const tag = node.tagName.toLowerCase();
+    if (BULK_IMPORT_STRIP_CONTENT_TAGS.has(tag)) return [];
+    if (tag === 'hr') return [doc.createElement('hr')];
+    if (tag === 'br') return [doc.createElement('br')];
+
+    if (tag === 'img') {
+        const alt = (node.getAttribute('alt') || '').trim();
+        return alt ? [doc.createTextNode(alt)] : [];
+    }
+
+    if (BULK_IMPORT_INLINE_TAGS.has(tag)) {
+        const normalizedTag = tag === 'b' ? 'strong' : tag === 'i' ? 'em' : tag;
+        const el = doc.createElement(normalizedTag);
+        _sanitizeImportChildren(node, doc).forEach(child => el.appendChild(child));
+        return _hasRenderableImportContent(el) ? [el] : [];
+    }
+
+    if (tag === 'p' || tag === 'div' || BULK_IMPORT_BLOCK_TAGS.has(tag)) {
+        const blockTag = tag === 'p' ? 'p' : 'div';
+        const el = doc.createElement(blockTag);
+        const alignment = _extractAllowedAlignment(node);
+        if (alignment) el.setAttribute('align', alignment);
+        _sanitizeImportChildren(node, doc).forEach(child => el.appendChild(child));
+        return _hasRenderableImportContent(el) ? [el] : [];
+    }
+
+    if (BULK_IMPORT_CONTAINER_TAGS.has(tag)) {
+        return _sanitizeImportChildren(node, doc);
+    }
+
+    return _sanitizeImportChildren(node, doc);
+}
+
+function _sanitizeImportHtml(html: string): string {
+    const sourceDoc = new DOMParser().parseFromString(`<div id="ffne-import-root">${html}</div>`, 'text/html');
+    const sourceRoot = sourceDoc.getElementById('ffne-import-root');
+    if (!sourceRoot) return '';
+
+    const sanitizedDoc = document.implementation.createHTMLDocument('');
+    const sanitizedRoot = sanitizedDoc.createElement('div');
+    _sanitizeImportChildren(sourceRoot, sanitizedDoc).forEach(child => sanitizedRoot.appendChild(child));
+    return sanitizedRoot.innerHTML;
 }
 
 function _markdownToImportHtml(markdown: string): string {
     return _sanitizeImportHtml(SimpleMarkdownParser.parse(markdown));
+}
+
+function _htmlToImportHtml(html: string): string {
+    return _sanitizeImportHtml(html);
+}
+
+function _getXmlChildren(node: Element, localName: string): Element[] {
+    return Array.from(node.children).filter(child => child.localName === localName);
+}
+
+function _getXmlChild(node: Element, localName: string): Element | null {
+    return _getXmlChildren(node, localName)[0] || null;
+}
+
+function _getDocxParagraphAlignment(paragraph: Element): 'left' | 'center' | null {
+    const pPr = _getXmlChild(paragraph, 'pPr');
+    const jc = pPr ? _getXmlChild(pPr, 'jc') : null;
+    const value = (jc?.getAttribute('w:val') || jc?.getAttribute('val') || '').toLowerCase();
+    if (value === 'center' || value === 'left') return value;
+    return null;
+}
+
+function _isDocxHorizontalRuleParagraph(paragraph: Element): boolean {
+    const pPr = _getXmlChild(paragraph, 'pPr');
+    const borders = pPr ? _getXmlChild(pPr, 'pBdr') : null;
+    const hasBorder = !!(borders && _getXmlChildren(borders, 'bottom').length > 0);
+    const hasText = Array.from(paragraph.getElementsByTagName('*'))
+        .some(el => el.localName === 't' && !!el.textContent?.trim());
+    return hasBorder && !hasText;
+}
+
+function _readDocxRunHtml(run: Element): string {
+    const runProperties = _getXmlChild(run, 'rPr');
+    const isBold = !!(runProperties && _getXmlChild(runProperties, 'b'));
+    const isItalic = !!(runProperties && _getXmlChild(runProperties, 'i'));
+    const underline = runProperties ? _getXmlChild(runProperties, 'u') : null;
+    const underlineValue = (underline?.getAttribute('w:val') || underline?.getAttribute('val') || '').toLowerCase();
+    const isUnderline = !!underline && underlineValue !== 'none';
+
+    let content = '';
+    Array.from(run.childNodes).forEach(child => {
+        if (!(child instanceof Element)) return;
+        if (child.localName === 't') {
+            content += _escapeHtml(child.textContent || '');
+        } else if (child.localName === 'br') {
+            content += '<br>';
+        }
+    });
+
+    if (!content) return '';
+    if (isUnderline) content = `<u>${content}</u>`;
+    if (isItalic) content = `<em>${content}</em>`;
+    if (isBold) content = `<strong>${content}</strong>`;
+    return content;
+}
+
+async function _docxToImportHtml(file: File): Promise<string> {
+    const zip = await JSZip.loadAsync(await _readFileAsArrayBuffer(file));
+    const documentXml = await zip.file('word/document.xml')?.async('string');
+    if (!documentXml) return '';
+
+    const xml = new DOMParser().parseFromString(documentXml, 'application/xml');
+    const paragraphs = Array.from(xml.getElementsByTagName('*')).filter(el => el.localName === 'p');
+    const htmlParts: string[] = [];
+
+    paragraphs.forEach(paragraph => {
+        if (_isDocxHorizontalRuleParagraph(paragraph)) {
+            htmlParts.push('<hr>');
+            return;
+        }
+
+        const alignment = _getDocxParagraphAlignment(paragraph);
+        const runsHtml: string[] = [];
+
+        Array.from(paragraph.childNodes).forEach(child => {
+            if (!(child instanceof Element)) return;
+            if (child.localName === 'r') {
+                const html = _readDocxRunHtml(child);
+                if (html) runsHtml.push(html);
+                return;
+            }
+            if (child.localName === 'hyperlink') {
+                Array.from(child.children)
+                    .filter(run => run.localName === 'r')
+                    .forEach(run => {
+                        const html = _readDocxRunHtml(run);
+                        if (html) runsHtml.push(html);
+                    });
+            }
+        });
+
+        const paragraphHtml = runsHtml.join('');
+        if (!paragraphHtml.trim()) return;
+        const alignAttr = alignment ? ` align="${alignment}"` : '';
+        htmlParts.push(`<p${alignAttr}>${paragraphHtml}</p>`);
+    });
+
+    return _sanitizeImportHtml(htmlParts.join(''));
 }
 
 function _renderBulkImportFailures(container: HTMLElement | null | undefined, failures: BulkImportFailure[]): void {
@@ -539,6 +818,19 @@ function _readFileAsText(file: File): Promise<string> {
         reader.onload = () => resolve(String(reader.result || ''));
         reader.onerror = () => reject(reader.error || new Error('Failed to read file.'));
         reader.readAsText(file);
+    });
+}
+
+function _readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+    if (typeof file.arrayBuffer === 'function') {
+        return file.arrayBuffer();
+    }
+
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = () => reject(reader.error || new Error('Failed to read file.'));
+        reader.readAsArrayBuffer(file);
     });
 }
 
@@ -1070,21 +1362,29 @@ export const DocManager = {
         overlay.innerHTML = `
             <div class="ffne-dm-modal" role="dialog" aria-modal="true" aria-labelledby="ffne-dm-import-title">
                 <div class="ffne-dm-modal-header">
-                    <h3 id="ffne-dm-import-title">Bulk Import Markdown</h3>
+                    <h3 id="ffne-dm-import-title">Bulk Import Markdown (.md)</h3>
                     <button type="button" class="ffne-dm-close" aria-label="Close">x</button>
                 </div>
                 <div class="ffne-dm-modal-body">
                     <div class="ffne-dm-import-controls">
+                        <div class="ffne-dm-form-row ffne-dm-field-row">
+                            <label for="ffne-dm-import-format">Format</label>
+                            <select id="ffne-dm-import-format" class="ffne-dm-input">
+                                <option value="markdown">Markdown (.md)</option>
+                                <option value="html">HTML (.html/.htm)</option>
+                                <option value="docx">DOCX (.docx)</option>
+                            </select>
+                        </div>
                         <div class="ffne-dm-picker-group">
                             <button type="button" id="ffne-dm-browse-folder" class="ffne-dm-btn">Browse Folder</button>
                             <button type="button" id="ffne-dm-browse-files" class="ffne-dm-btn">Browse Files</button>
-                            <span id="ffne-dm-import-selection" class="ffne-dm-selection-label">No files selected.</span>
+                            <span id="ffne-dm-import-selection" class="ffne-dm-selection-label">No Markdown files selected.</span>
                             <input id="ffne-dm-import-folder-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" webkitdirectory multiple>
                             <input id="ffne-dm-import-files-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" multiple>
                         </div>
                         <button type="button" id="ffne-dm-import-start" class="ffne-dm-btn" disabled>Import</button>
                     </div>
-                    <div id="ffne-dm-import-preview" class="ffne-dm-summary">Select a folder or Markdown files.</div>
+                    <div id="ffne-dm-import-preview" class="ffne-dm-summary">Selected format: Markdown (.md). Select a folder or Markdown files.</div>
                     <div id="ffne-dm-import-results" class="ffne-dm-import-results" hidden></div>
                     <div class="ffne-dm-footer">
                         <span id="ffne-dm-import-status" class="ffne-dm-run-status"></span>
@@ -1098,25 +1398,54 @@ export const DocManager = {
         const filesButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-browse-files');
         const folderInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-import-folder-input');
         const filesInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-import-files-input');
+        const formatSelect = overlay.querySelector<HTMLSelectElement>('#ffne-dm-import-format');
         const startButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-import-start');
         const preview = overlay.querySelector<HTMLElement>('#ffne-dm-import-preview');
         const status = overlay.querySelector<HTMLElement>('#ffne-dm-import-status');
         const selection = overlay.querySelector<HTMLElement>('#ffne-dm-import-selection');
         const results = overlay.querySelector<HTMLElement>('#ffne-dm-import-results');
+        const title = overlay.querySelector<HTMLElement>('#ffne-dm-import-title');
+        let selectedFormat = 'markdown' as BulkImportFormat;
+
+        const resetSelectedFiles = (format: BulkImportFormat) => {
+            const formatOption = _getBulkImportFormatOption(format);
+            selectedFormat = format;
+            this._bulkImportPlan = null;
+
+            if (formatSelect) formatSelect.value = format;
+            if (folderInput) {
+                folderInput.value = '';
+                folderInput.accept = formatOption.accept;
+            }
+            if (filesInput) {
+                filesInput.value = '';
+                filesInput.accept = formatOption.accept;
+            }
+            if (title) title.textContent = `Bulk Import ${formatOption.label}`;
+            if (preview) {
+                preview.className = 'ffne-dm-summary';
+                preview.textContent = _getBulkImportDefaultSummary(format);
+            }
+            if (selection) selection.textContent = _getBulkImportDefaultSelection(format);
+            if (startButton) startButton.disabled = true;
+            if (status) status.textContent = '';
+            _renderBulkImportFailures(results, []);
+        };
 
         const updateSelectedFiles = (input: HTMLInputElement, sourceLabel: string) => {
             const files = Array.from(input.files || []);
-            const plan = _buildBulkImportPlan(files);
+            const plan = _buildBulkImportPlan(files, undefined, selectedFormat);
             this._bulkImportPlan = plan;
             if (preview && startButton) {
                 this._renderBulkImportPreview(preview, startButton, plan);
             }
             _renderBulkImportFailures(results, []);
             if (selection) {
+                const formatLabel = _getBulkImportFormatOption(selectedFormat).fileLabel;
                 const count = files.length;
                 selection.textContent = count === 1
-                    ? `${sourceLabel}: 1 file selected.`
-                    : `${sourceLabel}: ${count} files selected.`;
+                    ? `${sourceLabel}: 1 ${formatLabel} file selected.`
+                    : `${sourceLabel}: ${count} ${formatLabel} files selected.`;
             }
             if (status) status.textContent = '';
         };
@@ -1141,12 +1470,16 @@ export const DocManager = {
             updateSelectedFiles(filesInput, 'Files');
         });
 
+        formatSelect?.addEventListener('change', () => {
+            resetSelectedFiles((formatSelect.value || 'markdown') as BulkImportFormat);
+        });
+
         startButton?.addEventListener('click', async (e) => {
             const plan = this._bulkImportPlan;
             if (!plan || plan.hasBlockingErrors || plan.matchedCount === 0) return;
 
             const confirmed = confirm(
-                `Bulk Import will replace ${plan.matchedCount} document(s) with matched Markdown files.\n\n` +
+                `Bulk Import will replace ${plan.matchedCount} document(s) with matched ${_getBulkImportConfirmedLabel(plan.format)} files.\n\n` +
                 'This cannot be undone from FFN Enhancements. Continue?'
             );
             if (!confirmed) return;
@@ -1168,6 +1501,7 @@ export const DocManager = {
         };
         document.addEventListener('keydown', this._importEscHandler);
 
+        resetSelectedFiles(selectedFormat);
         document.body.appendChild(overlay);
     },
 
@@ -1470,6 +1804,7 @@ export const DocManager = {
         startButton: HTMLButtonElement,
         plan: BulkImportPlan,
     ) {
+        const formatOption = _getBulkImportFormatOption(plan.format);
         const canImport = !plan.hasBlockingErrors && plan.matchedCount > 0;
         startButton.disabled = !canImport;
 
@@ -1484,6 +1819,9 @@ export const DocManager = {
             : '';
         const duplicateHtml = plan.duplicateFileNames.length > 0
             ? `<div><strong>Duplicates:</strong> ${plan.duplicateFileNames.map(_escapeHtml).join(', ')}</div>`
+            : '';
+        const duplicateDocHtml = plan.duplicateDocNames.length > 0
+            ? `<div><strong>Conflicting matches:</strong> ${plan.duplicateDocNames.map(_escapeHtml).join(', ')}</div>`
             : '';
         const ignoredHtml = plan.ignoredFiles.length > 0
             ? `<div><strong>Ignored:</strong> ${plan.ignoredFiles.slice(0, 8).map(_escapeHtml).join(', ')}${plan.ignoredFiles.length > 8 ? '...' : ''}</div>`
@@ -1500,13 +1838,17 @@ export const DocManager = {
         preview.className = summaryClass;
         preview.innerHTML = `
             <div>
+                <strong>Format:</strong> ${_escapeHtml(formatOption.label)}
+            </div>
+            <div>
                 <strong>${plan.matchedCount}</strong> matched,
                 <strong>${plan.missingCount}</strong> missing in DocManager,
-                <strong>${plan.duplicateFileNames.length}</strong> duplicate,
+                <strong>${plan.duplicateFileNames.length + plan.duplicateDocNames.length}</strong> duplicate,
                 <strong>${plan.ignoredFiles.length}</strong> ignored.
             </div>
             ${blockedHtml}
             ${duplicateHtml}
+            ${duplicateDocHtml}
             ${ignoredHtml}
             <table class="ffne-dm-preview" contenteditable="false">
                 <thead>
@@ -1516,7 +1858,7 @@ export const DocManager = {
                         <th>Status</th>
                     </tr>
                 </thead>
-                <tbody>${rowsHtml || '<tr><td colspan="3">No top-level Markdown files found.</td></tr>'}</tbody>
+                <tbody>${rowsHtml || `<tr><td colspan="3">No top-level ${_escapeHtml(formatOption.fileLabel)} files found.</td></tr>`}</tbody>
             </table>
         `;
     },
@@ -2161,7 +2503,7 @@ export const DocManager = {
     },
 
     /**
-     * Handles Markdown-only bulk import for matched DocManager rows.
+     * Handles bulk import for matched DocManager rows.
      */
     runBulkImport: async function (
         e: MouseEvent,
@@ -2208,7 +2550,7 @@ export const DocManager = {
             processItem: async (item) => {
                 const file = plan.fileByDocId.get(item.docId);
                 if (!file) {
-                    setFailure(item, 'No matched Markdown file was found.');
+                    setFailure(item, `No matched ${_getBulkImportConfirmedLabel(plan.format)} file was found.`);
                     return false;
                 }
 
@@ -2217,17 +2559,30 @@ export const DocManager = {
                 item.row.style.transition = 'background-color 0.3s ease';
 
                 try {
-                    const markdown = await _readFileAsText(file);
-                    if (!markdown.trim()) {
-                        log(`Skipping "${item.docName}" because matched file is empty.`);
-                        setFailure(item, 'Matched Markdown file is empty.');
-                        return false;
+                    let html = '';
+                    if (plan.format === 'markdown') {
+                        const markdown = await _readFileAsText(file);
+                        if (!markdown.trim()) {
+                            log(`Skipping "${item.docName}" because matched file is empty.`);
+                            setFailure(item, 'Matched Markdown file is empty.');
+                            return false;
+                        }
+                        html = _markdownToImportHtml(markdown);
+                    } else if (plan.format === 'html') {
+                        const sourceHtml = await _readFileAsText(file);
+                        if (!sourceHtml.trim()) {
+                            log(`Skipping "${item.docName}" because matched file is empty.`);
+                            setFailure(item, 'Matched HTML file is empty.');
+                            return false;
+                        }
+                        html = _htmlToImportHtml(sourceHtml);
+                    } else {
+                        html = await _docxToImportHtml(file);
                     }
 
-                    const html = _markdownToImportHtml(markdown);
                     if (!html.trim()) {
-                        log(`Skipping "${item.docName}" because Markdown conversion produced no HTML.`);
-                        setFailure(item, 'Markdown conversion produced no importable HTML.');
+                        log(`Skipping "${item.docName}" because ${plan.format} conversion produced no HTML.`);
+                        setFailure(item, `${_getBulkImportConfirmedLabel(plan.format)} conversion produced no importable HTML.`);
                         return false;
                     }
 
@@ -2289,5 +2644,7 @@ export const DocManager = {
     _renderAo3MigrationFailures,
     _getTopLevelFileName,
     _markdownToImportHtml,
+    _htmlToImportHtml,
+    _docxToImportHtml,
     _sanitizeImportHtml,
 };
