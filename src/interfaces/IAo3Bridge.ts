@@ -7,6 +7,7 @@ export const AO3_BRIDGE_HEARTBEAT_KEY = 'ffne_ao3_bridge_heartbeat';
 export const AO3_BRIDGE_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 export const AO3_BRIDGE_POLL_INTERVAL_MS = 250;
 export const AO3_BRIDGE_HEARTBEAT_INTERVAL_MS = 2000;
+export const AO3_BRIDGE_REUSE_HEARTBEAT_MS = AO3_BRIDGE_HEARTBEAT_INTERVAL_MS + 1500;
 export const AO3_BRIDGE_HEARTBEAT_STALE_MS = 15000;
 
 export type Ao3BridgeRequestKind = 'loadChapterIndex' | 'updateChapterContent';

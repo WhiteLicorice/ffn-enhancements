@@ -3,6 +3,7 @@ import type { IAo3Chapter } from '../interfaces/IAo3Migration';
 import {
     AO3_BRIDGE_DEFAULT_TIMEOUT_MS,
     AO3_BRIDGE_HEARTBEAT_KEY,
+    AO3_BRIDGE_REUSE_HEARTBEAT_MS,
     AO3_BRIDGE_HEARTBEAT_STALE_MS,
     AO3_BRIDGE_POLL_INTERVAL_MS,
     AO3_BRIDGE_REQUEST_KEY,
@@ -14,6 +15,7 @@ import {
     parseAo3BridgeResult,
     serializeAo3BridgeRequest,
 } from '../interfaces/IAo3Bridge';
+import type { Ao3BridgeHeartbeat } from '../interfaces/IAo3Bridge';
 import { Core } from '../modules/Core';
 import { Ao3ChapterIndexResult, Ao3Service, Ao3UpdateResult } from './Ao3Service';
 
@@ -103,28 +105,31 @@ export const Ao3BridgeClient = {
     ): Promise<Ao3BridgeResult> {
         const timeoutMs = options.timeoutMs ?? AO3_BRIDGE_DEFAULT_TIMEOUT_MS;
         const pollIntervalMs = options.pollIntervalMs ?? AO3_BRIDGE_POLL_INTERVAL_MS;
-        // A fresh heartbeat means an AO3 top-level tab is already running the bridge.
-        // Without one, open AO3 in the foreground so the user can clear Cloudflare
-        // or sign in before the pending GM-storage request is processed.
-        const hadFreshBridge = this._hasFreshHeartbeat();
+        // Reuse only very recent heartbeats for the "do not open AO3" path.
+        // Older heartbeats may be leftovers from a tab the user already closed.
+        const heartbeatAtStart = this._getHeartbeat();
+        const hadLiveBridge = this._hasReusableHeartbeat(heartbeatAtStart);
 
         GM_deleteValue(AO3_BRIDGE_RESULT_KEY);
         GM_setValue(AO3_BRIDGE_REQUEST_KEY, serializeAo3BridgeRequest(request));
-        this._ensureBridgeTab(openUrl, hadFreshBridge);
+        this._ensureBridgeTab(openUrl, hadLiveBridge);
 
         try {
             return await this._waitForResult(request, {
                 timeoutMs,
                 pollIntervalMs,
-                failOnStaleHeartbeat: hadFreshBridge,
+                failOnStaleHeartbeat: hadLiveBridge,
+                openUrl,
+                heartbeatAtStart: heartbeatAtStart?.at || 0,
+                didOpenBridgeTab: !hadLiveBridge,
             });
         } finally {
             this._cleanupRequest(request);
         }
     },
 
-    _ensureBridgeTab(openUrl: string, hadFreshBridge: boolean): void {
-        if (hadFreshBridge) return;
+    _ensureBridgeTab(openUrl: string, hadLiveBridge: boolean): void {
+        if (hadLiveBridge) return;
 
         const log = Core.getLogger(this.MODULE_NAME, '_ensureBridgeTab');
         try {
@@ -135,18 +140,40 @@ export const Ao3BridgeClient = {
         }
     },
 
+    _getHeartbeat(): Ao3BridgeHeartbeat | null {
+        return parseAo3BridgeHeartbeat(GM_getValue(AO3_BRIDGE_HEARTBEAT_KEY));
+    },
+
+    _hasReusableHeartbeat(heartbeat?: Ao3BridgeHeartbeat | null): boolean {
+        const current = heartbeat === undefined ? this._getHeartbeat() : heartbeat;
+        return !!current && Date.now() - current.at <= AO3_BRIDGE_REUSE_HEARTBEAT_MS;
+    },
+
     _hasFreshHeartbeat(): boolean {
-        const heartbeat = parseAo3BridgeHeartbeat(GM_getValue(AO3_BRIDGE_HEARTBEAT_KEY));
+        const heartbeat = this._getHeartbeat();
         return !!heartbeat && Date.now() - heartbeat.at <= AO3_BRIDGE_HEARTBEAT_STALE_MS;
+    },
+
+    _hasHeartbeatAdvancedSince(timestamp: number): boolean {
+        const heartbeat = this._getHeartbeat();
+        return !!heartbeat && heartbeat.at > timestamp;
     },
 
     _waitForResult(
         request: Ao3BridgeRequest,
-        options: { timeoutMs: number; pollIntervalMs: number; failOnStaleHeartbeat: boolean },
+        options: {
+            timeoutMs: number;
+            pollIntervalMs: number;
+            failOnStaleHeartbeat: boolean;
+            openUrl: string;
+            heartbeatAtStart: number;
+            didOpenBridgeTab: boolean;
+        },
     ): Promise<Ao3BridgeResult> {
         return new Promise((resolve) => {
             const startedAt = Date.now();
             let pollTimer: number | null = null;
+            let didOpenBridgeTab = options.didOpenBridgeTab;
 
             const finish = (result: Ao3BridgeResult) => {
                 if (pollTimer !== null) {
@@ -163,10 +190,22 @@ export const Ao3BridgeClient = {
                     return;
                 }
 
+                // A lingering heartbeat can survive a closed AO3 tab for a few
+                // seconds. If it does not advance promptly, open AO3 on this
+                // same first request instead of making the user click again.
+                if (
+                    !didOpenBridgeTab &&
+                    Date.now() - startedAt >= AO3_BRIDGE_REUSE_HEARTBEAT_MS &&
+                    !this._hasHeartbeatAdvancedSince(options.heartbeatAtStart)
+                ) {
+                    didOpenBridgeTab = true;
+                    this._ensureBridgeTab(options.openUrl, false);
+                }
+
                 // Only treat stale heartbeat as fatal when this request started
                 // with an already-open AO3 bridge. If AO3 was opened just now,
                 // the user may still be clearing Cloudflare or signing in.
-                if (options.failOnStaleHeartbeat && !this._hasFreshHeartbeat()) {
+                if (options.failOnStaleHeartbeat && !didOpenBridgeTab && !this._hasFreshHeartbeat()) {
                     finish({
                         id: request.id,
                         kind: request.kind,

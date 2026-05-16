@@ -4,7 +4,7 @@ import { Ao3BridgeClient } from '../services/Ao3BridgeClient';
 import type { IAo3Chapter } from '../interfaces/IAo3Migration';
 import {
     AO3_BRIDGE_HEARTBEAT_KEY,
-    AO3_BRIDGE_HEARTBEAT_STALE_MS,
+    AO3_BRIDGE_REUSE_HEARTBEAT_MS,
     AO3_BRIDGE_REQUEST_KEY,
     AO3_BRIDGE_RESULT_KEY,
     parseAo3BridgeRequest,
@@ -118,24 +118,64 @@ describe('Ao3BridgeClient', () => {
         expect(storage.has(AO3_BRIDGE_REQUEST_KEY)).toBe(false);
     });
 
-    it('fails quickly when an existing bridge heartbeat goes stale', async () => {
+    it('opens AO3 immediately when a lingering heartbeat is too old to reuse', async () => {
+        storage.set(AO3_BRIDGE_HEARTBEAT_KEY, serializeAo3BridgeHeartbeat({
+            at: Date.now() - AO3_BRIDGE_REUSE_HEARTBEAT_MS - 1,
+            url: 'https://archiveofourown.org/',
+            loggedIn: true,
+        }));
+
+        const promise = Ao3BridgeClient.fetchChapterIndex(
+            'https://archiveofourown.org/works/77945481',
+            { timeoutMs: 1000, pollIntervalMs: 50 },
+        );
+
+        expect(GM_openInTab).toHaveBeenCalledWith(
+            'https://archiveofourown.org/works/77945481',
+            { active: true, insert: true },
+        );
+
+        const request = parseAo3BridgeRequest(storage.get(AO3_BRIDGE_REQUEST_KEY));
+        storage.set(AO3_BRIDGE_RESULT_KEY, serializeAo3BridgeResult({
+            id: request?.id || '',
+            kind: 'loadChapterIndex',
+            ok: true,
+            chapters: [makeChapter()],
+        }));
+        await vi.advanceTimersByTimeAsync(50);
+
+        await expect(promise).resolves.toEqual({ ok: true, chapters: [makeChapter()] });
+    });
+
+    it('opens AO3 on the first request when a fresh-looking heartbeat does not advance', async () => {
         storage.set(AO3_BRIDGE_HEARTBEAT_KEY, serializeAo3BridgeHeartbeat({
             at: Date.now(),
             url: 'https://archiveofourown.org/',
             loggedIn: true,
         }));
 
-        const promise = Ao3BridgeClient.updateChapterContent(
-            makeChapter(),
-            '<p>Replacement</p>',
+        const promise = Ao3BridgeClient.fetchChapterIndex(
+            'https://archiveofourown.org/works/77945481',
             { timeoutMs: 60000, pollIntervalMs: 250 },
         );
 
         expect(GM_openInTab).not.toHaveBeenCalled();
-        await vi.advanceTimersByTimeAsync(AO3_BRIDGE_HEARTBEAT_STALE_MS + 250);
+        await vi.advanceTimersByTimeAsync(AO3_BRIDGE_REUSE_HEARTBEAT_MS + 250);
 
-        const result = await promise;
-        expect(result.ok).toBe(false);
-        expect(result.reason).toContain('stopped responding');
+        expect(GM_openInTab).toHaveBeenCalledWith(
+            'https://archiveofourown.org/works/77945481',
+            { active: true, insert: true },
+        );
+
+        const request = parseAo3BridgeRequest(storage.get(AO3_BRIDGE_REQUEST_KEY));
+        storage.set(AO3_BRIDGE_RESULT_KEY, serializeAo3BridgeResult({
+            id: request?.id || '',
+            kind: 'loadChapterIndex',
+            ok: true,
+            chapters: [makeChapter()],
+        }));
+        await vi.advanceTimersByTimeAsync(250);
+
+        await expect(promise).resolves.toEqual({ ok: true, chapters: [makeChapter()] });
     });
 });
