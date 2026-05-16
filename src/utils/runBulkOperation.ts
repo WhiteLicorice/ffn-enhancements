@@ -2,6 +2,15 @@ import { IBulkOperationConfig } from '../interfaces/IBulkOperationConfig';
 import { Core } from '../modules/Core';
 import { SettingsManager } from '../modules/SettingsManager';
 
+export class AbortBulkOperation extends Error {
+    public readonly reason: string;
+    constructor(reason: string) {
+        super(`Bulk operation aborted: ${reason}`);
+        this.name = 'AbortBulkOperation';
+        this.reason = reason;
+    }
+}
+
 export async function runBulkOperation<TItem>(e: MouseEvent, config: IBulkOperationConfig<TItem>): Promise<void> {
     const log = Core.getLogger('bulk-runner', 'runBulkOperation');
     const { verb, processItem, onItemStart, onItemSuccess, onPermanentFailure, preBatch, onFinalize } = config;
@@ -30,6 +39,7 @@ export async function runBulkOperation<TItem>(e: MouseEvent, config: IBulkOperat
 
     let successCount = 0;
     const retriedItems: TItem[] = [];
+    let abortReason: string | null = null;
 
     try {
         for (let i = 0; i < items.length; i++) {
@@ -39,15 +49,29 @@ export async function runBulkOperation<TItem>(e: MouseEvent, config: IBulkOperat
 
             await new Promise(r => setTimeout(r, SettingsManager.get('bulkExportDelayMs')));
 
-            if (await processItem(item)) {
-                successCount++;
-                if (onItemSuccess) onItemSuccess(item, 1);
-            } else {
-                retriedItems.push(item);
+            try {
+                if (await processItem(item)) {
+                    successCount++;
+                    if (onItemSuccess) onItemSuccess(item, 1);
+                } else {
+                    retriedItems.push(item);
+                }
+            } catch (err) {
+                if (err instanceof AbortBulkOperation) {
+                    abortReason = err.reason;
+                    log(`Bulk operation aborted: ${abortReason}`);
+                    if (onPermanentFailure) {
+                        for (let j = i; j < items.length; j++) {
+                            onPermanentFailure(items[j]);
+                        }
+                    }
+                    break;
+                }
+                throw err;
             }
         }
 
-        if (retriedItems.length > 0) {
+        if (!abortReason && retriedItems.length > 0) {
             log(`Pass 1 done. ${retriedItems.length} items failed. Cooling...`);
             if (btn) btn.innerText = 'Cooling...';
             await new Promise(r => setTimeout(r, SettingsManager.get('bulkCooldownMs')));

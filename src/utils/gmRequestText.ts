@@ -14,12 +14,26 @@ export interface GmTextResponse {
     responseText: string;
     finalUrl: string;
     reason?: string;
+    isCfChallenge: boolean;
 }
 
 interface GmTextLoadResponse {
     status?: number;
     responseText?: string;
     finalUrl?: string;
+}
+
+const CF_MARKERS = [
+    'cf-browser-verification',
+    'DDoS protection by Cloudflare',
+    'Checking your browser',
+    'challenge-platform',
+    '_cf_chl',
+];
+
+function _isCloudflareChallenge(status: number, responseText: string): boolean {
+    if (status !== 403) return false;
+    return CF_MARKERS.some(marker => responseText.includes(marker));
 }
 
 export function gmRequestText(options: GmTextRequestOptions): Promise<GmTextResponse> {
@@ -32,11 +46,13 @@ export function gmRequestText(options: GmTextRequestOptions): Promise<GmTextResp
             timeout: options.timeout,
             onload: (response: GmTextLoadResponse) => {
                 const status = response.status || 0;
+                const text = response.responseText || '';
                 resolve({
                     ok: status >= 200 && status < 400,
                     status,
-                    responseText: response.responseText || '',
+                    responseText: text,
                     finalUrl: response.finalUrl || options.url,
+                    isCfChallenge: _isCloudflareChallenge(status, text),
                 });
             },
             onerror: () => {
@@ -46,6 +62,7 @@ export function gmRequestText(options: GmTextRequestOptions): Promise<GmTextResp
                     responseText: '',
                     finalUrl: options.url,
                     reason: 'Network error.',
+                    isCfChallenge: false,
                 });
             },
             ontimeout: () => {
@@ -55,6 +72,7 @@ export function gmRequestText(options: GmTextRequestOptions): Promise<GmTextResp
                     responseText: '',
                     finalUrl: options.url,
                     reason: 'Request timed out.',
+                    isCfChallenge: false,
                 });
             },
         });

@@ -13,7 +13,7 @@ import { IBulkOperationConfig, IBulkItem } from '../interfaces/IBulkOperationCon
 import { applyExportTransforms, stripContentAfterMarker } from '../utils/exportTransform';
 import { writeToClipboard } from '../utils/clipboard';
 import { SimpleMarkdownParser } from './SimpleMarkdownParser';
-import { runBulkOperation } from '../utils/runBulkOperation';
+import { runBulkOperation, AbortBulkOperation } from '../utils/runBulkOperation';
 import { Ao3Service } from '../services/Ao3Service';
 import {
     IAo3Chapter,
@@ -1941,6 +1941,7 @@ export const DocManager = {
         const btn = e.currentTarget as HTMLButtonElement;
         const failureReasons = new Map<string, string>();
         const failures: IAo3MigrationFailure[] = [];
+        const failedRows: IAo3MigrationMappingRow[] = [];
 
         const setFailure = (row: IAo3MigrationMappingRow, reason: string) => {
             failureReasons.set(row.chapter.chapterId, reason);
@@ -2104,6 +2105,14 @@ export const DocManager = {
                             reason: result.reason,
                         });
                         setFailure(row, result.reason || 'AO3 did not confirm the update.');
+
+                        if (result.reason && (
+                            result.reason.includes('Cloudflare') ||
+                            result.reason.includes('DDoS protection')
+                        )) {
+                            throw new AbortBulkOperation(result.reason);
+                        }
+
                         return false;
                     }
 
@@ -2137,6 +2146,7 @@ export const DocManager = {
                     ao3Chapter: row.chapter.label,
                     reason: failureReasons.get(row.chapter.chapterId) || 'AO3 migration failed after retry.',
                 });
+                failedRows.push(row);
             },
             onFinalize: ({ successCount, totalCount }) => {
                 const failedCount = totalCount - successCount;
@@ -2158,6 +2168,25 @@ export const DocManager = {
                 }
             },
         });
+
+        if (failedRows.length > 0 && resultsEl) {
+            const retryBtn = document.createElement('button');
+            retryBtn.textContent = 'Retry Failed';
+            retryBtn.className = 'ffne-dm-action-btn';
+            retryBtn.style.cssText = 'display:block; margin-top:12px;';
+            retryBtn.addEventListener('click', (retryEvent) => {
+                retryBtn.remove();
+                const retryPlan: IAo3MigrationPlan = {
+                    ...plan,
+                    rows: failedRows,
+                    mappedCount: failedRows.filter(r => r.status === 'mapped').length,
+                    skippedCount: failedRows.filter(r => r.status === 'skipped').length,
+                    hasBlockingErrors: false,
+                };
+                DocManager.runBulkAo3Migration(retryEvent, retryPlan, statusEl, resultsEl);
+            });
+            resultsEl.appendChild(retryBtn);
+        }
     },
 
     /**

@@ -74,6 +74,16 @@ function appendControl(params: URLSearchParams, control: Element): void {
 export const Ao3Service = {
     MODULE_NAME: 'Ao3Service',
 
+    _cfActionableMessage(response: { isCfChallenge: boolean }, action: string): string | null {
+        if (!response.isCfChallenge) return null;
+        return [
+            'AO3 is under a DDoS protection challenge (Cloudflare "Under Attack" mode).',
+            `The ${action} could not be completed.`,
+            'Open archiveofourown.org in your browser, complete the security challenge,',
+            'then reload this page and try again.',
+        ].join(' ');
+    },
+
     normalizeWorkUrl(input: string): string | null {
         const trimmed = input.trim();
         if (!trimmed) return null;
@@ -107,6 +117,15 @@ export const Ao3Service = {
             url: `${normalized}/navigate`,
         });
         if (!response.ok) {
+            const cfReason = this._cfActionableMessage(response, 'chapter index request');
+            if (cfReason) {
+                log('AO3 chapter index request blocked by Cloudflare challenge.', {
+                    workUrl: normalized,
+                    status: response.status,
+                });
+                return { ok: false, chapters: [], reason: cfReason };
+            }
+
             log('AO3 chapter index request failed.', {
                 workUrl: normalized,
                 status: response.status,
@@ -158,6 +177,14 @@ export const Ao3Service = {
             url: chapter.editUrl,
         });
         if (!editResponse.ok) {
+            const cfReason = this._cfActionableMessage(editResponse, 'chapter edit page request');
+            if (cfReason) {
+                log('AO3 edit page request blocked by Cloudflare challenge.', {
+                    chapterId: chapter.chapterId,
+                });
+                return { ok: false, reason: cfReason };
+            }
+
             log('AO3 chapter edit page request failed.', {
                 chapterId: chapter.chapterId,
                 status: editResponse.status,
@@ -198,6 +225,14 @@ export const Ao3Service = {
             data: payload.body,
         });
         if (!updateResponse.ok) {
+            const cfReason = this._cfActionableMessage(updateResponse, 'chapter update submission');
+            if (cfReason) {
+                log('AO3 chapter update POST blocked by Cloudflare challenge.', {
+                    chapterId: chapter.chapterId,
+                });
+                return { ok: false, reason: cfReason };
+            }
+
             log('AO3 chapter update POST failed.', {
                 chapterId: chapter.chapterId,
                 status: updateResponse.status,

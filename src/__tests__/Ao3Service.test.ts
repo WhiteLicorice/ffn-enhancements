@@ -210,4 +210,77 @@ describe('Ao3Service', () => {
         expect(result.ok).toBe(false);
         expect(result.reason).toContain('Chapter update failed');
     });
+
+    const CF_CHALLENGE_HTML = `
+        <html>
+            <body>
+                <div id="cf-browser-verification">
+                    <h1>Checking your browser</h1>
+                    <p>DDoS protection by Cloudflare</p>
+                </div>
+            </body>
+        </html>
+    `;
+
+    it('detects Cloudflare challenge during fetchChapterIndex and surfaces actionable message', async () => {
+        queueTextResponses([{
+            status: 403,
+            responseText: CF_CHALLENGE_HTML,
+        }]);
+
+        const result = await Ao3Service.fetchChapterIndex('https://archiveofourown.org/works/77945481');
+
+        expect(result.ok).toBe(false);
+        expect(result.reason).toContain('DDoS protection');
+        expect(result.reason).toContain('Cloudflare');
+        expect(result.reason).toContain('archiveofourown.org');
+        expect(result.reason).not.toContain('HTTP 403');
+    });
+
+    it('detects Cloudflare challenge on edit page GET during updateChapterContent', async () => {
+        const chapter = makeChapter();
+        queueTextResponses([
+            {
+                status: 403,
+                responseText: CF_CHALLENGE_HTML,
+            },
+        ]);
+
+        const result = await Ao3Service.updateChapterContent(chapter, '<p>Replacement</p>');
+
+        expect(result.ok).toBe(false);
+        expect(result.reason).toContain('DDoS protection');
+        expect(result.reason).toContain('chapter edit page request');
+    });
+
+    it('detects Cloudflare challenge on update POST during updateChapterContent', async () => {
+        const chapter = makeChapter();
+        queueTextResponses([
+            {
+                responseText: `
+                    <html>
+                        <body class="logged-in">
+                            <form action="/works/77945481/chapters/123456789" method="post" class="edit_chapter">
+                                <input type="hidden" name="authenticity_token" value="secret-token">
+                                <input type="hidden" name="_method" value="patch">
+                                <input type="hidden" name="chapter[position]" value="1">
+                                <textarea id="content" name="chapter[content]">Old body</textarea>
+                                <input type="submit" name="update_button" value="Update">
+                            </form>
+                        </body>
+                    </html>
+                `,
+            },
+            {
+                status: 403,
+                responseText: CF_CHALLENGE_HTML,
+            },
+        ]);
+
+        const result = await Ao3Service.updateChapterContent(chapter, '<p>Replacement</p>');
+
+        expect(result.ok).toBe(false);
+        expect(result.reason).toContain('DDoS protection');
+        expect(result.reason).toContain('chapter update submission');
+    });
 });
