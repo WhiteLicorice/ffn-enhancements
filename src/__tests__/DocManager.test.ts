@@ -479,6 +479,24 @@ describe('DocManager bulk import conversion', () => {
 
         expect(html).toBe('<div align="left">Body</div>');
     });
+
+    it('imports full HTML documents from body content only', () => {
+        const html = DocManager._htmlToImportHtml(
+            '<!DOCTYPE html><html><head><title>Draft Title</title><script>alert(1)</script></head><body><p>Body</p></body></html>'
+        );
+
+        expect(html).toBe('<p>Body</p>');
+        expect(html).not.toContain('Draft Title');
+        expect(html).not.toContain('<script>');
+    });
+
+    it('converts supported CSS formatting and legacy center tags', () => {
+        const html = DocManager._sanitizeImportHtml(
+            '<p><span style="font-weight:700">Bold</span> <span style="font-style:italic">Italic</span> <span style="text-decoration: underline">Under</span></p><center>Centered</center>'
+        );
+
+        expect(html).toBe('<p><strong>Bold</strong> <em>Italic</em> <u>Under</u></p><div align="center">Centered</div>');
+    });
 });
 
 describe('DocManager DOCX import conversion', () => {
@@ -519,6 +537,25 @@ describe('DocManager DOCX import conversion', () => {
         expect(html).toContain('<p align="center">Centered</p>');
         expect(html).toContain('<p>Line 1<br>Line 2</p>');
         expect(html).toContain('<hr>');
+    });
+
+    it('respects explicit disabled DOCX run properties', async () => {
+        const file = await makeDocxFile(
+            'Doc.docx',
+            'Import/Doc.docx',
+            wrapDocxDocumentXml(`
+                <w:p>
+                    <w:r><w:rPr><w:b w:val="0"/><w:i w:val="false"/><w:u w:val="none"/></w:rPr><w:t>Plain</w:t></w:r>
+                    <w:r><w:t xml:space="preserve"> </w:t></w:r>
+                    <w:r><w:rPr><w:b/><w:i/><w:u w:val="single"/></w:rPr><w:t>Formatted</w:t></w:r>
+                </w:p>
+            `),
+        );
+
+        const html = await DocManager._docxToImportHtml(file);
+
+        expect(html).toContain('<p>Plain <strong><em><u>Formatted</u></em></strong></p>');
+        expect(html).not.toContain('<strong><em><u>Plain</u></em></strong>');
     });
 });
 

@@ -577,12 +577,12 @@ function _buildBulkImportPlan(
 }
 
 const BULK_IMPORT_STRIP_CONTENT_TAGS = new Set([
-    'script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'noscript',
+    'script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'noscript', 'title',
 ]);
-const BULK_IMPORT_INLINE_TAGS = new Set(['strong', 'b', 'em', 'i', 'u']);
+const BULK_IMPORT_INLINE_TAGS = new Set(['strong', 'b', 'em', 'i', 'u', 'ins']);
 const BULK_IMPORT_BLOCK_TAGS = new Set([
     'p', 'div', 'blockquote', 'pre', 'address', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'li', 'dt', 'dd', 'figcaption', 'td', 'th', 'caption',
+    'li', 'dt', 'dd', 'figcaption', 'td', 'th', 'caption', 'center',
 ]);
 const BULK_IMPORT_CONTAINER_TAGS = new Set([
     'span', 'font', 'a', 'section', 'article', 'aside', 'header', 'footer', 'main',
@@ -592,16 +592,77 @@ const BULK_IMPORT_CONTAINER_TAGS = new Set([
 ]);
 
 function _extractAllowedAlignment(el: Element): 'left' | 'center' | null {
+    if (el.tagName.toLowerCase() === 'center') return 'center';
+
     const alignAttr = (el.getAttribute('align') || '').trim().toLowerCase();
-    if (alignAttr === 'left' || alignAttr === 'center') return alignAttr;
+    if (alignAttr === 'left' || alignAttr === 'center' || alignAttr === 'centre') {
+        return alignAttr === 'centre' ? 'center' : alignAttr;
+    }
 
     const styleAttr = el.getAttribute('style') || '';
     const match = styleAttr.match(/(?:^|;)\s*text-align\s*:\s*([^;]+)/i);
     if (!match) return null;
 
     const styleValue = match[1].trim().toLowerCase();
-    if (styleValue === 'left' || styleValue === 'center') return styleValue;
+    if (styleValue === 'left' || styleValue === 'center' || styleValue === 'centre') {
+        return styleValue === 'centre' ? 'center' : styleValue;
+    }
     return null;
+}
+
+function _extractAllowedInlineFormatting(
+    el: Element,
+    explicit: { bold?: boolean; italic?: boolean; underline?: boolean } = {},
+): { bold: boolean; italic: boolean; underline: boolean } {
+    const tag = el.tagName.toLowerCase();
+    const style = el.getAttribute('style') || '';
+    const fontWeight = style.match(/(?:^|;)\s*font-weight\s*:\s*([^;]+)/i)?.[1].trim().toLowerCase() || '';
+    const fontStyle = style.match(/(?:^|;)\s*font-style\s*:\s*([^;]+)/i)?.[1].trim().toLowerCase() || '';
+    const textDecoration = style.match(/(?:^|;)\s*text-decoration(?:-line)?\s*:\s*([^;]+)/i)?.[1].trim().toLowerCase() || '';
+    const numericWeight = Number.parseInt(fontWeight, 10);
+
+    return {
+        bold: !!explicit.bold ||
+            tag === 'strong' ||
+            tag === 'b' ||
+            fontWeight === 'bold' ||
+            fontWeight === 'bolder' ||
+            (Number.isFinite(numericWeight) && numericWeight >= 600),
+        italic: !!explicit.italic ||
+            tag === 'em' ||
+            tag === 'i' ||
+            fontStyle === 'italic' ||
+            fontStyle === 'oblique',
+        underline: !!explicit.underline ||
+            tag === 'u' ||
+            tag === 'ins' ||
+            textDecoration.split(/\s+/).includes('underline'),
+    };
+}
+
+function _wrapImportNodes(
+    nodes: Node[],
+    tagName: 'strong' | 'em' | 'u',
+    doc: Document,
+): Node[] {
+    if (nodes.length === 0) return [];
+    const wrapper = doc.createElement(tagName);
+    nodes.forEach(child => wrapper.appendChild(child));
+    return _hasRenderableImportContent(wrapper) ? [wrapper] : [];
+}
+
+function _applyAllowedInlineFormatting(
+    nodes: Node[],
+    source: Element,
+    doc: Document,
+    explicit: { bold?: boolean; italic?: boolean; underline?: boolean } = {},
+): Node[] {
+    const formatting = _extractAllowedInlineFormatting(source, explicit);
+    let result = nodes;
+    if (formatting.underline) result = _wrapImportNodes(result, 'u', doc);
+    if (formatting.italic) result = _wrapImportNodes(result, 'em', doc);
+    if (formatting.bold) result = _wrapImportNodes(result, 'strong', doc);
+    return result;
 }
 
 function _hasRenderableImportContent(node: Node): boolean {
@@ -640,15 +701,7 @@ function _sanitizeImportNode(node: Node, doc: Document): Node[] {
     }
 
     if (BULK_IMPORT_INLINE_TAGS.has(tag)) {
-        let normalizedTag = tag;
-        if (tag === 'b') {
-            normalizedTag = 'strong';
-        } else if (tag === 'i') {
-            normalizedTag = 'em';
-        }
-        const el = doc.createElement(normalizedTag);
-        _sanitizeImportChildren(node, doc).forEach(child => el.appendChild(child));
-        return _hasRenderableImportContent(el) ? [el] : [];
+        return _applyAllowedInlineFormatting(_sanitizeImportChildren(node, doc), node, doc);
     }
 
     if (tag === 'p' || tag === 'div' || BULK_IMPORT_BLOCK_TAGS.has(tag)) {
@@ -656,15 +709,16 @@ function _sanitizeImportNode(node: Node, doc: Document): Node[] {
         const el = doc.createElement(blockTag);
         const alignment = _extractAllowedAlignment(node);
         if (alignment) el.setAttribute('align', alignment);
-        _sanitizeImportChildren(node, doc).forEach(child => el.appendChild(child));
+        _applyAllowedInlineFormatting(_sanitizeImportChildren(node, doc), node, doc)
+            .forEach(child => el.appendChild(child));
         return _hasRenderableImportContent(el) ? [el] : [];
     }
 
     if (BULK_IMPORT_CONTAINER_TAGS.has(tag)) {
-        return _sanitizeImportChildren(node, doc);
+        return _applyAllowedInlineFormatting(_sanitizeImportChildren(node, doc), node, doc);
     }
 
-    return _sanitizeImportChildren(node, doc);
+    return _applyAllowedInlineFormatting(_sanitizeImportChildren(node, doc), node, doc);
 }
 
 function _sanitizeImportHtml(html: string): string {
@@ -688,7 +742,8 @@ function _markdownToImportHtml(markdown: string): string {
 }
 
 function _htmlToImportHtml(html: string): string {
-    return _sanitizeImportHtml(html);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return _sanitizeImportHtml(doc.body?.innerHTML || html);
 }
 
 function _getXmlChildren(node: Element, localName: string): Element[] {
@@ -702,6 +757,12 @@ function _getXmlChild(node: Element, localName: string): Element | null {
 function _getXmlAttributeValue(node: Element | null | undefined, attributeName: string): string {
     if (!node) return '';
     return (node.getAttribute(`w:${attributeName}`) || node.getAttribute(attributeName) || '').toLowerCase();
+}
+
+function _isDocxToggleEnabled(node: Element | null | undefined): boolean {
+    if (!node) return false;
+    const value = _getXmlAttributeValue(node, 'val');
+    return !['0', 'false', 'off', 'none'].includes(value);
 }
 
 function _getDocxParagraphAlignment(paragraph: Element): 'left' | 'center' | null {
@@ -723,11 +784,10 @@ function _isDocxHorizontalRuleParagraph(paragraph: Element): boolean {
 
 function _readDocxRunHtml(run: Element): string {
     const runProperties = _getXmlChild(run, 'rPr');
-    const isBold = !!(runProperties && _getXmlChild(runProperties, 'b'));
-    const isItalic = !!(runProperties && _getXmlChild(runProperties, 'i'));
+    const isBold = _isDocxToggleEnabled(runProperties ? _getXmlChild(runProperties, 'b') : null);
+    const isItalic = _isDocxToggleEnabled(runProperties ? _getXmlChild(runProperties, 'i') : null);
     const underline = runProperties ? _getXmlChild(runProperties, 'u') : null;
-    const underlineValue = _getXmlAttributeValue(underline, 'val');
-    const isUnderline = !!underline && underlineValue !== 'none';
+    const isUnderline = _isDocxToggleEnabled(underline);
 
     let content = '';
     Array.from(run.childNodes).forEach(child => {
