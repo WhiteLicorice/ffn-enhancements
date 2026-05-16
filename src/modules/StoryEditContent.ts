@@ -328,7 +328,11 @@ function _buildMappingPlan(mappings: IStoryEditContentMappingRow[]): IStoryEditC
     };
 }
 
-function _renderFailureTable(container: HTMLElement | null | undefined, failures: IStoryEditContentFailure[]): void {
+function _renderFailureTable(
+    container: HTMLElement | null | undefined,
+    failures: IStoryEditContentFailure[],
+    onRetry?: () => void,
+): void {
     if (!container) return;
 
     if (failures.length === 0) {
@@ -345,6 +349,10 @@ function _renderFailureTable(container: HTMLElement | null | undefined, failures
         </tr>
     `).join('');
 
+    const retryHtml = onRetry
+        ? `<div style="margin-top:8px;"><button type="button" id="ffne-story-bulk-retry" class="ffne-story-bulk-btn">Retry Failed</button></div>`
+        : '';
+
     container.hidden = false;
     container.innerHTML = `
         <div class="ffne-story-bulk-results-title">Failed Replacements</div>
@@ -358,7 +366,13 @@ function _renderFailureTable(container: HTMLElement | null | undefined, failures
             </thead>
             <tbody>${rowsHtml}</tbody>
         </table>
+        ${retryHtml}
     `;
+
+    if (onRetry) {
+        container.querySelector<HTMLButtonElement>('#ffne-story-bulk-retry')
+            ?.addEventListener('click', onRetry);
+    }
 }
 
 export const StoryEditContent = {
@@ -435,7 +449,7 @@ export const StoryEditContent = {
         log(`Opening Bulk Replace modal for ${chapters.length} chapter(s) and ${docs.length} doc(s).`);
 
         this._state = {
-            actionUrl: replaceForm.action || window.location.href,
+            actionUrl: replaceForm.getAttribute('action') || window.location.href,
             chapters,
             docs,
             mappings: _createMappingRows(chapters),
@@ -790,8 +804,13 @@ export const StoryEditContent = {
             return;
         }
 
-        const setFailure = (row: IStoryEditContentMappingRow, reason: string) => {
-            failureReasons.set(row.chapter.storyTextId, reason);
+        const setFailure = (storyTextId: string, reason: string) => {
+            failureReasons.set(storyTextId, reason);
+        };
+
+        const self = this;
+        const processRow = async function (row: IStoryEditContentMappingRow): Promise<boolean> {
+            return self._replaceChapter(row, setFailure, failureReasons);
         };
 
         const config: IBulkOperationConfig<IStoryEditContentMappingRow> = {
@@ -805,33 +824,7 @@ export const StoryEditContent = {
                     statusEl.textContent = `${action} ${index}/${total}: ${row.chapter.chapterLabel} from ${row.selectedDocName}...`;
                 }
             },
-            processItem: async (row) => {
-                row.status = 'running';
-                this._renderRowStatus(row);
-
-                const validation = await DocFetchService.validatePrivateDocHasContentWithResult(row.selectedDocId, row.selectedDocName);
-                if (!validation.ok) {
-                    log(`Source doc validation failed for "${row.selectedDocName}".`, validation.reason);
-                    setFailure(row, validation.reason || 'Source document validation failed.');
-                    return false;
-                }
-                log(`Source doc validation passed for "${row.selectedDocName}".`);
-
-                const result = await StoryReplaceService.submitReplaceForm(
-                    this._state?.actionUrl || window.location.href,
-                    row.chapter.storyTextId,
-                    row.selectedDocId,
-                );
-                if (!result.ok) {
-                    log(`Replace failed for "${row.chapter.chapterLabel}" from "${row.selectedDocName}".`, result.reason);
-                    setFailure(row, result.reason || 'FFN did not confirm the replacement.');
-                    return false;
-                }
-
-                log(`Replace succeeded for "${row.chapter.chapterLabel}" from "${row.selectedDocName}".`);
-                failureReasons.delete(row.chapter.storyTextId);
-                return true;
-            },
+            processItem: processRow,
             onItemSuccess: (row) => {
                 row.status = 'success';
                 this._renderRowStatus(row);
@@ -847,7 +840,10 @@ export const StoryEditContent = {
                 log(`Permanent replace failure for "${row.chapter.chapterLabel}".`, failures[failures.length - 1].reason);
             },
             onFinalize: ({ successCount, totalCount }) => {
-                _renderFailureTable(resultsEl, failures);
+                const retryFn = failures.length > 0
+                    ? () => { void self._retryFailedReplacements(statusEl, resultsEl); }
+                    : undefined;
+                _renderFailureTable(resultsEl, failures, retryFn);
                 log(`Bulk Replace finalized: ${successCount}/${totalCount} succeeded.`);
                 if (statusEl) {
                     if (successCount === totalCount) {
@@ -862,6 +858,122 @@ export const StoryEditContent = {
         };
 
         await runBulkOperation(e, config);
+    },
+
+    _replaceChapter: async function (
+        row: IStoryEditContentMappingRow,
+        setFailure: (storyTextId: string, reason: string) => void,
+        failureReasons: Map<string, string>,
+    ): Promise<boolean> {
+        const log = Core.getLogger(this.MODULE_NAME, '_replaceChapter');
+
+        row.status = 'running';
+        this._renderRowStatus(row);
+
+        const validation = await DocFetchService.validatePrivateDocHasContentWithResult(row.selectedDocId, row.selectedDocName);
+        if (!validation.ok) {
+            log(`Source doc validation failed for "${row.selectedDocName}".`, validation.reason);
+            setFailure(row.chapter.storyTextId, validation.reason || 'Source document validation failed.');
+            return false;
+        }
+        log(`Source doc validation passed for "${row.selectedDocName}".`);
+
+        const result = await StoryReplaceService.submitReplaceForm(
+            this._state?.actionUrl || window.location.href,
+            row.chapter.storyTextId,
+            row.selectedDocId,
+        );
+        if (!result.ok) {
+            log(`Replace failed for "${row.chapter.chapterLabel}" from "${row.selectedDocName}".`, result.reason);
+            setFailure(row.chapter.storyTextId, result.reason || 'FFN did not confirm the replacement.');
+            return false;
+        }
+
+        log(`Replace succeeded for "${row.chapter.chapterLabel}" from "${row.selectedDocName}".`);
+        failureReasons.delete(row.chapter.storyTextId);
+        return true;
+    },
+
+    _retryFailedReplacements: async function (
+        statusEl?: HTMLElement,
+        resultsEl?: HTMLElement,
+    ) {
+        if (!this._state) return;
+        const log = Core.getLogger(this.MODULE_NAME, '_retryFailedReplacements');
+
+        const failedRows = this._state.mappings.filter(row => row.status === 'failed');
+        if (failedRows.length === 0) {
+            log('Retry requested but no failed rows found.');
+            return;
+        }
+
+        log(`Retrying ${failedRows.length} failed replacement(s).`);
+        failedRows.forEach(row => {
+            row.status = 'mapped';
+            this._renderRowStatus(row);
+        });
+
+        if (statusEl) statusEl.textContent = `Retrying ${failedRows.length} failed replacement(s)...`;
+        _renderFailureTable(resultsEl, []);
+
+        const failures: IStoryEditContentFailure[] = [];
+        const failureReasons = new Map<string, string>();
+
+        const setFailure = (storyTextId: string, reason: string) => {
+            failureReasons.set(storyTextId, reason);
+        };
+
+        const self = this;
+        const processRow = async function (row: IStoryEditContentMappingRow): Promise<boolean> {
+            return self._replaceChapter(row, setFailure, failureReasons);
+        };
+
+        const retryConfig: IBulkOperationConfig<IStoryEditContentMappingRow> = {
+            verb: 'Replace',
+            getItems: () => failedRows,
+            onItemStart: (row, pass, index, total) => {
+                row.status = 'running';
+                this._renderRowStatus(row);
+                if (statusEl) {
+                    const action = pass === 2 ? 'Retrying' : 'Replacing';
+                    statusEl.textContent = `${action} ${index}/${total}: ${row.chapter.chapterLabel} from ${row.selectedDocName}...`;
+                }
+            },
+            processItem: processRow,
+            onItemSuccess: (row) => {
+                row.status = 'success';
+                this._renderRowStatus(row);
+            },
+            onPermanentFailure: (row) => {
+                row.status = 'failed';
+                this._renderRowStatus(row);
+                failures.push({
+                    chapterLabel: row.chapter.chapterLabel,
+                    docName: row.selectedDocName,
+                    reason: failureReasons.get(row.chapter.storyTextId) || 'Replace failed after retry.',
+                });
+                log(`Retry permanent failure for "${row.chapter.chapterLabel}".`, failures[failures.length - 1].reason);
+            },
+            onFinalize: ({ successCount, totalCount }) => {
+                const retryFn = failures.length > 0
+                    ? () => { void self._retryFailedReplacements(statusEl, resultsEl); }
+                    : undefined;
+                _renderFailureTable(resultsEl, failures, retryFn);
+                log(`Retry finalized: ${successCount}/${totalCount} succeeded.`);
+                if (statusEl) {
+                    if (successCount === totalCount) {
+                        statusEl.textContent = `Replaced all ${successCount} chapter(s).`;
+                    } else if (successCount > 0) {
+                        statusEl.textContent = `Replaced ${successCount}; failed ${totalCount - successCount}.`;
+                    } else {
+                        statusEl.textContent = 'No chapters were replaced.';
+                    }
+                }
+            },
+        };
+
+        const fakeEvent = { currentTarget: resultsEl?.querySelector('#ffne-story-bulk-retry') || null } as unknown as MouseEvent;
+        await runBulkOperation(fakeEvent, retryConfig);
     },
 
     _parsePublishedChapters,

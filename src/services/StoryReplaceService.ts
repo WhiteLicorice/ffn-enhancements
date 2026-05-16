@@ -117,6 +117,16 @@ export const StoryReplaceService = {
                 form.action = new URL(actionUrl, window.location.href).href;
                 form.target = iframe.name;
                 form.style.display = 'none';
+
+                const realForm = Core.getElement(Elements.STORY_EDIT_REPLACE_FORM) as HTMLFormElement | null;
+                if (realForm) {
+                    realForm.querySelectorAll<HTMLInputElement>('input[type="hidden"]').forEach(input => {
+                        const name = (input.name || '').toLowerCase();
+                        if (name === 'storytextid' || name === 'docid' || name === 'action') return;
+                        form.appendChild(input.cloneNode(true));
+                    });
+                }
+
                 appendHiddenInput(form, 'storytextid', storyTextId);
                 appendHiddenInput(form, 'docid', docId);
                 appendHiddenInput(form, 'action', 'replace');
