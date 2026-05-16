@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DocManager } from '../modules/DocManager';
 import type { IBulkItem } from '../interfaces/IBulkOperationConfig';
 import type { IAo3Chapter } from '../interfaces/IAo3Migration';
-import { Ao3Service } from '../services/Ao3Service';
+import { Ao3BridgeClient } from '../services/Ao3BridgeClient';
 import { DocFetchService } from '../services/DocFetchService';
 import { SettingsManager } from '../modules/SettingsManager';
 import { Core } from '../modules/Core';
@@ -497,7 +497,7 @@ describe('DocManager AO3 migration modal', () => {
             { docId: '100', docName: 'P1' },
             { docId: '101', docName: 'P2' },
         ]);
-        vi.spyOn(Ao3Service, 'fetchChapterIndex').mockResolvedValue({
+        vi.spyOn(Ao3BridgeClient, 'fetchChapterIndex').mockResolvedValue({
             ok: true,
             chapters: [makeAo3Chapter(1), makeAo3Chapter(2)],
         });
@@ -565,7 +565,7 @@ describe('DocManager AO3 migration execution', () => {
         DocManager._setManualAo3SourceSelection(rows, sourceItems, 1, sourceItems[0].docId);
         const plan = DocManager._buildAo3MigrationPlan('https://archiveofourown.org/works/77945481', chapters, rows, false);
         const fetchSpy = vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml');
-        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent');
+        const updateSpy = vi.spyOn(Ao3BridgeClient, 'updateChapterContent');
 
         const { status } = await runAo3MigrationWithPlan(plan);
 
@@ -583,7 +583,7 @@ describe('DocManager AO3 migration execution', () => {
             false,
         );
         vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('');
-        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent');
+        const updateSpy = vi.spyOn(Ao3BridgeClient, 'updateChapterContent');
 
         const { status, results } = await runAo3MigrationWithPlan(plan);
 
@@ -606,7 +606,7 @@ describe('DocManager AO3 migration execution', () => {
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
             return 0;
         });
-        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent').mockResolvedValue({ ok: true });
+        const updateSpy = vi.spyOn(Ao3BridgeClient, 'updateChapterContent').mockResolvedValue({ ok: true });
 
         await runAo3MigrationWithPlan(plan);
 
@@ -624,7 +624,7 @@ describe('DocManager AO3 migration execution', () => {
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
             return 0;
         });
-        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent').mockResolvedValue({ ok: true });
+        const updateSpy = vi.spyOn(Ao3BridgeClient, 'updateChapterContent').mockResolvedValue({ ok: true });
 
         const rowsA = DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters);
         const rowsB = DocManager._createAo3MigrationRows([makeItem('P1', '1')], chapters);
@@ -653,7 +653,7 @@ describe('DocManager AO3 migration execution', () => {
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
             return 0;
         });
-        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent').mockResolvedValue({ ok: true });
+        const updateSpy = vi.spyOn(Ao3BridgeClient, 'updateChapterContent').mockResolvedValue({ ok: true });
 
         await runAo3MigrationWithPlan(plan);
 
@@ -675,7 +675,7 @@ describe('DocManager AO3 migration execution', () => {
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
             return 0;
         });
-        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent').mockResolvedValue({ ok: true });
+        const updateSpy = vi.spyOn(Ao3BridgeClient, 'updateChapterContent').mockResolvedValue({ ok: true });
 
         await runAo3MigrationWithPlan(plan);
 
@@ -692,7 +692,7 @@ describe('DocManager AO3 migration execution', () => {
             'Notes:',
         );
         vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('Notes:\nOnly notes');
-        const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent');
+        const updateSpy = vi.spyOn(Ao3BridgeClient, 'updateChapterContent');
 
         const { status, results } = await runAo3MigrationWithPlan(plan);
 
@@ -710,7 +710,7 @@ describe('DocManager AO3 migration execution', () => {
             false,
         );
         vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p>Ready</p>');
-        vi.spyOn(Ao3Service, 'updateChapterContent').mockResolvedValue({
+        vi.spyOn(Ao3BridgeClient, 'updateChapterContent').mockResolvedValue({
             ok: false,
             reason: 'AO3 rejected the update.',
         });
