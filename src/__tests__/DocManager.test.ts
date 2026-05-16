@@ -372,58 +372,109 @@ describe('DocManager advanced drawer', () => {
 });
 
 describe('DocManager AO3 migration mapping', () => {
-    it('auto-maps numbered docs to matching AO3 chapter numbers', () => {
+    it('renders one mapping row per AO3 chapter and auto-maps numbered docs to matching chapters', () => {
         const rows = DocManager._createAo3MigrationRows(
             [makeItem('P1', '1'), makeItem('P44', '44'), makeItem('Intro', '99')],
             [makeAo3Chapter(1), makeAo3Chapter(44)],
         );
 
+        expect(rows).toHaveLength(2);
+        expect(rows[0].chapter.chapterNumber).toBe(1);
         expect(rows[0]).toMatchObject({
             mappingSource: 'auto',
             status: 'mapped',
         });
-        expect(rows[0].selectedChapter?.chapterNumber).toBe(1);
-        expect(rows[1].selectedChapter?.chapterNumber).toBe(44);
-        expect(rows[2]).toMatchObject({
-            selectedChapter: null,
-            mappingSource: 'unmapped',
-            status: 'skipped',
-        });
+        expect(rows[0].selectedSourceItem?.docName).toBe('P1');
+        expect(rows[1].chapter.chapterNumber).toBe(44);
+        expect(rows[1].selectedSourceItem?.docName).toBe('P44');
     });
 
-    it('manual mappings override auto-map and unmapped rows are skipped', () => {
+    it('manual source doc mappings override auto-map and unmapped AO3 chapters are skipped', () => {
         const chapters = [makeAo3Chapter(1), makeAo3Chapter(2), makeAo3Chapter(3)];
+        const sourceItems = [makeItem('P1', '1'), makeItem('P2', '2')];
         const rows = DocManager._createAo3MigrationRows(
-            [makeItem('P1', '1'), makeItem('P2', '2')],
+            sourceItems,
             chapters,
         );
 
-        DocManager._setManualAo3ChapterSelection(rows, chapters, 0, chapters[2].chapterId);
-        DocManager._setManualAo3ChapterSelection(rows, chapters, 1, '');
+        DocManager._setManualAo3SourceSelection(rows, sourceItems, 0, sourceItems[1].docId);
+        DocManager._setManualAo3SourceSelection(rows, sourceItems, 1, '');
         const plan = DocManager._buildAo3MigrationPlan('https://archiveofourown.org/works/77945481', chapters, rows, false);
 
         expect(plan.rows[0]).toMatchObject({
             mappingSource: 'manual',
             status: 'mapped',
         });
-        expect(plan.rows[0].selectedChapter?.chapterNumber).toBe(3);
+        expect(plan.rows[0].selectedSourceItem?.docName).toBe('P2');
         expect(plan.rows[1].status).toBe('skipped');
         expect(plan.mappedCount).toBe(1);
-        expect(plan.skippedCount).toBe(1);
+        expect(plan.skippedCount).toBe(2);
     });
 
-    it('blocks duplicate AO3 target mappings during validation', () => {
+    it('autofills source docs backward and forward from a manual numbered selection', () => {
+        const chapters = [makeAo3Chapter(1), makeAo3Chapter(2), makeAo3Chapter(3), makeAo3Chapter(4), makeAo3Chapter(5)];
+        const sourceItems = [
+            makeItem('StoryName001', '1'),
+            makeItem('StoryName002', '2'),
+            makeItem('StoryName003', '3'),
+            makeItem('StoryName004', '4'),
+            makeItem('StoryName005', '5'),
+        ];
+        const rows = DocManager._createAo3MigrationRows([], chapters);
+
+        DocManager._setManualAo3SourceSelection(rows, sourceItems, 4, '5');
+
+        expect(rows.map(row => row.selectedSourceItem?.docName)).toEqual([
+            'StoryName001',
+            'StoryName002',
+            'StoryName003',
+            'StoryName004',
+            'StoryName005',
+        ]);
+        expect(rows[0].mappingSource).toBe('autofill');
+        expect(rows[4].mappingSource).toBe('manual');
+    });
+
+    it('does not autofill AO3 rows more than once after they were autofilled', () => {
+        const chapters = [makeAo3Chapter(1), makeAo3Chapter(2), makeAo3Chapter(3), makeAo3Chapter(4)];
+        const sourceItems = [
+            makeItem('P1', '1'),
+            makeItem('P2', '2'),
+            makeItem('P3', '3'),
+            makeItem('P4', '4'),
+            makeItem('Alt1', '11'),
+            makeItem('Alt2', '12'),
+            makeItem('Alt3', '13'),
+            makeItem('Alt4', '14'),
+        ];
+        const rows = DocManager._createAo3MigrationRows([], chapters);
+
+        DocManager._setManualAo3SourceSelection(rows, sourceItems, 3, '4');
+        DocManager._setManualAo3SourceSelection(rows, sourceItems, 1, '12');
+
+        expect(rows.map(row => row.selectedSourceItem?.docName)).toEqual([
+            'P1',
+            'Alt2',
+            'P3',
+            'P4',
+        ]);
+        expect(rows[0].hasBeenAutofilled).toBe(true);
+        expect(rows[2].hasBeenAutofilled).toBe(true);
+    });
+
+    it('blocks duplicate source doc mappings during validation', () => {
         const chapters = [makeAo3Chapter(1), makeAo3Chapter(2)];
+        const sourceItems = [makeItem('P1', '1'), makeItem('P2', '2')];
         const rows = DocManager._createAo3MigrationRows(
-            [makeItem('P1', '1'), makeItem('P2', '2')],
+            sourceItems,
             chapters,
         );
 
-        DocManager._setManualAo3ChapterSelection(rows, chapters, 1, chapters[0].chapterId);
+        DocManager._setManualAo3SourceSelection(rows, sourceItems, 1, sourceItems[0].docId);
         const plan = DocManager._buildAo3MigrationPlan('https://archiveofourown.org/works/77945481', chapters, rows, false);
 
         expect(plan.hasBlockingErrors).toBe(true);
-        expect(plan.duplicateTargets).toEqual([chapters[0].chapterId]);
+        expect(plan.duplicateSourceDocIds).toEqual([sourceItems[0].docId]);
         expect(plan.rows.map(row => row.status)).toEqual(['duplicate', 'duplicate']);
     });
 });
@@ -461,9 +512,9 @@ describe('DocManager AO3 migration modal', () => {
 
         const rows = document.querySelectorAll('#ffne-dm-ao3-mappings tbody tr');
         expect(rows).toHaveLength(2);
-        expect(rows[0].textContent).toContain('P1');
-        expect((rows[0].querySelector('select') as HTMLSelectElement).value).toBe('9001');
-        expect((rows[1].querySelector('select') as HTMLSelectElement).value).toBe('9002');
+        expect(rows[0].textContent).toContain('Chapter 1');
+        expect((rows[0].querySelector('select') as HTMLSelectElement).value).toBe('100');
+        expect((rows[1].querySelector('select') as HTMLSelectElement).value).toBe('101');
         expect(document.getElementById('ffne-dm-ao3-summary')?.textContent).toContain('Notes:');
     });
 });
@@ -483,10 +534,13 @@ describe('DocManager AO3 migration execution', () => {
     });
 
     async function runAo3MigrationWithPlan(plan: ReturnType<typeof DocManager._buildAo3MigrationPlan>) {
-        mountDocManagerItems(plan.rows.map(row => ({
-            docId: row.sourceItem.docId,
-            docName: row.sourceItem.docName,
-        })));
+        const sourceRows = new Map(
+            plan.rows
+                .map(row => row.selectedSourceItem)
+                .filter((item): item is IBulkItem => !!item)
+                .map(item => [item.docId, item.row] as [string, HTMLTableRowElement])
+        );
+        sourceRows.forEach(row => document.body.appendChild(row));
         const btn = makeBtn();
         const status = document.createElement('div');
         const results = document.createElement('div');
@@ -500,20 +554,21 @@ describe('DocManager AO3 migration execution', () => {
         return { btn, status, results };
     }
 
-    it('blocks execution when duplicate chapter mappings exist', async () => {
+    it('blocks execution when duplicate source doc mappings exist', async () => {
         const chapters = [makeAo3Chapter(1), makeAo3Chapter(2)];
+        const sourceItems = [makeItem('P1', '1'), makeItem('P2', '2')];
         const rows = DocManager._createAo3MigrationRows(
-            [makeItem('P1', '1'), makeItem('P2', '2')],
+            sourceItems,
             chapters,
         );
-        DocManager._setManualAo3ChapterSelection(rows, chapters, 1, chapters[0].chapterId);
+        DocManager._setManualAo3SourceSelection(rows, sourceItems, 1, sourceItems[0].docId);
         const plan = DocManager._buildAo3MigrationPlan('https://archiveofourown.org/works/77945481', chapters, rows, false);
         const fetchSpy = vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml');
         const updateSpy = vi.spyOn(Ao3Service, 'updateChapterContent');
 
         const { status } = await runAo3MigrationWithPlan(plan);
 
-        expect(status.textContent).toContain('duplicate chapter mappings');
+        expect(status.textContent).toContain('duplicate source doc mappings');
         expect(fetchSpy).not.toHaveBeenCalled();
         expect(updateSpy).not.toHaveBeenCalled();
     });

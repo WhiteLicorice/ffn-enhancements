@@ -10,13 +10,14 @@ export interface IAo3Chapter {
     editUrl: string;
 }
 
-export type Ao3MigrationMappingSource = 'auto' | 'manual' | 'unmapped';
+export type Ao3MigrationMappingSource = 'auto' | 'autofill' | 'manual' | 'unmapped';
 export type Ao3MigrationRowStatus = 'mapped' | 'skipped' | 'duplicate';
 
 export interface IAo3MigrationMappingRow {
-    sourceItem: IBulkItem;
-    selectedChapter: IAo3Chapter | null;
+    chapter: IAo3Chapter;
+    selectedSourceItem: IBulkItem | null;
     mappingSource: Ao3MigrationMappingSource;
+    hasBeenAutofilled: boolean;
     status: Ao3MigrationRowStatus;
     modalRow: HTMLTableRowElement | null;
 }
@@ -27,7 +28,7 @@ export interface IAo3MigrationPlan {
     rows: IAo3MigrationMappingRow[];
     mappedCount: number;
     skippedCount: number;
-    duplicateTargets: string[];
+    duplicateSourceDocIds: string[];
     convertLineBreaks: boolean;
     stripNotesMarker: string;
     hasBlockingErrors: boolean;
