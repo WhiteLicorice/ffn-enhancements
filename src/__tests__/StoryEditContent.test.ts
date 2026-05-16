@@ -388,7 +388,7 @@ describe('StoryEditContent bulk replace execution', () => {
         expect(status.textContent).toContain('Replaced all 1 chapter');
     });
 
-    it('renders a failure table for failed replacements', async () => {
+    it('renders a failure table and retry button for failed replacements', async () => {
         const mappings = makeMappings(1);
         const docs = makeDocs('StoryName', 1, 1);
         StoryEditContent._setManualDocSelection(mappings, docs, 0, 'StoryName-1');
@@ -405,6 +405,7 @@ describe('StoryEditContent bulk replace execution', () => {
         expect(results.innerHTML).toContain('Chapter 1');
         expect(results.innerHTML).toContain('StoryName001');
         expect(results.innerHTML).toContain('HTTP 500');
+        expect(results.innerHTML).toContain('Retry Failed');
     });
 
     it('renders the failure table helper output', () => {
@@ -475,5 +476,144 @@ describe('StoryReplaceService hidden iframe submitter', () => {
         const promise = StoryReplaceService.submitReplaceForm('/story/story_edit_content.php?storyid=1', '101', '201');
 
         await expect(promise).resolves.toEqual({ ok: false, reason: 'No permission.' });
+    });
+
+    it('copies hidden inputs from the real FFN replace form to bypass CSRF 403', async () => {
+        document.body.innerHTML = `
+            <form action="/story/story_edit_content.php">
+                <input type="hidden" name="__csrftoken" value="abc123">
+                <input type="hidden" name="form_key" value="xyz789">
+                <input type="hidden" name="action" value="replace">
+                <input type="hidden" name="storytextid" value="">
+                <input type="hidden" name="docid" value="">
+                <select name="storytextid"><option value="0">Select</option></select>
+                <select name="docid"><option value="0">Select</option></select>
+                <input type="submit" value="Replace">
+            </form>
+        `;
+        Core.activeDelegate = StoryEditContentDelegate;
+
+        const submitSpy = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
+            const frame = document.querySelector(`iframe[name="${this.target}"]`) as HTMLIFrameElement;
+            expect(frame).not.toBeNull();
+            // Real-form hidden inputs should be copied
+            const csrfInput = this.elements.namedItem('__csrftoken') as HTMLInputElement;
+            expect(csrfInput).not.toBeNull();
+            expect(csrfInput.value).toBe('abc123');
+            const formKeyInput = this.elements.namedItem('form_key') as HTMLInputElement;
+            expect(formKeyInput).not.toBeNull();
+            expect(formKeyInput.value).toBe('xyz789');
+            // Our overrides should take precedence (last in form wins)
+            expect((this.elements.namedItem('storytextid') as HTMLInputElement).value).toBe('101');
+            expect((this.elements.namedItem('docid') as HTMLInputElement).value).toBe('201');
+            expect((this.elements.namedItem('action') as HTMLInputElement).value).toBe('replace');
+
+            writeFrameHtml(frame, '<div class="panel_success">Success</div>');
+            frame.dispatchEvent(new Event('load'));
+        });
+
+        const promise = StoryReplaceService.submitReplaceForm('/story/story_edit_content.php', '101', '201');
+
+        await expect(promise).resolves.toEqual({ ok: true });
+        expect(submitSpy).toHaveBeenCalledTimes(1);
+
+        Core.activeDelegate = null;
+    });
+});
+
+describe('StoryEditContent retry on failure', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        vi.useFakeTimers();
+        vi.restoreAllMocks();
+        vi.stubGlobal('fetch', vi.fn());
+    });
+
+    afterEach(() => {
+        StoryEditContent._state = null;
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+        cleanupDOM();
+    });
+
+    it('renders a Retry Failed button when onRetry is provided', () => {
+        const container = document.createElement('div');
+        let retryClicked = false;
+
+        StoryEditContent._renderFailureTable(container, [{
+            chapterLabel: 'Chapter 3',
+            docName: 'StoryName003',
+            reason: 'Replace request failed with HTTP 500.',
+        }], () => { retryClicked = true; });
+
+        expect(container.innerHTML).toContain('Retry Failed');
+        const retryBtn = container.querySelector('#ffne-story-bulk-retry') as HTMLButtonElement;
+        expect(retryBtn).not.toBeNull();
+
+        retryBtn.click();
+        expect(retryClicked).toBe(true);
+    });
+
+    it('does not render a retry button when there are no failures', () => {
+        const container = document.createElement('div');
+
+        StoryEditContent._renderFailureTable(container, [], () => {});
+
+        expect(container.hidden).toBe(true);
+        expect(container.innerHTML).toBe('');
+    });
+
+    it('does not render a retry button when onRetry is not provided', () => {
+        const container = document.createElement('div');
+
+        StoryEditContent._renderFailureTable(container, [{
+            chapterLabel: 'Chapter 3',
+            docName: 'StoryName003',
+            reason: 'Failed.',
+        }]);
+
+        expect(container.innerHTML).toContain('Failed Replacements');
+        expect(container.innerHTML).not.toContain('Retry Failed');
+    });
+
+    it('retries only failed rows and preserves the original doc mapping', async () => {
+        const mappings = makeMappings(3);
+        const docs = makeDocs('StoryName', 1, 3);
+        StoryEditContent._setManualDocSelection(mappings, docs, 0, 'StoryName-1');
+        StoryEditContent._setManualDocSelection(mappings, docs, 1, 'StoryName-2');
+        StoryEditContent._setManualDocSelection(mappings, docs, 2, 'StoryName-3');
+
+        // Simulate: row 0 succeeded, row 1 and 2 failed
+        mappings[0].status = 'success';
+        mappings[1].status = 'failed';
+        mappings[2].status = 'failed';
+
+        const status = document.createElement('div');
+        const results = document.createElement('div');
+        document.body.append(status, results);
+
+        StoryEditContent._state = {
+            actionUrl: '/story/story_edit_content.php',
+            chapters: mappings.map(row => row.chapter),
+            docs,
+            mappings,
+        };
+
+        vi.spyOn(DocFetchService, 'validatePrivateDocHasContentWithResult').mockResolvedValue({ ok: true });
+        const replaceSpy = vi.spyOn(StoryReplaceService, 'submitReplaceForm').mockResolvedValue({ ok: true });
+
+        const retryPromise = StoryEditContent._retryFailedReplacements(status, results);
+        await vi.runAllTimersAsync();
+        await retryPromise;
+        await vi.runAllTimersAsync();
+
+        // Only rows 1 and 2 should have been retried
+        expect(replaceSpy).toHaveBeenCalledTimes(2);
+        expect(replaceSpy).toHaveBeenCalledWith('/story/story_edit_content.php', '1002', 'StoryName-2');
+        expect(replaceSpy).toHaveBeenCalledWith('/story/story_edit_content.php', '1003', 'StoryName-3');
+
+        // Row 0 (already successful) should not have been retried
+        const storyTextIds = replaceSpy.mock.calls.map(call => call[1]);
+        expect(storyTextIds).not.toContain('1001');
     });
 });
