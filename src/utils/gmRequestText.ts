@@ -7,6 +7,7 @@ export interface GmTextRequestOptions {
     data?: string;
     timeout?: number;
     cookie?: string;
+    fetch?: boolean;
 }
 
 export interface GmTextResponse {
@@ -46,6 +47,7 @@ export function gmRequestText(options: GmTextRequestOptions): Promise<GmTextResp
             data: options.data,
             timeout: options.timeout,
             cookie: options.cookie,
+            fetch: options.fetch,
             onload: (response: GmTextLoadResponse) => {
                 const status = response.status || 0;
                 const text = response.responseText || '';

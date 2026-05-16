@@ -76,22 +76,34 @@ export const Ao3Service = {
     MODULE_NAME: 'Ao3Service',
 
     _fetchAo3Cookies: async function (): Promise<string> {
+        const log = Core.getLogger(this.MODULE_NAME, '_fetchAo3Cookies');
         return new Promise((resolve) => {
             try {
                 GM_cookie.list(
-                    { domain: 'archiveofourown.org' },
+                    { url: 'https://archiveofourown.org/' },
                     (cookies, error) => {
-                        if (error || !cookies || cookies.length === 0) {
+                        if (error) {
+                            log('GM_cookie.list returned error.', { error });
                             resolve('');
                             return;
                         }
+                        if (!cookies || cookies.length === 0) {
+                            log('GM_cookie.list returned no cookies for AO3 domain.');
+                            resolve('');
+                            return;
+                        }
+                        log('AO3 cookies found.', {
+                            count: cookies.length,
+                            names: cookies.map(c => c.name),
+                        });
                         const cookieStr = cookies
                             .map(c => `${c.name}=${c.value}`)
                             .join('; ');
                         resolve(cookieStr);
                     }
                 );
-            } catch {
+            } catch (err) {
+                log('GM_cookie.list threw.', err as object);
                 resolve('');
             }
         });
@@ -140,6 +152,7 @@ export const Ao3Service = {
             method: 'GET',
             url: `${normalized}/navigate`,
             cookie: ao3Cookies,
+            fetch: true,
         });
         if (!response.ok) {
             const cfReason = this._cfActionableMessage(response, 'chapter index request');
@@ -202,6 +215,7 @@ export const Ao3Service = {
             method: 'GET',
             url: chapter.editUrl,
             cookie: ao3Cookies,
+            fetch: true,
         });
         if (!editResponse.ok) {
             const cfReason = this._cfActionableMessage(editResponse, 'chapter edit page request');
@@ -251,6 +265,7 @@ export const Ao3Service = {
             },
             data: payload.body,
             cookie: ao3Cookies,
+            fetch: true,
         });
         if (!updateResponse.ok) {
             const cfReason = this._cfActionableMessage(updateResponse, 'chapter update submission');
