@@ -121,6 +121,24 @@ export function convertTextLineBreaksToBr(html: string): string {
     return result;
 }
 
+export function normalizeHtmlParagraphLines(html: string): string {
+    return html
+        .replace(/<p\b[^>]*>[\s\S]*?<\/p>/gi, (paragraph: string) => {
+            const openTagMatch = paragraph.match(/^<p\b[^>]*>/i);
+            const closeTagMatch = paragraph.match(/<\/p>$/i);
+            if (!openTagMatch || !closeTagMatch) return paragraph;
+
+            const openTag = openTagMatch[0];
+            const closeTag = closeTagMatch[0];
+            const innerHtml = paragraph.slice(openTag.length, -closeTag.length)
+                .replace(/\s*[\r\n]+\s*/g, ' ')
+                .trim();
+
+            return `${openTag}${innerHtml}${closeTag}`;
+        })
+        .replace(/<\/p>\s*(<p\b[^>]*>)/gi, '</p>\n\n$1');
+}
+
 interface StripMarkerResult {
     content: string;
     stripped: boolean;
@@ -217,7 +235,9 @@ export interface ExportTransformOptions {
  *
  * 1. Ao3 HTML compatibility (only if format is HTML and setting is enabled).
  *    Not applied for DOCX — DocxBuilder reads `style` for its own alignment logic.
- * 2. Append end separator (if setting enabled, all formats).
+ * 2. Optional literal line-break conversion for HTML.
+ * 3. Optional HTML paragraph line normalization for HTML.
+ * 4. Append end separator (if setting enabled, all formats).
  */
 export function applyExportTransforms(
     content: string,
@@ -243,6 +263,10 @@ export function applyExportTransforms(
         } else {
             result = convertTextLineBreaksToBr(result);
         }
+    }
+
+    if (format === DocDownloadFormat.HTML && SettingsManager.get('normalizeHtmlParagraphs')) {
+        result = normalizeHtmlParagraphLines(result);
     }
 
     if (SettingsManager.get('appendSeparator')) {

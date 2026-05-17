@@ -565,6 +565,7 @@ describe('DocManager bulk import execution', () => {
         Core.activeDelegate = DocManagerDelegate;
         vi.restoreAllMocks();
         vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'normalizeHtmlParagraphs') return true;
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
             return 0;
         });
@@ -976,6 +977,7 @@ describe('DocManager AO3 migration execution', () => {
         vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue("<center><p style='text-align: centre;'>Centered</p></center>");
         vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
             if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'normalizeHtmlParagraphs') return true;
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
             return 0;
         });
@@ -994,6 +996,7 @@ describe('DocManager AO3 migration execution', () => {
         vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p>Line 1\nLine 2</p>');
         vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
             if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'normalizeHtmlParagraphs') return true;
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
             return 0;
         });
@@ -1007,7 +1010,7 @@ describe('DocManager AO3 migration execution', () => {
         await runAo3MigrationWithPlan(withoutLinebreaks);
         await runAo3MigrationWithPlan(withLinebreaks);
 
-        expect(updateSpy.mock.calls[0][1]).toBe('<p>Line 1\nLine 2</p>');
+        expect(updateSpy.mock.calls[0][1]).toBe('<p>Line 1 Line 2</p>');
         expect(updateSpy.mock.calls[1][1]).toBe('<p>Line 1<br>Line 2</p>');
     });
 
@@ -1023,6 +1026,7 @@ describe('DocManager AO3 migration execution', () => {
         vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p>Body</p><p align="center"><strong>Notes:</strong></p><p>Remove this</p>');
         vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
             if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'normalizeHtmlParagraphs') return true;
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
             return 0;
         });
@@ -1045,6 +1049,7 @@ describe('DocManager AO3 migration execution', () => {
         vi.spyOn(DocFetchService, 'fetchPrivateDocAsHtml').mockResolvedValue('<p>Body</p>Notes:\n<p>Keep this</p>');
         vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
             if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'normalizeHtmlParagraphs') return true;
             if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
             return 0;
         });

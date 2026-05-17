@@ -3,6 +3,7 @@ import {
     applyExportTransforms,
     convertStyleAlignToAttr,
     appendFormatSeparator,
+    normalizeHtmlParagraphLines,
     stripContentAfterMarker,
 } from '../utils/exportTransform';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
@@ -175,6 +176,7 @@ describe('stripContentAfterMarker', () => {
         vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
             if (key === 'appendSeparator') return true;
             if (key === 'ao3HtmlCompatibility') return false;
+            if (key === 'normalizeHtmlParagraphs') return true;
             return 0;
         });
 
@@ -188,5 +190,90 @@ describe('stripContentAfterMarker', () => {
         );
 
         expect(result).toBe('<p>Body</p>\n<hr>\n<p>&nbsp;</p>');
+    });
+});
+
+describe('normalizeHtmlParagraphLines', () => {
+    it('flattens multiline prose paragraphs into single lines', () => {
+        const input = '<p>First line\n    second line\nthird line</p>';
+
+        expect(normalizeHtmlParagraphLines(input)).toBe('<p>First line second line third line</p>');
+    });
+
+    it('preserves nested inline tags while flattening whitespace', () => {
+        const input = '<p>First\n    <em>second</em>\n    <strong>third</strong></p>';
+
+        expect(normalizeHtmlParagraphLines(input)).toBe('<p>First <em>second</em> <strong>third</strong></p>');
+    });
+
+    it('preserves paragraph attributes', () => {
+        const input = '<p class="intro" align="center">First\n    second</p>';
+
+        expect(normalizeHtmlParagraphLines(input)).toBe('<p class="intro" align="center">First second</p>');
+    });
+
+    it('separates adjacent paragraphs with a blank line', () => {
+        const input = '<p>First\n    paragraph.</p>\n<p><em>Second\n        paragraph.</em></p>';
+
+        expect(normalizeHtmlParagraphLines(input)).toBe(
+            '<p>First paragraph.</p>\n\n<p><em>Second paragraph.</em></p>',
+        );
+    });
+});
+
+describe('applyExportTransforms', () => {
+    it('normalizes HTML paragraphs by default', () => {
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'normalizeHtmlParagraphs') return true;
+            return 0;
+        });
+
+        const result = applyExportTransforms(
+            '<p>First line\n    second line</p><p>Third\n    line</p>',
+            DocDownloadFormat.HTML,
+        );
+
+        expect(result).toBe('<p>First line second line</p>\n\n<p>Third line</p>');
+    });
+
+    it('does not normalize paragraphs when the HTML setting is disabled', () => {
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'normalizeHtmlParagraphs') return false;
+            return 0;
+        });
+
+        const input = '<p>First line\n    second line</p><p>Third\n    line</p>';
+
+        expect(applyExportTransforms(input, DocDownloadFormat.HTML)).toBe(input);
+    });
+
+    it('leaves Markdown content unchanged', () => {
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'normalizeHtmlParagraphs') return true;
+            return 0;
+        });
+
+        const input = '<p>First line\n    second line</p>';
+
+        expect(applyExportTransforms(input, DocDownloadFormat.MARKDOWN)).toBe(input);
+    });
+
+    it('keeps explicit line breaks as br before paragraph normalization runs', () => {
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'ao3HtmlCompatibility' || key === 'appendSeparator') return false;
+            if (key === 'normalizeHtmlParagraphs') return true;
+            return 0;
+        });
+
+        const result = applyExportTransforms(
+            '<p>Line 1\nLine 2</p><p>Line 3\nLine 4</p>',
+            DocDownloadFormat.HTML,
+            { convertLineBreaks: true },
+        );
+
+        expect(result).toBe('<p>Line 1<br>Line 2</p>\n\n<p>Line 3<br>Line 4</p>');
     });
 });

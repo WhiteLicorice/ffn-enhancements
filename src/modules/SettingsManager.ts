@@ -58,6 +58,12 @@ export interface FFNSettings {
     ao3HtmlCompatibility: boolean;
 
     /**
+     * When true (default), flattens multi-line text inside exported HTML paragraph
+     * tags to single lines and inserts a blank line between adjacent paragraphs.
+     */
+    normalizeHtmlParagraphs: boolean;
+
+    /**
      * When true, appends a format-specific separator at the end of exported
      * content: `---` for Markdown, `HR tag` for HTML/DOCX.
      */
@@ -130,6 +136,7 @@ const DEFAULTS: FFNSettings = {
     pasteConvertHtml: true,
     pasteForceIntercept: false,
     ao3HtmlCompatibility: true,
+    normalizeHtmlParagraphs: true,
     appendSeparator: false,
     bulkReplaceAutofill: true,
     scrollStep: 300,
@@ -312,6 +319,7 @@ function _loadAll(): void {
     _loadBool('pasteConvertHtml');
     _loadBool('pasteForceIntercept');
     _loadBool('ao3HtmlCompatibility');
+    _loadBool('normalizeHtmlParagraphs');
     _loadBool('appendSeparator');
     _loadBool('bulkReplaceAutofill');
     _loadPositiveNumber('scrollStep');
@@ -453,4 +461,3 @@ function _notifySubscribers<K extends keyof FFNSettings>(
         }
     });
 }
-
