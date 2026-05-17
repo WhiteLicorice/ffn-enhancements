@@ -123,6 +123,7 @@ describe('_parseStoredValue — edge cases', () => {
             'pasteConvertHtml',
             'pasteForceIntercept',
             'ao3HtmlCompatibility',
+            'normalizeHtmlParagraphs',
             'appendSeparator',
             'bulkReplaceAutofill',
         ];
