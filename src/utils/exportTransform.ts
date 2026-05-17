@@ -130,8 +130,8 @@ export function normalizeHtmlParagraphLines(html: string): string {
 
             const openTag = openTagMatch[0];
             const closeTag = closeTagMatch[0];
-            const innerHtml = paragraph.slice(openTag.length, paragraph.length - closeTag.length)
-                .replace(/[ \t]*(?:\r\n|\r|\n)[ \t]*/g, ' ')
+            const innerHtml = paragraph.slice(openTag.length, -closeTag.length)
+                .replace(/\s*[\r\n]+\s*/g, ' ')
                 .trim();
 
             return `${openTag}${innerHtml}${closeTag}`;
