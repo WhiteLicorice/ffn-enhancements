@@ -21,6 +21,7 @@ const BOOL_KEYS: (keyof FFNSettings)[] = [
     'pasteConvertHtml',
     'pasteForceIntercept',
     'ao3HtmlCompatibility',
+    'normalizeHtmlParagraphs',
     'appendSeparator',
     'bulkReplaceAutofill',
 ];
@@ -181,6 +182,12 @@ function _buildModalHTML(): string {
                         'AO3 HTML Compatibility',
                         'Converts inline style="text-align:*" to align="*" in HTML exports. AO3\'s editor only accepts the align attribute.',
                         s.get('ao3HtmlCompatibility')
+                    ),
+                    _buildToggleRow(
+                        'normalizeHtmlParagraphs',
+                        'Normalize HTML Paragraph Lines',
+                        'Flattens multi-line paragraph text in HTML exports into single lines and inserts a blank line between adjacent paragraphs.',
+                        s.get('normalizeHtmlParagraphs')
                     ),
                     _buildToggleRow(
                         'appendSeparator',

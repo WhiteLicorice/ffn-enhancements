@@ -23,4 +23,15 @@ describe('SettingsPage', () => {
         expect(toggle?.type).toBe('checkbox');
         expect(toggle?.checked).toBe(true);
     });
+
+    it('shows the HTML paragraph normalization toggle enabled by default', () => {
+        SettingsPage.openModal();
+
+        const toggle = document.querySelector<HTMLInputElement>('[data-setting="normalizeHtmlParagraphs"]');
+
+        expect(document.body.textContent).toContain('Normalize HTML Paragraph Lines');
+        expect(toggle).not.toBeNull();
+        expect(toggle?.type).toBe('checkbox');
+        expect(toggle?.checked).toBe(true);
+    });
 });
