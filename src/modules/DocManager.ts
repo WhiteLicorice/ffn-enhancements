@@ -1117,10 +1117,10 @@ export const DocManager = {
                 align-items: center;
                 justify-content: space-between;
                 gap: 12px;
-                background: #336699;
+                background: #29297a;
                 color: #fff;
                 padding: 7px 10px;
-                border-bottom: 1px solid #254d73;
+                border-bottom: 1px solid #1f1f5c;
             }
             .ffne-dm-modal-header h3 {
                 margin: 0;

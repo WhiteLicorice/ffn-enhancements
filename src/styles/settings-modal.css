@@ -32,14 +32,14 @@
     justify-content: space-between;
     padding: 12px 16px;
     background: #f0f4f8;
-    border-bottom: 2px solid #336699;
+    border-bottom: 2px solid #29297a;
     flex-shrink: 0;
 }
 
 .ffne-modal-header h2 {
     font-size: 16px;
     font-weight: bold;
-    color: #336699;
+    color: #29297a;
     margin: 0;
 }
 
@@ -80,7 +80,7 @@
     padding: 8px 14px;
     font-weight: bold;
     font-size: 13px;
-    color: #336699;
+    color: #29297a;
 }
 details.ffne-settings-section > summary.ffne-settings-section-header {
     cursor: pointer;
@@ -157,10 +157,10 @@ details.ffne-settings-section:not([open]) > summary .ffne-adv-arrow-open { displ
     box-shadow: 0 1px 3px rgba(0,0,0,.25);
     transition: transform 0.2s;
 }
-.ffne-toggle input:checked + .ffne-toggle-slider { background: #336699; }
+.ffne-toggle input:checked + .ffne-toggle-slider { background: #29297a; }
 .ffne-toggle input:checked + .ffne-toggle-slider::before { transform: translateX(20px); }
 .ffne-toggle input:focus-visible + .ffne-toggle-slider {
-    outline: 2px solid #336699;
+    outline: 2px solid #29297a;
     outline-offset: 2px;
 }
 
@@ -174,7 +174,7 @@ details.ffne-settings-section:not([open]) > summary .ffne-adv-arrow-open { displ
     background: #fff;
     cursor: pointer;
 }
-.ffne-select:focus { outline: none; border-color: #336699; box-shadow: 0 0 0 2px rgba(51,102,153,.2); }
+.ffne-select:focus { outline: none; border-color: #29297a; box-shadow: 0 0 0 2px rgba(41,41,122,.2); }
 
 /* -- Number input -- */
 .ffne-number-input {
@@ -186,7 +186,7 @@ details.ffne-settings-section:not([open]) > summary .ffne-adv-arrow-open { displ
     font-size: 13px;
     text-align: right;
 }
-.ffne-number-input:focus { outline: none; border-color: #336699; box-shadow: 0 0 0 2px rgba(51,102,153,.2); }
+.ffne-number-input:focus { outline: none; border-color: #29297a; box-shadow: 0 0 0 2px rgba(41,41,122,.2); }
 .ffne-number-input:invalid { border-color: #c00; }
 
 /* -- Section subtitle -- */
