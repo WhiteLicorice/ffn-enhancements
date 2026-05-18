@@ -93,6 +93,11 @@ interface BulkImportFailure {
     reason: string;
 }
 
+interface BulkSimpleFailure {
+    docName: string;
+    reason: string;
+}
+
 interface Ao3MigrationState {
     normalizedWorkUrl: string;
     chapters: IAo3Chapter[];
@@ -430,6 +435,52 @@ function _renderAo3MigrationFailures(
             <tbody>${rowsHtml}</tbody>
         </table>
     `;
+}
+
+function _renderBulkFailures(
+    container: HTMLElement | null | undefined,
+    title: string,
+    failures: BulkSimpleFailure[],
+    onRetry?: () => void,
+): void {
+    if (!container) return;
+
+    if (failures.length === 0) {
+        container.hidden = true;
+        container.innerHTML = '';
+        return;
+    }
+
+    const rowsHtml = failures.map(failure => `
+        <tr>
+            <td>${_escapeHtml(failure.docName)}</td>
+            <td>${_escapeHtml(failure.reason)}</td>
+        </tr>
+    `).join('');
+
+    const retryHtml = onRetry
+        ? '<div style="margin-top:8px;"><button type="button" class="ffne-dm-btn ffne-dm-retry-btn">Retry Failed</button></div>'
+        : '';
+
+    container.hidden = false;
+    container.innerHTML = `
+        <div class="ffne-dm-import-results-title">${title}</div>
+        <table class="ffne-dm-preview" contenteditable="false">
+            <thead>
+                <tr>
+                    <th>Document</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+        </table>
+        ${retryHtml}
+    `;
+
+    if (onRetry) {
+        container.querySelector<HTMLButtonElement>('.ffne-dm-retry-btn')
+            ?.addEventListener('click', onRetry);
+    }
 }
 
 function _buildBulkImportPlan(
@@ -1253,13 +1304,23 @@ export const DocManager = {
                 gap: 8px;
             }
             .ffne-dm-routine {
+                border: 1px solid #d8d8d8;
+                background: #fafafa;
+                padding: 8px;
+            }
+            .ffne-dm-routine-header {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 gap: 12px;
-                border: 1px solid #d8d8d8;
-                background: #fafafa;
-                padding: 8px;
+            }
+            .ffne-dm-routine-status {
+                margin-top: 4px;
+                color: #555;
+                font-size: 11px;
+            }
+            .ffne-dm-routine-status:empty {
+                display: none;
             }
             .ffne-dm-routine-title {
                 font-weight: 700;
@@ -1422,7 +1483,7 @@ export const DocManager = {
         overlay.id = ADVANCED_MODAL_ID;
         overlay.className = 'ffne-dm-overlay';
         overlay.innerHTML = `
-            <div class="ffne-dm-modal ffne-dm-modal-sm" role="dialog" aria-modal="true" aria-labelledby="ffne-dm-advanced-title">
+            <div class="ffne-dm-modal" role="dialog" aria-modal="true" aria-labelledby="ffne-dm-advanced-title">
                 <div class="ffne-dm-modal-header">
                     <h3 id="ffne-dm-advanced-title">Advanced Routines</h3>
                     <button type="button" class="ffne-dm-close" aria-label="Close">x</button>
@@ -1430,20 +1491,32 @@ export const DocManager = {
                 <div class="ffne-dm-modal-body">
                     <div class="ffne-dm-routines">
                         <div class="ffne-dm-routine">
-                            <span class="ffne-dm-routine-title">Bulk Export</span>
-                            <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-export">Run</button>
+                            <div class="ffne-dm-routine-header">
+                                <span class="ffne-dm-routine-title">Bulk Export</span>
+                                <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-export">Run</button>
+                            </div>
+                            <div class="ffne-dm-routine-status" data-ffne-status="bulk-export"></div>
+                            <div class="ffne-dm-import-results" data-ffne-results="bulk-export" hidden></div>
                         </div>
                         <div class="ffne-dm-routine">
-                            <span class="ffne-dm-routine-title">Bulk Refresh</span>
-                            <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-refresh">Run</button>
+                            <div class="ffne-dm-routine-header">
+                                <span class="ffne-dm-routine-title">Bulk Refresh</span>
+                                <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-refresh">Run</button>
+                            </div>
+                            <div class="ffne-dm-routine-status" data-ffne-status="bulk-refresh"></div>
+                            <div class="ffne-dm-import-results" data-ffne-results="bulk-refresh" hidden></div>
                         </div>
                         <div class="ffne-dm-routine">
-                            <span class="ffne-dm-routine-title">Bulk Import</span>
-                            <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-import">Open</button>
+                            <div class="ffne-dm-routine-header">
+                                <span class="ffne-dm-routine-title">Bulk Import</span>
+                                <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-import">Open</button>
+                            </div>
                         </div>
                         <div class="ffne-dm-routine">
-                            <span class="ffne-dm-routine-title">Bulk Migrate to AO3</span>
-                            <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-migrate-ao3">Open</button>
+                            <div class="ffne-dm-routine-header">
+                                <span class="ffne-dm-routine-title">Bulk Migrate to AO3</span>
+                                <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-migrate-ao3">Open</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1458,10 +1531,18 @@ export const DocManager = {
             ?.addEventListener('click', () => this.closeAdvancedRoutinesModal());
 
         overlay.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-export"]')
-            ?.addEventListener('click', (e) => this.runBulkExport(e as MouseEvent));
+            ?.addEventListener('click', (e) => {
+                const statusEl = overlay.querySelector<HTMLElement>('[data-ffne-status="bulk-export"]');
+                const resultsEl = overlay.querySelector<HTMLElement>('[data-ffne-results="bulk-export"]');
+                this.runBulkExport(e as MouseEvent, statusEl || undefined, resultsEl || undefined);
+            });
 
         overlay.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-refresh"]')
-            ?.addEventListener('click', (e) => this.runBulkRefresh(e as MouseEvent));
+            ?.addEventListener('click', (e) => {
+                const statusEl = overlay.querySelector<HTMLElement>('[data-ffne-status="bulk-refresh"]');
+                const resultsEl = overlay.querySelector<HTMLElement>('[data-ffne-results="bulk-refresh"]');
+                this.runBulkRefresh(e as MouseEvent, statusEl || undefined, resultsEl || undefined);
+            });
 
         overlay.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-import"]')
             ?.addEventListener('click', () => {
@@ -2313,39 +2394,66 @@ export const DocManager = {
      * Delegates to _runBulkOperation for the two-pass retry orchestration.
      * The output format (Markdown or HTML) is read from SettingsManager at call time.
      */
-    runBulkExport: async function (e: MouseEvent) {
+    runBulkExport: async function (
+        e: MouseEvent,
+        statusEl?: HTMLElement,
+        resultsEl?: HTMLElement,
+        retryDocIds?: Set<string>,
+    ) {
         const log = Core.getLogger(this.MODULE_NAME, 'runBulkExport');
         const format = SettingsManager.get('docDownloadFormat');
-        // Has to be immediately available inside this scope
-        // not in the async-inside-sync blocks below
         const btn = e.currentTarget as HTMLButtonElement;
         log(`Bulk export format: ${format}`);
         const zip = new JSZip();
+        const failures: BulkSimpleFailure[] = [];
+        const failedItems: IBulkItem[] = [];
+
+        if (statusEl) statusEl.textContent = 'Preparing export...';
+        _renderBulkFailures(resultsEl, 'Failed Exports', []);
 
         await _runBulkOperation(e, {
             verb: 'Export',
-            processItem: async (item) => {
-                const content = format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML
-                    ? await DocFetchService.fetchPrivateDocAsHtml(item.docId, item.title)
-                    : await DocFetchService.fetchAndConvertPrivateDoc(item.docId, item.title);
-                if (content) {
-                    const transformed = applyExportTransforms(content, format);
-                    if (format === DocDownloadFormat.DOCX) {
-                        const docxBlob = await DocxBuilder.build(transformed, item.title);
-                        zip.file(`${item.title}.docx`, docxBlob, { date: new Date() });
-                    } else {
-                        zip.file(`${item.title}.${format}`, transformed, { date: new Date() });
-                    }
-                    return true;
+            filterRows: retryDocIds
+                ? (items) => items.filter(item => retryDocIds.has(item.docId))
+                : undefined,
+            onItemStart: (item, pass, index, total) => {
+                if (statusEl) {
+                    const action = pass === 2 ? 'Retrying' : 'Exporting';
+                    statusEl.textContent = `${action} ${index}/${total}: ${item.title}...`;
                 }
-                return false;
+            },
+            processItem: async (item) => {
+                const originalBg = item.row.style.backgroundColor;
+                item.row.style.backgroundColor = '#fff4c2';
+                item.row.style.transition = 'background-color 0.3s ease';
+                try {
+                    const content = format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML
+                        ? await DocFetchService.fetchPrivateDocAsHtml(item.docId, item.title)
+                        : await DocFetchService.fetchAndConvertPrivateDoc(item.docId, item.title);
+                    if (content) {
+                        const transformed = applyExportTransforms(content, format);
+                        if (format === DocDownloadFormat.DOCX) {
+                            const docxBlob = await DocxBuilder.build(transformed, item.title);
+                            zip.file(`${item.title}.docx`, docxBlob, { date: new Date() });
+                        } else {
+                            zip.file(`${item.title}.${format}`, transformed, { date: new Date() });
+                        }
+                        return true;
+                    }
+                    return false;
+                } finally {
+                    item.row.style.backgroundColor = originalBg;
+                }
             },
             onPermanentFailure: (item) => {
                 zip.file(`ERROR_${item.title}.txt`, `Failed to retrieve content for DocID ${item.docId} after multiple attempts.`);
+                failures.push({ docName: item.docName, reason: `Failed to retrieve content for DocID ${item.docId}.` });
+                failedItems.push(item);
             },
-            onFinalize: async ({ successCount, retriedItems }) => {
-                if (successCount > 0 || retriedItems.length > 0) {
+            onFinalize: async ({ successCount, totalCount }) => {
+                if (successCount > 0) {
                     btn.innerText = "Zipping...";
+                    if (statusEl) statusEl.textContent = 'Zipping...';
                     log(`Zipping ${successCount} documents`);
                     const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
                     const timestamp = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 19);
@@ -2354,6 +2462,25 @@ export const DocManager = {
                 } else {
                     btn.innerText = "Empty";
                 }
+
+                if (statusEl) {
+                    if (successCount === totalCount) {
+                        statusEl.textContent = `Exported all ${successCount} document(s).`;
+                    } else if (successCount > 0) {
+                        statusEl.textContent = `Exported ${successCount}; failed ${totalCount - successCount}.`;
+                    } else {
+                        statusEl.textContent = 'No documents exported.';
+                    }
+                }
+
+                const retryFn = failedItems.length > 0
+                    ? () => {
+                        const retryIds = new Set(failedItems.map(item => item.docId));
+                        const fakeEvent = { currentTarget: btn } as unknown as MouseEvent;
+                        DocManager.runBulkExport(fakeEvent, statusEl, resultsEl, retryIds);
+                    }
+                    : undefined;
+                _renderBulkFailures(resultsEl, 'Failed Exports', failures, retryFn);
             },
         });
     },
@@ -2362,62 +2489,96 @@ export const DocManager = {
      * Handles the bulk refresh of all visible documents.
      * Delegates to _runBulkOperation for the two-pass retry orchestration.
      */
-    runBulkRefresh: async function (e: MouseEvent) {
+    runBulkRefresh: async function (
+        e: MouseEvent,
+        statusEl?: HTMLElement,
+        resultsEl?: HTMLElement,
+        retryDocIds?: Set<string>,
+    ) {
         const log = Core.getLogger(this.MODULE_NAME, 'runBulkRefresh');
         const btn = e.currentTarget as HTMLButtonElement;
+        const failures: BulkSimpleFailure[] = [];
+        const failedItems: IBulkItem[] = [];
+
+        if (statusEl) statusEl.textContent = 'Preparing refresh...';
+        _renderBulkFailures(resultsEl, 'Failed Refreshes', []);
 
         await _runBulkOperation(e, {
             verb: 'Refresh',
-            filterRows: (items) => {
-                const before = items.length;
-                const filtered = items.filter(item => {
-                    const lifeCell = item.row.cells[DocManager._resolveLifeColIdx()];
-                    return !lifeCell || lifeCell.innerText.trim() !== '365 days';
-                });
-                const skipped = before - filtered.length;
-                if (skipped > 0) {
-                    log(`Skipped ${skipped} document(s) already at 365 days.`);
-                }
-                if (filtered.length === 0) {
-                    log("No documents need refreshing (all already have 365 days).");
-                    alert('All documents already have 365 days life remaining. No refresh needed!');
-                }
-                return filtered;
-            },
+            filterRows: retryDocIds
+                ? (items) => items.filter(item => retryDocIds.has(item.docId))
+                : (items) => {
+                    const before = items.length;
+                    const filtered = items.filter(item => {
+                        const lifeCell = item.row.cells[DocManager._resolveLifeColIdx()];
+                        return !lifeCell || lifeCell.innerText.trim() !== '365 days';
+                    });
+                    const skipped = before - filtered.length;
+                    if (skipped > 0) {
+                        log(`Skipped ${skipped} document(s) already at 365 days.`);
+                    }
+                    if (filtered.length === 0) {
+                        log("No documents need refreshing (all already have 365 days).");
+                        if (statusEl) statusEl.textContent = 'All documents already have 365 days life remaining.';
+                    }
+                    return filtered;
+                },
             preBatch: (totalCount) => {
-                alert(
-                    `Bulk Refresh will start for ${totalCount} document(s).\n\n` +
-                    'Please DO NOT CLOSE this tab until the refresh is complete.\n\n' +
-                    'The refresh runs silently in the background — you will be notified when it is done.'
-                );
+                if (statusEl) statusEl.textContent = `Refreshing ${totalCount} document(s). Do not close this tab.`;
+            },
+            onItemStart: (item, pass, index, total) => {
+                if (statusEl) {
+                    const action = pass === 2 ? 'Retrying' : 'Refreshing';
+                    statusEl.textContent = `${action} ${index}/${total}: ${item.title}...`;
+                }
             },
             processItem: async (item) => {
                 const originalBg = item.row.style.backgroundColor;
-                item.row.style.backgroundColor = '#90EE90';
+                item.row.style.backgroundColor = '#fff4c2';
                 item.row.style.transition = 'background-color 0.3s ease';
-
-                const success = await DocFetchService.refreshPrivateDoc(item.docId, item.title);
-
-                item.row.style.backgroundColor = originalBg;
-                return success;
+                try {
+                    return await DocFetchService.refreshPrivateDoc(item.docId, item.title);
+                } finally {
+                    item.row.style.backgroundColor = originalBg;
+                }
             },
             onItemSuccess: (item, pass) => {
                 DocManager.updateLifeColumn(item.row, `bulk pass ${pass}: ${item.title}`);
             },
-            onFinalize: ({ successCount, totalCount, retriedItems: _retriedItems }) => {
+            onPermanentFailure: (item) => {
+                failures.push({ docName: item.docName, reason: `Failed to refresh DocID ${item.docId}.` });
+                failedItems.push(item);
+            },
+            onFinalize: ({ successCount, totalCount }) => {
                 if (successCount === totalCount) {
                     btn.innerText = "All Done!";
                     log(`Successfully refreshed all ${successCount} documents`);
-                    alert(`Bulk Refresh complete! All ${successCount} document(s) refreshed successfully.`);
                 } else if (successCount > 0) {
                     btn.innerText = `${successCount}/${totalCount}`;
                     log(`Refreshed ${successCount} of ${totalCount} documents`);
-                    alert(`Bulk Refresh complete. ${successCount} of ${totalCount} document(s) refreshed successfully.\n\nSome documents could not be refreshed — check the console for details.`);
                 } else {
                     btn.innerText = "Failed";
                     log(`Failed to refresh any documents`);
-                    alert(`Bulk Refresh failed. No documents could be refreshed.\n\nPlease check the console for details and try again.`);
                 }
+
+                if (statusEl) {
+                    if (successCount === totalCount) {
+                        statusEl.textContent = `Refreshed all ${successCount} document(s).`;
+                    } else if (successCount > 0) {
+                        statusEl.textContent = `Refreshed ${successCount}; failed ${totalCount - successCount}.`;
+                    } else {
+                        statusEl.textContent = 'No documents refreshed.';
+                    }
+                }
+
+                const retryFn = failedItems.length > 0
+                    ? () => {
+                        const retryIds = new Set(failedItems.map(item => item.docId));
+                        const fakeEvent = { currentTarget: btn } as unknown as MouseEvent;
+                        DocManager.runBulkRefresh(fakeEvent, statusEl, resultsEl, retryIds);
+                    }
+                    : undefined;
+                _renderBulkFailures(resultsEl, 'Failed Refreshes', failures, retryFn);
             },
         });
     },
@@ -2703,6 +2864,7 @@ export const DocManager = {
         const btn = e.currentTarget as HTMLButtonElement;
         const failureReasons = new Map<string, string>();
         const failures: BulkImportFailure[] = [];
+        const failedItems: IBulkItem[] = [];
 
         const setFailure = (item: IBulkItem, reason: string) => {
             failureReasons.set(item.docId, reason);
@@ -2810,6 +2972,7 @@ export const DocManager = {
                     fileName: fileLabelFor(item),
                     reason: failureReasons.get(item.docId) || 'Import failed after retry.',
                 });
+                failedItems.push(item);
             },
             onFinalize: ({ successCount, totalCount }) => {
                 const failedCount = totalCount - successCount;
@@ -2829,6 +2992,28 @@ export const DocManager = {
                 }
             },
         });
+
+        if (failedItems.length > 0 && resultsEl) {
+            const retryBtn = document.createElement('button');
+            retryBtn.textContent = 'Retry Failed';
+            retryBtn.className = 'ffne-dm-btn';
+            retryBtn.style.cssText = 'display:block; margin-top:8px;';
+            retryBtn.addEventListener('click', (retryEvent) => {
+                retryBtn.remove();
+                const retryPlan: BulkImportPlan = {
+                    ...plan,
+                    matchedCount: failedItems.filter(item => plan.fileByDocId.has(item.docId)).length,
+                    hasBlockingErrors: false,
+                    fileByDocId: new Map(
+                        failedItems
+                            .filter(item => plan.fileByDocId.has(item.docId))
+                            .map(item => [item.docId, plan.fileByDocId.get(item.docId)!])
+                    ),
+                };
+                DocManager.runBulkImport(retryEvent, retryPlan, statusEl, resultsEl);
+            });
+            resultsEl.appendChild(retryBtn);
+        }
     },
 
     // Exported for tests — verifies button-reference lifecycle in onFinalize callbacks.
