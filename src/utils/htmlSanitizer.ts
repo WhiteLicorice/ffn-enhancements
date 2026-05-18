@@ -144,6 +144,8 @@ function sanitizeNode(node: Node, doc: Document): Node[] {
 }
 
 export function sanitizeEditorHtml(html: string): string {
+    // lgtm[js/xss] lgtm[js/xss-through-dom] -- the parsed document is only used
+    // as inert input to rebuild a new allowlisted HTML fragment.
     const sourceDoc = new DOMParser().parseFromString(html, 'text/html');
     const sourceRoot = sourceDoc.body;
     if (!sourceRoot) return '';

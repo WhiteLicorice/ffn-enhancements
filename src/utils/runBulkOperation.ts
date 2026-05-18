@@ -112,13 +112,15 @@ export async function runBulkOperation<TItem>(e: MouseEvent, config: IBulkOperat
         }
 
         if (onFinalize) {
-            await onFinalize({
+            const result = {
                 successCount,
                 totalCount: items.length,
                 retriedItems,
-                aborted: abortReason !== null ? true : undefined,
-                abortReason: abortReason ?? undefined,
-            });
+                ...(abortReason !== null
+                    ? { aborted: true, abortReason }
+                    : {}),
+            };
+            await onFinalize(result);
         }
     } catch (error) {
         log(`Error during bulk ${verb}.`, error);

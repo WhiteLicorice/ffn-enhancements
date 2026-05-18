@@ -313,6 +313,8 @@ export const SettingsManager: ISitewideModule & {
  * so adding a new setting usually needs just one line here + a DEFAULTS entry.
  */
 function _loadAll(): void {
+    // Start from defaults on every load so repeated prime() calls cannot retain
+    // stale values from earlier storage snapshots.
     _cache = { ...DEFAULTS };
     _loadEnum('docDownloadFormat', DocDownloadFormat);
     _loadBool('fluidMode');

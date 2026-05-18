@@ -88,8 +88,8 @@ export function isValidAo3Chapter(value: unknown): value is IAo3Chapter {
     return isNumericId(chapter.workId)
         && isNumericId(chapter.chapterId)
         && typeof chapter.chapterNumber === 'number'
-        && Number.isInteger(chapter.chapterNumber)
         && chapter.chapterNumber > 0
+        && Number.isInteger(chapter.chapterNumber)
         && typeof chapter.label === 'string'
         && typeof chapter.title === 'string'
         && typeof chapter.readerUrl === 'string'
