@@ -313,6 +313,7 @@ export const SettingsManager: ISitewideModule & {
  * so adding a new setting usually needs just one line here + a DEFAULTS entry.
  */
 function _loadAll(): void {
+    _cache = { ...DEFAULTS };
     _loadEnum('docDownloadFormat', DocDownloadFormat);
     _loadBool('fluidMode');
     _loadBool('pasteConvertMarkdown');
@@ -353,9 +354,10 @@ function _loadPositiveNumber(key: keyof FFNSettings): void {
  * Falls back to `DEFAULTS.fluidMode` if no value is stored.
  */
 function _loadBool(key: keyof FFNSettings): void {
-    const stored = GM_getValue(STORAGE_PREFIX + key) as boolean | undefined;
-    if (stored !== undefined) {
-        (_cache as Record<string, any>)[key] = Boolean(stored);
+    const stored = GM_getValue(STORAGE_PREFIX + key);
+    const parsed = _parseStoredValue(key, stored);
+    if (parsed !== undefined) {
+        (_cache as Record<string, any>)[key] = parsed;
     }
 }
 
@@ -417,7 +419,9 @@ export function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unkn
     const defaultVal = DEFAULTS[key];
 
     if (typeof defaultVal === 'boolean') {
-        return Boolean(raw) as FFNSettings[K];
+        if (raw === true || raw === 'true') return true as FFNSettings[K];
+        if (raw === false || raw === 'false') return false as FFNSettings[K];
+        return undefined;
     }
 
     if (typeof defaultVal === 'number') {

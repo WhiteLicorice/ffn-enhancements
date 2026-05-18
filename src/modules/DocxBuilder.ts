@@ -328,7 +328,7 @@ function walkInlineChildren(
                 break;
             case 'A': {
                 const url = node.getAttribute('href') || '';
-                if (url && ctx) {
+                if (isSafeExternalHyperlink(url) && ctx) {
                     const rId = ctx.assignRId(url);
                     const linkRuns: OoxmlRun[] = [];
                     walkInlineChildren(node, linkRuns, fmt, ctx);
@@ -374,6 +374,17 @@ function walkInlineChildren(
                 break;
             }
         }
+    }
+}
+
+function isSafeExternalHyperlink(url: string): boolean {
+    const trimmed = url.trim();
+    if (!trimmed) return false;
+    try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'mailto:';
+    } catch {
+        return false;
     }
 }
 

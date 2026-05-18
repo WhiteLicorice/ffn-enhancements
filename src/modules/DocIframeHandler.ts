@@ -3,6 +3,7 @@
 import { Core } from './Core';
 import { SimpleMarkdownParser } from './SimpleMarkdownParser';
 import { SettingsManager } from './SettingsManager';
+import { sanitizeEditorHtml } from '../utils/htmlSanitizer';
 
 /**
  * Shared utility for managing TinyMCE iframes across different FFN pages.
@@ -114,10 +115,10 @@ export const DocIframeHandler = {
 
         // HTML check runs first — it is the more explicit/specific format.
         if (convertHtml && this._isHtmlSource(text)) {
-            htmlToInsert = text;
+            htmlToInsert = sanitizeEditorHtml(text);
             detected = 'HTML source';
         } else if (convertMd && SimpleMarkdownParser.isMarkdown(text)) {
-            htmlToInsert = SimpleMarkdownParser.parse(text);
+            htmlToInsert = sanitizeEditorHtml(SimpleMarkdownParser.parse(text));
             detected = 'Markdown';
         }
 

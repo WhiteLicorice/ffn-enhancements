@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { _parseStoredValue } from '../modules/SettingsManager';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { GM_getValue } from '$';
+import { _parseStoredValue, SettingsManager } from '../modules/SettingsManager';
 import type { FFNSettings } from '../modules/SettingsManager';
 
 // ─── boolean values ──────────────────────────────────────────────────────
@@ -15,17 +16,18 @@ describe('_parseStoredValue — boolean', () => {
         expect(_parseStoredValue(key, false)).toBe(false);
     });
 
-    it('coerces truthy values to true', () => {
-        expect(_parseStoredValue(key, 1)).toBe(true);
+    it('accepts string booleans', () => {
         expect(_parseStoredValue(key, 'true')).toBe(true);
-        expect(_parseStoredValue(key, 'anything')).toBe(true);
+        expect(_parseStoredValue(key, 'false')).toBe(false);
     });
 
-    it('coerces falsy values to false', () => {
-        expect(_parseStoredValue(key, 0)).toBe(false);
-        expect(_parseStoredValue(key, '')).toBe(false);
-        expect(_parseStoredValue(key, null)).toBe(false);
-        expect(_parseStoredValue(key, undefined)).toBe(false);
+    it('rejects non-boolean values', () => {
+        expect(_parseStoredValue(key, 1)).toBeUndefined();
+        expect(_parseStoredValue(key, 0)).toBeUndefined();
+        expect(_parseStoredValue(key, '')).toBeUndefined();
+        expect(_parseStoredValue(key, 'anything')).toBeUndefined();
+        expect(_parseStoredValue(key, null)).toBeUndefined();
+        expect(_parseStoredValue(key, undefined)).toBeUndefined();
     });
 });
 
@@ -143,5 +145,25 @@ describe('_parseStoredValue — edge cases', () => {
             expect(_parseStoredValue(k, 100)).toBe(100);
             expect(_parseStoredValue(k, 0)).toBeUndefined();
         }
+    });
+});
+
+describe('SettingsManager prime', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('resets the cache to defaults before each reload', () => {
+        vi.mocked(GM_getValue).mockImplementation((key: string) => (
+            key === 'ffne_pasteForceIntercept' ? true : undefined
+        ));
+
+        SettingsManager.prime();
+        expect(SettingsManager.get('pasteForceIntercept')).toBe(true);
+
+        vi.mocked(GM_getValue).mockImplementation(() => undefined);
+        SettingsManager.prime();
+
+        expect(SettingsManager.get('pasteForceIntercept')).toBe(false);
     });
 });

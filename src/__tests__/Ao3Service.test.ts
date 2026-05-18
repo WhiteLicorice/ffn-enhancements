@@ -173,6 +173,61 @@ describe('Ao3Service', () => {
         expect(params.get('update_button')).toBe('Update');
     });
 
+    it('rejects invalid chapter metadata before fetching or posting', async () => {
+        const result = await Ao3Service.updateChapterContent({
+            ...makeChapter(),
+            readerUrl: 'https://archiveofourown.org/works/77945481/chapters/not-a-number',
+        }, '<p>Replacement</p>');
+
+        expect(result.ok).toBe(false);
+        expect(result.reason).toContain('invalid');
+        expect(GM_xmlhttpRequest).not.toHaveBeenCalled();
+    });
+
+    it('rejects cross-origin AO3 form actions before posting', async () => {
+        queueTextResponses([{
+            responseText: `
+                <html>
+                    <body class="logged-in">
+                        <form action="https://evil.test/works/77945481/chapters/123456789" method="post" class="edit_chapter">
+                            <input type="hidden" name="authenticity_token" value="secret-token">
+                            <textarea id="content" name="chapter[content]">Old body</textarea>
+                            <input type="submit" name="update_button" value="Update">
+                        </form>
+                    </body>
+                </html>
+            `,
+        }]);
+
+        const result = await Ao3Service.updateChapterContent(makeChapter(), '<p>Replacement</p>');
+
+        expect(result.ok).toBe(false);
+        expect(result.reason).toContain('form action');
+        expect(GM_xmlhttpRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects wrong-chapter AO3 form actions before posting', async () => {
+        queueTextResponses([{
+            responseText: `
+                <html>
+                    <body class="logged-in">
+                        <form action="/works/77945481/chapters/223456789" method="post" class="edit_chapter">
+                            <input type="hidden" name="authenticity_token" value="secret-token">
+                            <textarea id="content" name="chapter[content]">Old body</textarea>
+                            <input type="submit" name="update_button" value="Update">
+                        </form>
+                    </body>
+                </html>
+            `,
+        }]);
+
+        const result = await Ao3Service.updateChapterContent(makeChapter(), '<p>Replacement</p>');
+
+        expect(result.ok).toBe(false);
+        expect(result.reason).toContain('form action');
+        expect(GM_xmlhttpRequest).toHaveBeenCalledTimes(1);
+    });
+
     it('detects AO3 failure responses after update attempts', async () => {
         const chapter = makeChapter();
         queueTextResponses([

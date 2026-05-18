@@ -68,6 +68,19 @@ describe('Ao3BridgeClient', () => {
         expect(parseAo3BridgeResult(JSON.stringify({ id: 'x', ok: true }))).toBeNull();
     });
 
+    it('rejects bridge update requests with mismatched chapter URLs', () => {
+        expect(parseAo3BridgeRequest(JSON.stringify({
+            id: 'req-2',
+            kind: 'updateChapterContent',
+            createdAt: 100,
+            chapter: {
+                ...makeChapter(),
+                readerUrl: 'https://archiveofourown.org/works/77945481/chapters/999999999',
+            },
+            html: '<p>Replacement</p>',
+        }))).toBeNull();
+    });
+
     it('opens AO3 in the foreground, waits for the matching result, and cleans storage', async () => {
         const promise = Ao3BridgeClient.fetchChapterIndex(
             'https://archiveofourown.org/works/77945481/chapters/1',

@@ -10,6 +10,8 @@ export interface IBulkOperationResult<TItem = IBulkItem> {
     successCount: number;
     totalCount: number;
     retriedItems: TItem[];
+    aborted?: boolean;
+    abortReason?: string;
 }
 
 export interface IBulkOperationConfig<TItem = IBulkItem> {

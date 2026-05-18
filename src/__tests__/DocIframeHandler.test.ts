@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocIframeHandler } from '../modules/DocIframeHandler';
+import { SettingsManager } from '../modules/SettingsManager';
 
 // ─── _isHtmlSource ──────────────────────────────────────────────────────────
 
@@ -161,5 +162,67 @@ describe('_isHtmlSource', () => {
 
     it('handles whitespace-only string', () => {
         expect(DocIframeHandler._isHtmlSource('   ')).toBe(false);
+    });
+});
+
+describe('handlePaste', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('sanitizes HTML source before insertHTML', () => {
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key) => {
+            if (key === 'pasteForceIntercept') return true;
+            if (key === 'pasteConvertHtml') return true;
+            if (key === 'pasteConvertMarkdown') return false;
+            return false as never;
+        });
+
+        const execCommand = vi.fn();
+        const iframe = { contentDocument: { execCommand } } as unknown as HTMLIFrameElement;
+        const event = {
+            clipboardData: {
+                getData: (type: string) => type === 'text/plain'
+                    ? '<p onclick="alert(1)">Safe</p><script>alert(1)</script>'
+                    : '',
+                types: [],
+            },
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+        } as unknown as ClipboardEvent;
+
+        DocIframeHandler.handlePaste(event, iframe);
+
+        expect(execCommand).toHaveBeenCalledWith('insertHTML', false, '<p>Safe</p>');
+    });
+
+    it('sanitizes marked markdown output before insertHTML', () => {
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key) => {
+            if (key === 'pasteForceIntercept') return true;
+            if (key === 'pasteConvertHtml') return false;
+            if (key === 'pasteConvertMarkdown') return true;
+            return false as never;
+        });
+
+        const execCommand = vi.fn();
+        const iframe = { contentDocument: { execCommand } } as unknown as HTMLIFrameElement;
+        const event = {
+            clipboardData: {
+                getData: (type: string) => type === 'text/plain'
+                    ? '**Bold**\n\n<script>alert(1)</script>\n\n<div onclick="x()">Body</div>'
+                    : '',
+                types: [],
+            },
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+        } as unknown as ClipboardEvent;
+
+        DocIframeHandler.handlePaste(event, iframe);
+
+        expect(execCommand).toHaveBeenCalledWith(
+            'insertHTML',
+            false,
+            '<p><strong>Bold</strong></p><div>Body</div>',
+        );
     });
 });

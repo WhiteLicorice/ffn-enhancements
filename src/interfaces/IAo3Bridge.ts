@@ -45,6 +45,20 @@ export interface Ao3BridgeHeartbeat {
     loggedIn: boolean;
 }
 
+function isNumericId(value: unknown): value is string {
+    return typeof value === 'string' && /^\d+$/.test(value);
+}
+
+export function buildAo3ChapterReaderUrl(workId: string, chapterId: string): string | null {
+    if (!isNumericId(workId) || !isNumericId(chapterId)) return null;
+    return `https://archiveofourown.org/works/${workId}/chapters/${chapterId}`;
+}
+
+export function buildAo3ChapterEditUrl(workId: string, chapterId: string): string | null {
+    const readerUrl = buildAo3ChapterReaderUrl(workId, chapterId);
+    return readerUrl ? `${readerUrl}/edit` : null;
+}
+
 function parseJsonObject(raw: unknown): Record<string, unknown> | null {
     if (typeof raw !== 'string' || !raw.trim()) return null;
     try {
@@ -60,16 +74,28 @@ function isBridgeKind(value: unknown): value is Ao3BridgeRequestKind {
     return value === 'loadChapterIndex' || value === 'updateChapterContent';
 }
 
-function isChapter(value: unknown): value is IAo3Chapter {
+export function isValidAo3Chapter(value: unknown): value is IAo3Chapter {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     const chapter = value as Partial<Record<keyof IAo3Chapter, unknown>>;
-    return typeof chapter.workId === 'string'
-        && typeof chapter.chapterId === 'string'
+    const readerUrl = buildAo3ChapterReaderUrl(
+        typeof chapter.workId === 'string' ? chapter.workId : '',
+        typeof chapter.chapterId === 'string' ? chapter.chapterId : '',
+    );
+    const editUrl = buildAo3ChapterEditUrl(
+        typeof chapter.workId === 'string' ? chapter.workId : '',
+        typeof chapter.chapterId === 'string' ? chapter.chapterId : '',
+    );
+    return isNumericId(chapter.workId)
+        && isNumericId(chapter.chapterId)
         && typeof chapter.chapterNumber === 'number'
+        && Number.isInteger(chapter.chapterNumber)
+        && chapter.chapterNumber > 0
         && typeof chapter.label === 'string'
         && typeof chapter.title === 'string'
         && typeof chapter.readerUrl === 'string'
-        && typeof chapter.editUrl === 'string';
+        && chapter.readerUrl === readerUrl
+        && typeof chapter.editUrl === 'string'
+        && chapter.editUrl === editUrl;
 }
 
 export function serializeAo3BridgeRequest(request: Ao3BridgeRequest): string {
@@ -97,7 +123,7 @@ export function parseAo3BridgeRequest(raw: unknown): Ao3BridgeRequest | null {
             : null;
     }
 
-    if (!isChapter(parsed.chapter) || typeof parsed.html !== 'string') return null;
+    if (!isValidAo3Chapter(parsed.chapter) || typeof parsed.html !== 'string') return null;
     return {
         id,
         kind,
@@ -115,7 +141,7 @@ export function parseAo3BridgeResult(raw: unknown): Ao3BridgeResult | null {
     if (typeof id !== 'string' || !isBridgeKind(kind) || typeof ok !== 'boolean') return null;
 
     const result: Ao3BridgeResult = { id, kind, ok };
-    if (Array.isArray(parsed.chapters) && parsed.chapters.every(isChapter)) {
+    if (Array.isArray(parsed.chapters) && parsed.chapters.every(isValidAo3Chapter)) {
         result.chapters = parsed.chapters;
     }
     if (typeof parsed.reason === 'string') result.reason = parsed.reason;

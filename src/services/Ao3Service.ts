@@ -1,6 +1,7 @@
 import { Ao3Delegate } from '../delegates/Ao3Delegate';
 import { Elements } from '../enums/Elements';
 import { IAo3Chapter } from '../interfaces/IAo3Migration';
+import { buildAo3ChapterReaderUrl, isValidAo3Chapter } from '../interfaces/IAo3Bridge';
 import { Core } from '../modules/Core';
 import { gmRequestText } from '../utils/gmRequestText';
 import { isCloudflareChallenge } from '../utils/cloudflareChallenge';
@@ -226,6 +227,10 @@ export const Ao3Service = {
     ): Promise<Ao3UpdateResult> {
         const log = Core.getLogger(this.MODULE_NAME, 'updateChapterContent');
         const requestText = requester || this.defaultRequester;
+        if (!isValidAo3Chapter(chapter)) {
+            log('AO3 chapter update blocked by invalid chapter metadata.', chapter);
+            return { ok: false, reason: 'AO3 chapter metadata is invalid.' };
+        }
         if (!html.trim()) {
             log('AO3 chapter update blocked by empty replacement HTML.', {
                 chapterId: chapter.chapterId,
@@ -378,6 +383,22 @@ export const Ao3Service = {
         params.set('update_button', updateButton?.value || 'Update');
 
         const actionUrl = new URL(form.getAttribute('action') || chapter.editUrl, chapter.editUrl).href;
+        const expectedActionUrl = buildAo3ChapterReaderUrl(chapter.workId, chapter.chapterId);
+        if (!expectedActionUrl) {
+            return { ok: false, reason: 'AO3 chapter metadata is invalid.' };
+        }
+
+        let parsedActionUrl: URL;
+        try {
+            parsedActionUrl = new URL(actionUrl);
+        } catch {
+            return { ok: false, reason: 'AO3 chapter form action URL is invalid.' };
+        }
+
+        if (parsedActionUrl.origin !== 'https://archiveofourown.org' || normalizeUrlForComparison(parsedActionUrl.href) !== normalizeUrlForComparison(expectedActionUrl)) {
+            return { ok: false, reason: 'AO3 chapter form action did not match the expected chapter URL.' };
+        }
+
         return {
             ok: true,
             actionUrl,

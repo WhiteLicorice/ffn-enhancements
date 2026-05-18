@@ -40,6 +40,12 @@ export async function runBulkOperation<TItem>(e: MouseEvent, config: IBulkOperat
     let successCount = 0;
     const retriedItems: TItem[] = [];
     let abortReason: string | null = null;
+    const permanentlyFailedItems = new Set<TItem>();
+    const markPermanentFailure = (item: TItem) => {
+        if (permanentlyFailedItems.has(item)) return;
+        permanentlyFailedItems.add(item);
+        onPermanentFailure?.(item);
+    };
 
     try {
         for (let i = 0; i < items.length; i++) {
@@ -60,10 +66,10 @@ export async function runBulkOperation<TItem>(e: MouseEvent, config: IBulkOperat
                 if (err instanceof AbortBulkOperation) {
                     abortReason = err.reason;
                     log(`Bulk operation aborted: ${abortReason}`);
-                    if (onPermanentFailure) {
-                        for (let j = i; j < items.length; j++) {
-                            onPermanentFailure(items[j]);
-                        }
+                    retriedItems.forEach(markPermanentFailure);
+                    markPermanentFailure(item);
+                    for (let j = i + 1; j < items.length; j++) {
+                        markPermanentFailure(items[j]);
                     }
                     break;
                 }
@@ -83,17 +89,36 @@ export async function runBulkOperation<TItem>(e: MouseEvent, config: IBulkOperat
 
                 await new Promise(r => setTimeout(r, SettingsManager.get('bulkRetryDelayMs')));
 
-                if (await processItem(item)) {
-                    successCount++;
-                    if (onItemSuccess) onItemSuccess(item, 2);
-                } else {
-                    if (onPermanentFailure) onPermanentFailure(item);
+                try {
+                    if (await processItem(item)) {
+                        successCount++;
+                        if (onItemSuccess) onItemSuccess(item, 2);
+                    } else {
+                        markPermanentFailure(item);
+                    }
+                } catch (err) {
+                    if (err instanceof AbortBulkOperation) {
+                        abortReason = err.reason;
+                        log(`Bulk operation aborted during retry pass: ${abortReason}`);
+                        markPermanentFailure(item);
+                        for (let j = i + 1; j < retriedItems.length; j++) {
+                            markPermanentFailure(retriedItems[j]);
+                        }
+                        break;
+                    }
+                    throw err;
                 }
             }
         }
 
         if (onFinalize) {
-            await onFinalize({ successCount, totalCount: items.length, retriedItems });
+            await onFinalize({
+                successCount,
+                totalCount: items.length,
+                retriedItems,
+                aborted: !!abortReason || undefined,
+                abortReason: abortReason || undefined,
+            });
         }
     } catch (error) {
         log(`Error during bulk ${verb}.`, error);

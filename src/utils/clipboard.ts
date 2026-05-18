@@ -1,4 +1,5 @@
 import { GM_setClipboard } from '$';
+import { sanitizeEditorHtml } from './htmlSanitizer';
 
 /**
  * Strips HTML tags using DOMParser. More robust than regex for edge cases.
@@ -78,10 +79,11 @@ export async function writeToClipboard(
     isHtml: boolean
 ): Promise<boolean> {
     if (isHtml) {
+        const sanitizedHtml = sanitizeEditorHtml(content);
         // 1. GM_setClipboard — Tampermonkey native, synchronous, works in sandbox.
         if (typeof GM_setClipboard !== 'undefined') {
             try {
-                GM_setClipboard(content, 'html');
+                GM_setClipboard(sanitizedHtml, 'html');
                 return true;
             } catch {
                 // GM_setClipboard failed — fall through.
@@ -90,10 +92,10 @@ export async function writeToClipboard(
 
         // 2. ClipboardItem API — writes both text/html and text/plain.
         try {
-            const plainText = stripHtmlBasic(content);
+            const plainText = stripHtmlBasic(sanitizedHtml);
             await navigator.clipboard.write([
                 new ClipboardItem({
-                    'text/html': new Blob([content], { type: 'text/html' }),
+                    'text/html': new Blob([sanitizedHtml], { type: 'text/html' }),
                     'text/plain': new Blob([plainText], { type: 'text/plain' }),
                 }),
             ]);
@@ -103,7 +105,7 @@ export async function writeToClipboard(
         }
 
         // 3. contentEditable div + execCommand('copy').
-        return copyHtmlFallback(content);
+        return copyHtmlFallback(sanitizedHtml);
     }
 
     try {

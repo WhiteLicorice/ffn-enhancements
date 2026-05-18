@@ -1,5 +1,6 @@
-import { GM_addValueChangeListener, GM_getValue, GM_setValue } from '$';
+import { GM_addValueChangeListener, GM_deleteValue, GM_getValue, GM_setValue } from '$';
 import {
+    AO3_BRIDGE_DEFAULT_TIMEOUT_MS,
     AO3_BRIDGE_HEARTBEAT_INTERVAL_MS,
     AO3_BRIDGE_HEARTBEAT_KEY,
     AO3_BRIDGE_REQUEST_KEY,
@@ -84,6 +85,20 @@ export const Ao3Bridge = {
         }
 
         if (this._activeRequestId === request.id || this._lastHandledRequestId === request.id || hasResultForRequest(request)) {
+            return;
+        }
+
+        if (Date.now() - request.createdAt > AO3_BRIDGE_DEFAULT_TIMEOUT_MS) {
+            const result = bridgeResultForError(request, 'AO3 bridge request expired before it could be handled.');
+            GM_deleteValue(AO3_BRIDGE_REQUEST_KEY);
+            GM_setValue(AO3_BRIDGE_RESULT_KEY, serializeAo3BridgeResult(result));
+            this._lastHandledRequestId = request.id;
+            this._setStatus(result.reason || 'AO3 bridge request expired.');
+            log('Discarded stale AO3 bridge request.', {
+                id: request.id,
+                kind: request.kind,
+                createdAt: request.createdAt,
+            });
             return;
         }
 

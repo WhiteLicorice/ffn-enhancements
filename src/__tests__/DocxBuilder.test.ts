@@ -183,6 +183,22 @@ describe('DocxBuilder._parseHtmlToParagraphs', () => {
         expect(hyperlinks.size).toBe(1);
     });
 
+    it('preserves link text without relationships for unsafe hyperlink schemes', () => {
+        const { paragraphs, hyperlinks } = parse('<p><a href="javascript:alert(1)">Bad</a> <a href="file:///tmp/x">File</a></p>');
+        expect(hyperlinks.size).toBe(0);
+        expect(paragraphs[0].children).toEqual([{ text: 'Bad' }, { text: ' ' }, { text: 'File' }]);
+    });
+
+    it('preserves safe mailto hyperlinks', () => {
+        const { paragraphs, hyperlinks } = parse('<p><a href="mailto:test@example.com">Email</a></p>');
+        expect(hyperlinks.size).toBe(1);
+        if ('rId' in paragraphs[0].children[0]) {
+            expect(hyperlinks.get(paragraphs[0].children[0].rId)).toBe('mailto:test@example.com');
+        } else {
+            throw new Error('Expected hyperlink child');
+        }
+    });
+
     it('handles image with alt text', () => {
         const { paragraphs } = parse('<p>Text <img src="x.jpg" alt="Diagram"> end</p>');
         expect(paragraphs[0].children[1]).toEqual({ text: 'Diagram' });

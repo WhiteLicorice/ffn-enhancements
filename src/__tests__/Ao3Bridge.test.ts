@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GM_getValue, GM_setValue } from '$';
+import { GM_deleteValue, GM_getValue, GM_setValue } from '$';
 import { Ao3Bridge } from '../modules/Ao3Bridge';
 import type { IAo3Chapter } from '../interfaces/IAo3Migration';
 import {
+    AO3_BRIDGE_DEFAULT_TIMEOUT_MS,
     AO3_BRIDGE_REQUEST_KEY,
     AO3_BRIDGE_RESULT_KEY,
     parseAo3BridgeResult,
@@ -47,6 +48,9 @@ describe('Ao3Bridge', () => {
         vi.mocked(GM_getValue).mockImplementation((key: string) => storage.get(key));
         vi.mocked(GM_setValue).mockImplementation((key: string, value: unknown) => {
             storage.set(key, value);
+        });
+        vi.mocked(GM_deleteValue).mockImplementation((key: string) => {
+            storage.delete(key);
         });
     });
 
@@ -177,5 +181,56 @@ describe('Ao3Bridge', () => {
         const result = parseAo3BridgeResult(storage.get(AO3_BRIDGE_RESULT_KEY));
         expect(result?.ok).toBe(false);
         expect(result?.reason).toContain('Cloudflare');
+    });
+
+    it('rejects stale requests, cleans them up, and stores a failure result', async () => {
+        storage.set(AO3_BRIDGE_REQUEST_KEY, serializeAo3BridgeRequest({
+            id: 'stale-1',
+            kind: 'loadChapterIndex',
+            createdAt: Date.now() - AO3_BRIDGE_DEFAULT_TIMEOUT_MS - 1,
+            workUrl: 'https://archiveofourown.org/works/77945481',
+        }));
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+
+        await Ao3Bridge._processPendingRequest();
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(storage.has(AO3_BRIDGE_REQUEST_KEY)).toBe(false);
+        expect(parseAo3BridgeResult(storage.get(AO3_BRIDGE_RESULT_KEY))).toEqual({
+            id: 'stale-1',
+            kind: 'loadChapterIndex',
+            ok: false,
+            reason: 'AO3 bridge request expired before it could be handled.',
+        });
+    });
+
+    it('rejects unexpected AO3 form actions before posting chapter updates', async () => {
+        storage.set(AO3_BRIDGE_REQUEST_KEY, serializeAo3BridgeRequest({
+            id: 'invalid-update',
+            kind: 'updateChapterContent',
+            createdAt: Date.now(),
+            chapter: makeChapter(),
+            html: '<p>Replacement</p>',
+        }));
+        const fetchMock = vi.fn().mockResolvedValue(response(200, `
+            <html>
+                <body class="logged-in">
+                    <form action="https://evil.test/works/77945481/chapters/123456789" method="post" class="edit_chapter">
+                        <input type="hidden" name="authenticity_token" value="secret-token">
+                        <textarea id="content" name="chapter[content]">Old body</textarea>
+                        <input type="submit" name="update_button" value="Update">
+                    </form>
+                </body>
+            </html>
+        `, makeChapter().editUrl));
+        vi.stubGlobal('fetch', fetchMock);
+
+        await Ao3Bridge._processPendingRequest();
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const result = parseAo3BridgeResult(storage.get(AO3_BRIDGE_RESULT_KEY));
+        expect(result?.ok).toBe(false);
+        expect(result?.reason).toContain('form action');
     });
 });
