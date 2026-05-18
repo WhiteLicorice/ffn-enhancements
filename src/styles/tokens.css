@@ -1,0 +1,51 @@
+/* --- FFN Enhancements: Design Tokens (CSS Custom Properties) --- */
+
+:root {
+    /* Brand */
+    --ffne-brand-primary: #29297a;
+    --ffne-brand-dark: #1f1f5c;
+    --ffne-brand-bg: #f0f4f8;
+    --ffne-brand-text: #234d73;
+    --ffne-brand-hover-bg: #e3edf7;
+    --ffne-brand-hover-text: #123a5a;
+    --ffne-brand-focus-glow: rgba(41, 41, 122, 0.2);
+
+    /* Semantic */
+    --ffne-success-text: #236423;
+    --ffne-success-bg: #edf9ed;
+    --ffne-error-text: #8b0000;
+    --ffne-error-bg: #fff0f0;
+    --ffne-error-border: #d8a0a0;
+    --ffne-warning-text: #8a5c00;
+    --ffne-warning-text-dark: #8a3b00;
+    --ffne-warning-bg: #fff8e8;
+    --ffne-warning-border: #e8c98a;
+    --ffne-running-bg: #fff4c2;
+    --ffne-toast-success: #27ae60;
+    --ffne-toast-error: #e74c3c;
+
+    /* UI / Neutrals */
+    --ffne-border: #ccc;
+    --ffne-border-light: #ddd;
+    --ffne-border-divider: #f0f0f0;
+    --ffne-border-input: #b9c9d9;
+    --ffne-border-table: #c8d6e4;
+    --ffne-border-brand-light: #d8e2ec;
+    --ffne-toggle-off: #bbb;
+    --ffne-text-body: #333;
+    --ffne-text-secondary: #666;
+    --ffne-text-muted: #777;
+    --ffne-text-disabled: #555;
+    --ffne-text-unit: #999;
+    --ffne-card-bg: #fafafa;
+    --ffne-white: #fff;
+
+    /* Shadows */
+    --ffne-shadow-modal: rgba(0, 0, 0, 0.35);
+    --ffne-shadow-overlay: rgba(0, 0, 0, 0.55);
+    --ffne-shadow-toggle: rgba(0, 0, 0, 0.25);
+    --ffne-shadow-subtle: rgba(0, 0, 0, 0.18);
+    --ffne-shadow-drawer: rgba(0, 0, 0, 0.22);
+    --ffne-shadow-toast: rgba(0, 0, 0, 0.3);
+    --ffne-shadow-image-modal: rgba(0, 0, 0, 0.8);
+}

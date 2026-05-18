@@ -13,6 +13,7 @@ import { DocFetchService } from '../services/DocFetchService';
 import { StoryReplaceService } from '../services/StoryReplaceService';
 import { runBulkOperation } from '../utils/runBulkOperation';
 import { SettingsManager } from './SettingsManager';
+import { BRAND, SEMANTIC, UI, SHADOW } from '../styles/tokens';
 
 const BULK_REPLACE_BUTTON_ID = 'ffne-story-bulk-replace-btn';
 const BULK_REPLACE_MODAL_ID = 'ffne-story-bulk-replace-modal';
@@ -553,8 +554,8 @@ export const StoryEditContent = {
             .ffne-story-bulk-btn {
                 appearance: none;
                 border: 1px solid #7892ad;
-                background: #f0f4f8;
-                color: #234d73;
+                background: ${BRAND.BG};
+                color: ${BRAND.TEXT};
                 font-family: Verdana, Arial, sans-serif;
                 font-size: 12px;
                 line-height: 18px;
@@ -567,7 +568,7 @@ export const StoryEditContent = {
                 position: fixed;
                 inset: 0;
                 z-index: 99999;
-                background: rgba(0, 0, 0, 0.35);
+                background: ${SHADOW.MODAL};
                 font-family: Verdana, Arial, sans-serif;
             }
             .ffne-story-bulk-modal {
@@ -578,19 +579,19 @@ export const StoryEditContent = {
                 width: min(820px, calc(100vw - 32px));
                 max-height: min(760px, calc(100vh - 32px));
                 overflow: auto;
-                background: #fff;
+                background: ${UI.WHITE};
                 border: 1px solid #7892ad;
-                box-shadow: 0 3px 18px rgba(0, 0, 0, 0.35);
+                box-shadow: 0 3px 18px ${SHADOW.MODAL};
             }
             .ffne-story-bulk-header {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 gap: 12px;
-                background: #29297a;
-                color: #fff;
+                background: ${BRAND.PRIMARY};
+                color: ${UI.WHITE};
                 padding: 7px 10px;
-                border-bottom: 1px solid #1f1f5c;
+                border-bottom: 1px solid ${BRAND.DARK};
             }
             .ffne-story-bulk-header h3 {
                 margin: 0;
@@ -600,7 +601,7 @@ export const StoryEditContent = {
                 appearance: none;
                 border: 0;
                 background: transparent;
-                color: #fff;
+                color: ${UI.WHITE};
                 cursor: pointer;
                 font-size: 18px;
                 line-height: 18px;
@@ -608,19 +609,19 @@ export const StoryEditContent = {
             }
             .ffne-story-bulk-body {
                 padding: 12px;
-                color: #333;
+                color: ${UI.TEXT_BODY};
                 font-size: 12px;
             }
             .ffne-story-bulk-summary {
                 margin-bottom: 10px;
                 padding: 7px 8px;
                 background: #f7f9fb;
-                border: 1px solid #d8e2ec;
+                border: 1px solid ${UI.BORDER_BRAND_LIGHT};
             }
             .ffne-story-bulk-summary.ffne-story-bulk-error {
-                color: #8b0000;
-                background: #fff0f0;
-                border-color: #d8a0a0;
+                color: ${SEMANTIC.ERROR_TEXT};
+                background: ${SEMANTIC.ERROR_BG};
+                border-color: ${SEMANTIC.ERROR_BORDER};
             }
             .ffne-story-bulk-table {
                 width: 100%;
@@ -628,25 +629,25 @@ export const StoryEditContent = {
             }
             .ffne-story-bulk-table th,
             .ffne-story-bulk-table td {
-                border: 1px solid #ddd;
+                border: 1px solid ${UI.BORDER_LIGHT};
                 padding: 5px 6px;
                 text-align: left;
                 vertical-align: top;
             }
             .ffne-story-bulk-table th {
-                background: #f0f4f8;
+                background: ${BRAND.BG};
             }
             .ffne-story-bulk-row-running {
-                background: #fff4c2;
+                background: ${SEMANTIC.RUNNING_BG};
             }
             .ffne-story-bulk-row-success {
-                background: #edf9ed;
+                background: ${SEMANTIC.SUCCESS_BG};
             }
             .ffne-story-bulk-row-failed {
-                background: #fff0f0;
+                background: ${SEMANTIC.ERROR_BG};
             }
             .ffne-story-bulk-status-duplicate {
-                color: #8b0000;
+                color: ${SEMANTIC.ERROR_TEXT};
                 font-weight: 700;
             }
             .ffne-story-bulk-footer {
@@ -658,14 +659,14 @@ export const StoryEditContent = {
             }
             .ffne-story-bulk-run-status {
                 margin-right: auto;
-                color: #555;
+                color: ${UI.TEXT_DISABLED};
             }
             .ffne-story-bulk-results {
                 margin-top: 10px;
                 padding: 7px 8px;
-                color: #8b0000;
-                background: #fff0f0;
-                border: 1px solid #d8a0a0;
+                color: ${SEMANTIC.ERROR_TEXT};
+                background: ${SEMANTIC.ERROR_BG};
+                border: 1px solid ${SEMANTIC.ERROR_BORDER};
             }
             .ffne-story-bulk-results[hidden] {
                 display: none;

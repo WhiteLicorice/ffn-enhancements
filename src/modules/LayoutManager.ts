@@ -4,6 +4,7 @@ import { Elements } from '../enums/Elements';
 import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
 import { FFNLogger } from './FFNLogger';
 import { SettingsManager } from './SettingsManager';
+import tokenStyles from '../styles/tokens.css?raw';
 import fluidStyles from '../styles/fluid-mode.css?raw';
 
 // ─── Module-level Constants ────────────────────────────────────────────────────
@@ -12,6 +13,11 @@ import fluidStyles from '../styles/fluid-mode.css?raw';
  * Module name used for logging.
  */
 const MODULE_NAME = 'LayoutManager';
+
+/**
+ * The ID used for the injected design token style tag.
+ */
+const TOKEN_STYLE_TAG_ID = 'ffn-enhancements-token-styles';
 
 /**
  * The ID used for the injected style tag to prevent duplicates.
@@ -56,6 +62,7 @@ export const LayoutManager = {
      * Safe to call before the DOM is fully parsed.
      */
     prime(): void {
+        _injectTokenStyles();
         _injectFluidStyles();
         // Restore persisted preference. SettingsManager.prime() runs first
         // (guaranteed by EarlyBoot registration order), so the stored value
@@ -264,6 +271,26 @@ function _injectViewportMeta(): void {
         }
         _log('injectViewportMeta', 'Injected missing Viewport Meta tag.');
     }
+}
+
+/**
+ * Injects design tokens as CSS custom properties on :root.
+ * Must run before any other style injection so that var() references resolve.
+ */
+function _injectTokenStyles(): void {
+    if (document.getElementById(TOKEN_STYLE_TAG_ID)) {
+        return;
+    }
+
+    const style = document.createElement('style');
+    style.id = TOKEN_STYLE_TAG_ID;
+    style.textContent = tokenStyles;
+    if (document.head) {
+        document.head.appendChild(style);
+    } else {
+        document.documentElement.appendChild(style);
+    }
+    _log('injectTokenStyles', 'Design tokens injected into head.');
 }
 
 /**
