@@ -1,3 +1,6 @@
+import { parseDocument } from 'htmlparser2';
+import type { ChildNode as ParsedChildNode, Element as ParsedElement, ParentNode as ParsedParentNode } from 'domhandler';
+
 const STRIP_CONTENT_TAGS = new Set([
     'script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'noscript', 'title',
 ]);
@@ -13,15 +16,23 @@ const CONTAINER_TAGS = new Set([
     'big', 'sub', 'sup', 'code', 'samp', 'kbd', 'mark', 'del', 's', 'strike',
 ]);
 
-function extractAllowedAlignment(el: Element): 'left' | 'center' | null {
-    if (el.tagName.toLowerCase() === 'center') return 'center';
+function getAttribute(node: ParsedElement, name: string): string {
+    return node.attribs?.[name] || '';
+}
 
-    const alignAttr = (el.getAttribute('align') || '').trim().toLowerCase();
+function getChildren(node: ParsedParentNode): ParsedChildNode[] {
+    return Array.isArray(node.children) ? node.children : [];
+}
+
+function extractAllowedAlignment(el: ParsedElement): 'left' | 'center' | null {
+    if (el.name.toLowerCase() === 'center') return 'center';
+
+    const alignAttr = getAttribute(el, 'align').trim().toLowerCase();
     if (alignAttr === 'left' || alignAttr === 'center' || alignAttr === 'centre') {
         return alignAttr === 'centre' ? 'center' : alignAttr;
     }
 
-    const styleAttr = el.getAttribute('style') || '';
+    const styleAttr = getAttribute(el, 'style');
     const match = styleAttr.match(/(?:^|;)\s*text-align\s*:\s*([^;]+)/i);
     if (!match) return null;
 
@@ -33,11 +44,11 @@ function extractAllowedAlignment(el: Element): 'left' | 'center' | null {
 }
 
 function extractAllowedInlineFormatting(
-    el: Element,
+    el: ParsedElement,
     explicit: { bold?: boolean; italic?: boolean; underline?: boolean } = {},
 ): { bold: boolean; italic: boolean; underline: boolean } {
-    const tag = el.tagName.toLowerCase();
-    const style = el.getAttribute('style') || '';
+    const tag = el.name.toLowerCase();
+    const style = getAttribute(el, 'style');
     const fontWeight = style.match(/(?:^|;)\s*font-weight\s*:\s*([^;]+)/i)?.[1].trim().toLowerCase() || '';
     const fontStyle = style.match(/(?:^|;)\s*font-style\s*:\s*([^;]+)/i)?.[1].trim().toLowerCase() || '';
     const textDecoration = style.match(/(?:^|;)\s*text-decoration(?:-line)?\s*:\s*([^;]+)/i)?.[1].trim().toLowerCase() || '';
@@ -85,7 +96,7 @@ function wrapNodes(
 
 function applyAllowedInlineFormatting(
     nodes: Node[],
-    source: Element,
+    source: ParsedElement,
     doc: Document,
     explicit: { bold?: boolean; italic?: boolean; underline?: boolean } = {},
 ): Node[] {
@@ -97,28 +108,29 @@ function applyAllowedInlineFormatting(
     return result;
 }
 
-function sanitizeChildren(source: Node, doc: Document): Node[] {
+function sanitizeChildren(source: ParsedParentNode, doc: Document): Node[] {
     const sanitized: Node[] = [];
-    Array.from(source.childNodes).forEach(child => {
+    getChildren(source).forEach(child => {
         sanitized.push(...sanitizeNode(child, doc));
     });
     return sanitized;
 }
 
-function sanitizeNode(node: Node, doc: Document): Node[] {
-    if (node.nodeType === Node.TEXT_NODE) {
-        return node.textContent ? [doc.createTextNode(node.textContent)] : [];
+function sanitizeNode(node: ParsedChildNode, doc: Document): Node[] {
+    if (node.type === 'text') {
+        return node.data ? [doc.createTextNode(node.data)] : [];
     }
 
-    if (!(node instanceof Element)) return [];
+    if (node.type === 'comment' || node.type === 'directive') return [];
+    if (node.type !== 'tag' && node.type !== 'script' && node.type !== 'style') return [];
 
-    const tag = node.tagName.toLowerCase();
+    const tag = node.name.toLowerCase();
     if (STRIP_CONTENT_TAGS.has(tag)) return [];
     if (tag === 'hr') return [doc.createElement('hr')];
     if (tag === 'br') return [doc.createElement('br')];
 
     if (tag === 'img') {
-        const alt = (node.getAttribute('alt') || '').trim();
+        const alt = getAttribute(node, 'alt').trim();
         return [doc.createTextNode(alt || '[Image]')];
     }
 
@@ -144,15 +156,15 @@ function sanitizeNode(node: Node, doc: Document): Node[] {
 }
 
 export function sanitizeEditorHtml(html: string): string {
-    // lgtm[js/xss] lgtm[js/xss-through-dom] -- the parsed document is only used
-    // as inert input to rebuild a new allowlisted HTML fragment.
-    const sourceDoc = new DOMParser().parseFromString(html, 'text/html');
-    const sourceRoot = sourceDoc.body;
-    if (!sourceRoot) return '';
+    const sourceDoc = parseDocument(html, {
+        lowerCaseAttributeNames: true,
+        lowerCaseTags: true,
+        recognizeSelfClosing: true,
+    });
 
     const sanitizedDoc = document.implementation.createHTMLDocument('');
     const sanitizedRoot = sanitizedDoc.createElement('div');
-    sanitizeChildren(sourceRoot, sanitizedDoc).forEach(child => sanitizedRoot.appendChild(child));
+    sanitizeChildren(sourceDoc, sanitizedDoc).forEach(child => sanitizedRoot.appendChild(child));
     Array.from(sanitizedRoot.childNodes).forEach(child => {
         if (child.nodeType === Node.TEXT_NODE && !child.textContent?.trim()) {
             sanitizedRoot.removeChild(child);

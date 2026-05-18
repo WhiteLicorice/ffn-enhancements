@@ -82,10 +82,10 @@ export async function runBulkOperation<TItem>(e: MouseEvent, config: IBulkOperat
             if (btn) btn.innerText = 'Cooling...';
             await new Promise(r => setTimeout(r, SettingsManager.get('bulkCooldownMs')));
 
-            for (let i = 0; i < retriedItems.length; i++) {
-                const item = retriedItems[i];
-                if (btn) btn.innerText = `Retry ${i + 1}/${retriedItems.length}`;
-                if (onItemStart) onItemStart(item, 2, i + 1, retriedItems.length);
+            for (let retryIndex = 0; retryIndex < retriedItems.length; retryIndex++) {
+                const item = retriedItems[retryIndex];
+                if (btn) btn.innerText = `Retry ${retryIndex + 1}/${retriedItems.length}`;
+                if (onItemStart) onItemStart(item, 2, retryIndex + 1, retriedItems.length);
 
                 await new Promise(r => setTimeout(r, SettingsManager.get('bulkRetryDelayMs')));
 
@@ -101,7 +101,7 @@ export async function runBulkOperation<TItem>(e: MouseEvent, config: IBulkOperat
                         abortReason = err.reason;
                         log(`Bulk operation aborted during retry pass: ${abortReason}`);
                         markPermanentFailure(item);
-                        for (let j = i + 1; j < retriedItems.length; j++) {
+                        for (let j = retryIndex + 1; j < retriedItems.length; j++) {
                             markPermanentFailure(retriedItems[j]);
                         }
                         break;
