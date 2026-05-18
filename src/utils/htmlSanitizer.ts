@@ -144,8 +144,8 @@ function sanitizeNode(node: Node, doc: Document): Node[] {
 }
 
 export function sanitizeEditorHtml(html: string): string {
-    const sourceDoc = new DOMParser().parseFromString(`<div id="ffne-import-root">${html}</div>`, 'text/html');
-    const sourceRoot = sourceDoc.getElementById('ffne-import-root');
+    const sourceDoc = new DOMParser().parseFromString(html, 'text/html');
+    const sourceRoot = sourceDoc.body;
     if (!sourceRoot) return '';
 
     const sanitizedDoc = document.implementation.createHTMLDocument('');

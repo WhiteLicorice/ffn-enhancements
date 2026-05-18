@@ -116,8 +116,8 @@ export async function runBulkOperation<TItem>(e: MouseEvent, config: IBulkOperat
                 successCount,
                 totalCount: items.length,
                 retriedItems,
-                aborted: !!abortReason || undefined,
-                abortReason: abortReason || undefined,
+                aborted: abortReason !== null ? true : undefined,
+                abortReason: abortReason ?? undefined,
             });
         }
     } catch (error) {

@@ -419,8 +419,9 @@ export function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unkn
     const defaultVal = DEFAULTS[key];
 
     if (typeof defaultVal === 'boolean') {
-        if (raw === true || raw === 'true') return true as FFNSettings[K];
-        if (raw === false || raw === 'false') return false as FFNSettings[K];
+        if (typeof raw === 'boolean') return raw as FFNSettings[K];
+        if (raw === 'true') return true as FFNSettings[K];
+        if (raw === 'false') return false as FFNSettings[K];
         return undefined;
     }
 
