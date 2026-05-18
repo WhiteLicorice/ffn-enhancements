@@ -125,6 +125,24 @@ describe('Ao3Service', () => {
         expect(params.get('update_button')).toBe('Update');
     });
 
+    it('accepts absolute AO3 form actions for the expected reader URL', () => {
+        const doc = new DOMParser().parseFromString(`
+            <html>
+                <body class="logged-in">
+                    <form action="https://archiveofourown.org/works/77945481/chapters/123456789" method="post" class="edit_chapter">
+                        <textarea id="content" name="chapter[content]">Old body</textarea>
+                        <input type="submit" name="update_button" value="Update">
+                    </form>
+                </body>
+            </html>
+        `, 'text/html');
+
+        const payload = Ao3Service._buildUpdatePayload(doc, makeChapter(), '<p>Replacement</p>');
+
+        expect(payload.ok).toBe(true);
+        expect(payload.actionUrl).toBe('https://archiveofourown.org/works/77945481/chapters/123456789');
+    });
+
     it('posts the native AO3 form payload and detects reader-page success', async () => {
         const chapter = makeChapter();
         queueTextResponses([
@@ -212,6 +230,50 @@ describe('Ao3Service', () => {
                 <html>
                     <body class="logged-in">
                         <form action="/works/77945481/chapters/223456789" method="post" class="edit_chapter">
+                            <input type="hidden" name="authenticity_token" value="secret-token">
+                            <textarea id="content" name="chapter[content]">Old body</textarea>
+                            <input type="submit" name="update_button" value="Update">
+                        </form>
+                    </body>
+                </html>
+            `,
+        }]);
+
+        const result = await Ao3Service.updateChapterContent(makeChapter(), '<p>Replacement</p>');
+
+        expect(result.ok).toBe(false);
+        expect(result.reason).toContain('form action');
+        expect(GM_xmlhttpRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects missing AO3 form actions before posting', async () => {
+        queueTextResponses([{
+            responseText: `
+                <html>
+                    <body class="logged-in">
+                        <form method="post" class="edit_chapter">
+                            <input type="hidden" name="authenticity_token" value="secret-token">
+                            <textarea id="content" name="chapter[content]">Old body</textarea>
+                            <input type="submit" name="update_button" value="Update">
+                        </form>
+                    </body>
+                </html>
+            `,
+        }]);
+
+        const result = await Ao3Service.updateChapterContent(makeChapter(), '<p>Replacement</p>');
+
+        expect(result.ok).toBe(false);
+        expect(result.reason).toContain('submission action');
+        expect(GM_xmlhttpRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects edit-page AO3 form actions before posting', async () => {
+        queueTextResponses([{
+            responseText: `
+                <html>
+                    <body class="logged-in">
+                        <form action="/works/77945481/chapters/123456789/edit" method="post" class="edit_chapter">
                             <input type="hidden" name="authenticity_token" value="secret-token">
                             <textarea id="content" name="chapter[content]">Old body</textarea>
                             <input type="submit" name="update_button" value="Update">

@@ -205,6 +205,44 @@ describe('Ao3Bridge', () => {
         });
     });
 
+    it('rejects requests with non-positive timestamps before fetching', async () => {
+        storage.set(AO3_BRIDGE_REQUEST_KEY, serializeAo3BridgeRequest({
+            id: 'zero-time',
+            kind: 'loadChapterIndex',
+            createdAt: 0,
+            workUrl: 'https://archiveofourown.org/works/77945481',
+        }));
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+
+        await Ao3Bridge._processPendingRequest();
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(storage.has(AO3_BRIDGE_REQUEST_KEY)).toBe(false);
+        const result = parseAo3BridgeResult(storage.get(AO3_BRIDGE_RESULT_KEY));
+        expect(result?.ok).toBe(false);
+        expect(result?.reason).toContain('timestamp');
+    });
+
+    it('rejects requests whose timestamps are too far in the future before fetching', async () => {
+        storage.set(AO3_BRIDGE_REQUEST_KEY, serializeAo3BridgeRequest({
+            id: 'future-time',
+            kind: 'loadChapterIndex',
+            createdAt: Date.now() + 60_000,
+            workUrl: 'https://archiveofourown.org/works/77945481',
+        }));
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+
+        await Ao3Bridge._processPendingRequest();
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(storage.has(AO3_BRIDGE_REQUEST_KEY)).toBe(false);
+        const result = parseAo3BridgeResult(storage.get(AO3_BRIDGE_RESULT_KEY));
+        expect(result?.ok).toBe(false);
+        expect(result?.reason).toContain('future');
+    });
+
     it('rejects unexpected AO3 form actions before posting chapter updates', async () => {
         storage.set(AO3_BRIDGE_REQUEST_KEY, serializeAo3BridgeRequest({
             id: 'invalid-update',

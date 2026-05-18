@@ -115,7 +115,7 @@ export function parseAo3BridgeRequest(raw: unknown): Ao3BridgeRequest | null {
     if (!parsed) return null;
 
     const { id, kind, createdAt } = parsed;
-    if (typeof id !== 'string' || !isBridgeKind(kind) || typeof createdAt !== 'number') return null;
+    if (typeof id !== 'string' || !isBridgeKind(kind) || typeof createdAt !== 'number' || !Number.isFinite(createdAt)) return null;
 
     if (kind === 'loadChapterIndex') {
         return typeof parsed.workUrl === 'string'

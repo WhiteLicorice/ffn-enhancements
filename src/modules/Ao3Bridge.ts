@@ -16,6 +16,7 @@ import { Core } from './Core';
 import { Ao3Service } from '../services/Ao3Service';
 
 const PANEL_ID = 'ffne-ao3-bridge-panel';
+const AO3_BRIDGE_MAX_FUTURE_SKEW_MS = 30 * 1000;
 
 function bridgeResultForError(request: Ao3BridgeRequest, reason: string): Ao3BridgeResult {
     return {
@@ -29,6 +30,19 @@ function bridgeResultForError(request: Ao3BridgeRequest, reason: string): Ao3Bri
 function hasResultForRequest(request: Ao3BridgeRequest): boolean {
     const result = parseAo3BridgeResult(GM_getValue(AO3_BRIDGE_RESULT_KEY));
     return !!result && result.id === request.id && result.kind === request.kind;
+}
+
+function invalidRequestTimestampReason(request: Ao3BridgeRequest, now: number): string | null {
+    if (request.createdAt <= 0) {
+        return 'AO3 bridge request timestamp is invalid.';
+    }
+    if (request.createdAt - now > AO3_BRIDGE_MAX_FUTURE_SKEW_MS) {
+        return 'AO3 bridge request timestamp is too far in the future.';
+    }
+    if (now - request.createdAt > AO3_BRIDGE_DEFAULT_TIMEOUT_MS) {
+        return 'AO3 bridge request expired before it could be handled.';
+    }
+    return null;
 }
 
 export const Ao3Bridge = {
@@ -88,13 +102,14 @@ export const Ao3Bridge = {
             return;
         }
 
-        if (Date.now() - request.createdAt > AO3_BRIDGE_DEFAULT_TIMEOUT_MS) {
-            const result = bridgeResultForError(request, 'AO3 bridge request expired before it could be handled.');
+        const timestampFailure = invalidRequestTimestampReason(request, Date.now());
+        if (timestampFailure) {
+            const result = bridgeResultForError(request, timestampFailure);
             GM_deleteValue(AO3_BRIDGE_REQUEST_KEY);
             GM_setValue(AO3_BRIDGE_RESULT_KEY, serializeAo3BridgeResult(result));
             this._lastHandledRequestId = request.id;
-            this._setStatus(result.reason || 'AO3 bridge request expired.');
-            log('Discarded stale AO3 bridge request.', {
+            this._setStatus(result.reason || 'AO3 bridge request timestamp was rejected.');
+            log('Discarded AO3 bridge request with invalid timestamp.', {
                 id: request.id,
                 kind: request.kind,
                 createdAt: request.createdAt,

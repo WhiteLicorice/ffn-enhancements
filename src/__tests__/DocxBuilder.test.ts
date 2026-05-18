@@ -189,6 +189,12 @@ describe('DocxBuilder._parseHtmlToParagraphs', () => {
         expect(paragraphs[0].children).toEqual([{ text: 'Bad' }, { text: ' ' }, { text: 'File' }]);
     });
 
+    it('preserves link text without relationships for relative hyperlink targets', () => {
+        const { paragraphs, hyperlinks } = parse('<p><a href="/relative">Relative</a> <a href="//example.com/path">Protocol Relative</a></p>');
+        expect(hyperlinks.size).toBe(0);
+        expect(paragraphs[0].children).toEqual([{ text: 'Relative' }, { text: ' ' }, { text: 'Protocol Relative' }]);
+    });
+
     it('preserves safe mailto hyperlinks', () => {
         const { paragraphs, hyperlinks } = parse('<p><a href="mailto:test@example.com">Email</a></p>');
         expect(hyperlinks.size).toBe(1);

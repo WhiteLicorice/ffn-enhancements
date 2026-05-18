@@ -382,19 +382,24 @@ export const Ao3Service = {
         params.set(textarea.name, html);
         params.set('update_button', updateButton?.value || 'Update');
 
-        const actionUrl = new URL(form.getAttribute('action') || chapter.editUrl, chapter.editUrl).href;
+        const rawAction = form.getAttribute('action')?.trim();
+        if (!rawAction) {
+            return { ok: false, reason: 'AO3 chapter edit form did not include a submission action.' };
+        }
+
+        let actionUrl: string;
+        try {
+            actionUrl = new URL(rawAction, chapter.editUrl).href;
+        } catch {
+            return { ok: false, reason: 'AO3 chapter form action URL is invalid.' };
+        }
+
         const expectedActionUrl = buildAo3ChapterReaderUrl(chapter.workId, chapter.chapterId);
         if (!expectedActionUrl) {
             return { ok: false, reason: 'AO3 chapter metadata is invalid.' };
         }
 
-        let parsedActionUrl: URL;
-        try {
-            parsedActionUrl = new URL(actionUrl);
-        } catch {
-            return { ok: false, reason: 'AO3 chapter form action URL is invalid.' };
-        }
-
+        const parsedActionUrl = new URL(actionUrl);
         if (parsedActionUrl.origin !== 'https://archiveofourown.org' || normalizeUrlForComparison(parsedActionUrl.href) !== normalizeUrlForComparison(expectedActionUrl)) {
             return { ok: false, reason: 'AO3 chapter form action did not match the expected chapter URL.' };
         }

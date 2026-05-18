@@ -81,6 +81,13 @@ describe('Ao3BridgeClient', () => {
         }))).toBeNull();
     });
 
+    it('rejects bridge requests with non-finite timestamps', () => {
+        expect(parseAo3BridgeRequest('{"id":"req-inf","kind":"loadChapterIndex","createdAt":1e999,"workUrl":"https://archiveofourown.org/works/77945481"}'))
+            .toBeNull();
+        expect(parseAo3BridgeRequest('{"id":"req-nan","kind":"loadChapterIndex","createdAt":NaN,"workUrl":"https://archiveofourown.org/works/77945481"}'))
+            .toBeNull();
+    });
+
     it('opens AO3 in the foreground, waits for the matching result, and cleans storage', async () => {
         const promise = Ao3BridgeClient.fetchChapterIndex(
             'https://archiveofourown.org/works/77945481/chapters/1',

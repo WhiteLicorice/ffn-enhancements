@@ -3,7 +3,12 @@ import type { ChildNode as ParsedChildNode, Element as ParsedElement, ParentNode
 
 const STRIP_CONTENT_TAGS = new Set([
     'script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'noscript', 'title',
+    'svg', 'math', 'template',
 ]);
+const FORM_CONTROL_TAGS = new Set([
+    'button', 'datalist', 'input', 'optgroup', 'option', 'output', 'select', 'textarea',
+]);
+const FORM_CONTAINER_TAGS = new Set(['fieldset', 'form', 'label', 'legend']);
 const INLINE_TAGS = new Set(['strong', 'b', 'em', 'i', 'u', 'ins']);
 const BLOCK_TAGS = new Set([
     'p', 'div', 'blockquote', 'pre', 'address', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -126,6 +131,7 @@ function sanitizeNode(node: ParsedChildNode, doc: Document): Node[] {
 
     const tag = node.name.toLowerCase();
     if (STRIP_CONTENT_TAGS.has(tag)) return [];
+    if (FORM_CONTROL_TAGS.has(tag)) return [];
     if (tag === 'hr') return [doc.createElement('hr')];
     if (tag === 'br') return [doc.createElement('br')];
 
@@ -136,6 +142,10 @@ function sanitizeNode(node: ParsedChildNode, doc: Document): Node[] {
 
     if (INLINE_TAGS.has(tag)) {
         return applyAllowedInlineFormatting(sanitizeChildren(node, doc), node, doc);
+    }
+
+    if (FORM_CONTAINER_TAGS.has(tag)) {
+        return sanitizeChildren(node, doc);
     }
 
     if (tag === 'p' || tag === 'div' || BLOCK_TAGS.has(tag)) {

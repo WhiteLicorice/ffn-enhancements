@@ -26,21 +26,23 @@ describe('runBulkOperation abort handling', () => {
         const finalize = vi.fn();
         const items = ['a', 'b', 'c'];
         const button = document.createElement('button');
+        const processItem = vi.fn(async (item: string) => {
+            if (item === 'a') return false;
+            if (item === 'b') throw new AbortBulkOperation('stop now');
+            return true;
+        });
 
         await runBulkOperation(makeEvent(button), {
             verb: 'Test',
             getItems: () => items,
-            processItem: vi.fn(async (item: string) => {
-                if (item === 'a') return false;
-                if (item === 'b') throw new AbortBulkOperation('stop now');
-                return true;
-            }),
+            processItem,
             onPermanentFailure: (item) => {
                 permanentFailures.push(item);
             },
             onFinalize: finalize,
         });
 
+        expect(processItem.mock.calls.map(([item]) => item)).toEqual(['a', 'b']);
         expect(permanentFailures).toEqual(['a', 'b', 'c']);
         expect(finalize).toHaveBeenCalledWith({
             successCount: 0,
