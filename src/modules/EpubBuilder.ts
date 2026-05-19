@@ -34,7 +34,8 @@ export const EpubBuilder = {
 
         // 1. Mimetype (Must be first, uncompressed)
         zip.file('mimetype', 'application/epub+zip', { compression: "STORE" });
-        
+        log('1/9 mimetype added');
+
         // 2. Container XML
         zip.file('META-INF/container.xml', `<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -42,6 +43,7 @@ export const EpubBuilder = {
         <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
     </rootfiles>
 </container>`);
+        log('2/9 container.xml added');
 
         // 3. Stylesheet
         const css = `
@@ -57,50 +59,69 @@ export const EpubBuilder = {
             .meta-table { margin: 1em auto; width: 80%; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding: 10px; font-size: 0.8em; text-align: left; }
             .meta-row { margin-bottom: 5px; }
             .label { font-weight: bold; margin-right: 5px; }
-            a { color: inherit; text-decoration: none; border-bottom: 1px dashed #555; } 
+            a { color: inherit; text-decoration: none; border-bottom: 1px dashed #555; }
         `;
         zip.file('OEBPS/style.css', css);
+        log('3/9 stylesheet added');
 
         // 3.5 Cover Image Handling
-        // We determine the mimetype dynamically, defaulting to jpeg if missing.
         let coverMime = 'image/jpeg';
         if (meta.coverBlob) {
+            log(`cover image present — type=${meta.coverBlob.type}, size=${meta.coverBlob.size}`);
             coverMime = meta.coverBlob.type || 'image/jpeg';
-            // Determine extension based on mime
             const ext = coverMime.includes('png') ? 'png' : 'jpg';
             zip.file(`OEBPS/cover.${ext}`, meta.coverBlob);
+            log(`cover.${ext} added to zip`);
             zip.file('OEBPS/cover.xhtml', this.generateCoverPage(ext));
+            log('cover.xhtml added to zip');
+        } else {
+            log('no cover image');
         }
 
         // 4. Title Page (Text + Little Cover)
+        log('generating title page...');
         zip.file('OEBPS/title.xhtml', this.generateTitlePage(meta, chapters.length));
+        log('4/9 title page added');
 
         // 5. Table of Contents HTML
+        log('generating TOC...');
         zip.file('OEBPS/toc.xhtml', this.generateTOCPage(meta, chapters));
+        log('5/9 toc added');
 
         // 6. Content.opf (Manifest)
+        log('generating OPF...');
         zip.file('OEBPS/content.opf', this.generateOPF(meta, chapters, coverMime));
+        log('6/9 content.opf added');
 
         // 7. TOC.ncx (Navigation)
+        log('generating NCX...');
         zip.file('OEBPS/toc.ncx', this.generateNCX(meta, chapters));
+        log('7/9 toc.ncx added');
 
         // 8. Chapter Files
+        log(`generating ${chapters.length} chapter file(s)...`);
         chapters.forEach((chap) => {
             const filename = `OEBPS/chapter_${chap.number}.xhtml`;
             zip.file(filename, this.generateXHTML(chap.title, chap.content));
+            log(`  chapter ${chap.number} added`);
         });
+        log('8/9 chapter files done');
 
         // 9. Generate Blob and Download
-        // Level 1 is ~5x faster than the default (6) while keeping ~80 % of
-        // the compression ratio.  Large multi-chapter stories no longer hang
-        // on "Bundling EPUB..."
-        const blob = await zip.generateAsync({
-            type: 'blob',
+        // type: "arraybuffer" + manual Blob: JSZip 3.10.1 bundled by Vite
+        // hangs on type: "blob" in the userscript sandbox.  The arraybuffer
+        // path avoids that deadlock (all tests use it successfully).
+        log('9/9 generating zip blob (this is the compression step)...');
+        const epubBytes = await zip.generateAsync({
+            type: 'arraybuffer',
             mimeType: 'application/epub+zip',
             compression: "DEFLATE",
             compressionOptions: { level: 1 },
         });
+        const blob = new Blob([epubBytes], { type: 'application/epub+zip' });
+        log(`zip blob generated — size=${blob.size}`);
 
+        log(`calling saveAs — filename="${meta.title} - ${meta.author}.epub"`);
         saveAs(blob, `${meta.title} - ${meta.author}.epub`);
         log('Download triggered.');
     },

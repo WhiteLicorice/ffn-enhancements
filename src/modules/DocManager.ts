@@ -759,7 +759,7 @@ function _readDocxRunHtml(run: Element): string {
 
 async function _docxToImportHtml(file: File): Promise<string> {
     const zip = await JSZip.loadAsync(await _readFileAsArrayBuffer(file));
-    const documentXml = await zip.file('word/document.xml')?.async('string');
+    const documentXml = await zip.file('word/document.xml')?.async('text') as string | undefined;
     if (!documentXml) return '';
 
     const xml = new DOMParser().parseFromString(documentXml, 'application/xml');

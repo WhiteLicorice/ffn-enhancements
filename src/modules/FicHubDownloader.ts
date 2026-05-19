@@ -348,11 +348,15 @@ async function _injectCoverIntoEpub(epubBlob: Blob, coverBlob: Blob): Promise<Bl
     // generateAsync into a near-instant concatenation.  The output file is
     // larger (decompressed content), but the operation completes in seconds
     // instead of minutes for large multi-chapter EPUBs.
-    return await zip.generateAsync({
-        type: "blob",
+    //
+    // type: "arraybuffer" + manual Blob: JSZip 3.10.1 bundled by Vite hangs
+    // on type: "blob" in the userscript sandbox.
+    const epubBytes = await zip.generateAsync({
+        type: "arraybuffer",
         mimeType: EPUB_MIME_TYPE,
         compression: "STORE",
     });
+    return new Blob([epubBytes], { type: EPUB_MIME_TYPE });
 }
 
 /** Reads container.xml to locate the OPF file path within the EPUB ZIP. */
