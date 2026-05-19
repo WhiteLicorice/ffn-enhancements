@@ -13,13 +13,14 @@ import { ISitewideModule } from "../interfaces/ISiteWideModule";
  *   2. (nothing — prime() and init() are called automatically in sequence)
  *
  * Registration order determines execution order, which also determines CSS layering.
- * Structural modules (e.g., LayoutManager) should be registered before
- * color/theme modules (e.g., DarkModeManager) to ensure correct cascade order.
+ * Theme/token modules should be registered before feature modules that render
+ * UI, while structural page overrides can layer after the theme variables.
  *
  * Usage:
  *   // At the top of main.ts, before any DOM interaction:
+ *   EarlyBoot.register(SettingsManager);
+ *   EarlyBoot.register(ThemeManager);
  *   EarlyBoot.register(LayoutManager);
- *   EarlyBoot.register(DarkModeManager);  // future
  *
  *   EarlyBoot.prime();   // call immediately at document-start (synchronous)
  *   EarlyBoot.init();    // call inside DOMContentLoaded callback

@@ -26,7 +26,7 @@ The output artifact lives at `dist/ffn-enhancements.user.js` and is distributed 
 | `/s/*` | `StoryReader` + `StoryDownloader` | Readers |
 | `/docs/docs.php` | `DocManager` | Authors |
 | `/docs/edit.php` | `DocEditor` | Authors |
-| All pages | `LayoutManager`, `SettingsManager`, `SettingsMenu` | Everyone |
+| All pages | `LayoutManager`, `ThemeManager`, `SettingsManager`, `SettingsMenu` | Everyone |
 
 ---
 
@@ -106,7 +106,8 @@ They register themselves with `EarlyBoot` in `main.ts`:
 ```typescript
 EarlyBoot.register(SettingsManager);   // MUST be first
 EarlyBoot.register(SettingsMenu);      // MUST be after SettingsManager
-EarlyBoot.register(LayoutManager);     // MUST be after SettingsManager
+EarlyBoot.register(ThemeManager);      // MUST be after SettingsManager, before LayoutManager
+EarlyBoot.register(LayoutManager);     // MUST be after ThemeManager
 EarlyBoot.prime();                     // Calls prime() on all, synchronously
 
 // Inside the DOMContentLoaded callback:
@@ -117,7 +118,8 @@ Registration order = execution order. The current required order is:
 
 1. `SettingsManager` - must load all settings into cache before anyone reads them.
 2. `SettingsMenu` - reads settings to build menu labels; must come after SettingsManager.
-3. `LayoutManager` - reads `fluidMode` in `prime()` to prevent FOUC; must come after SettingsManager.
+3. `ThemeManager` - reads `theme` setting, injects CSS custom properties and component styles at `prime()` to prevent FOUC; must come before LayoutManager so token vars are available.
+4. `LayoutManager` - reads `fluidMode` in `prime()` to prevent FOUC; must come after ThemeManager so fluid CSS layers correctly over theme tokens.
 
 **Phase 1 rules:** `prime()` runs synchronously at `document-start`. Do not
 read `document.body` or `document.head` (not guaranteed to exist yet). Safe
@@ -312,6 +314,82 @@ listener. Removing the backdrop element alone leaves listeners dangling.
 
 ---
 
+## 5b. Theme System
+
+### Architecture
+
+All colors in the extension flow through **CSS custom properties** (`--ffne-*`).
+Default values are defined in `src/styles/ThemeTokens.ts` and injected as a
+`:root { ... }` block at `document-start` by `ThemeManager.prime()`. Themes
+override these variables; all CSS files consume them via `var(--ffne-*)`.
+
+**Token categories:**
+- `--ffne-brand-*` (FFN navy palette)
+- `--ffne-semantic-*` (success/error/warning/running)
+- `--ffne-ui-*` (surfaces, text levels, borders, toggles)
+- `--ffne-shadow-*` (modal, overlay, toast, etc.)
+- `--ffne-ui-text-on-accent` (always light text for use on colored backgrounds)
+
+**GOTCHA:** `--ffne-ui-white` maps to a surface color (dark in dark theme).
+Do NOT use it for text on colored backgrounds (modal headers, toasts, badges).
+Use `--ffne-ui-text-on-accent` instead.
+
+### ThemeManager (`src/modules/ThemeManager.ts`)
+
+Implements `ISitewideModule`. Registered in EarlyBoot between SettingsMenu and
+LayoutManager.
+
+**Phase 1 (`prime()`):** Injects token CSS, component CSS, applies HTML class
+(`ffne-theme-<name>`), and sets `color-scheme`. Prevents FOUC for our own UI.
+
+**Phase 2 (`init()`):** Runs `CssScanner` to generate FFN native element
+overrides, subscribes to theme setting changes, watches `prefers-color-scheme`
+for SYSTEM mode, and arms a `MutationObserver` for TinyMCE iframe theming.
+
+**Public API:**
+- `setTheme(theme: Theme)` - switch theme (persists via SettingsManager)
+- `getResolvedTheme(): Theme` - resolves `SYSTEM` to actual `LIGHT`/`DARK`
+
+### CssScanner (`src/services/CssScanner.ts`)
+
+Runtime CSS scanner (Dark Reader-style). Reads `document.styleSheets`, extracts
+color-related properties, maps them via the theme's `colorMap`, and generates
+scoped override CSS under `html.ffne-theme-<name>`.
+
+- Skips our own `<style>` tags (ID prefix `ffne-`/`ffe-`/`ffn-enhancements`)
+- Handles `@media`/`@supports` grouping rules
+- Preserves `!important` and alpha channels
+- Caches results per page/theme combination
+
+### Theme Definitions (`src/themes/`)
+
+Each theme implements `IThemeDefinition`:
+- `tokens` - CSS var overrides for our injected UI
+- `colorMap` - FFN color remapping table for the scanner
+- `isDark` - controls `color-scheme` property
+
+Available themes: `SYSTEM` (auto), `LIGHT`, `DARK`, `SEPIA`, `HIGH_CONTRAST`.
+
+Adding a new theme:
+1. Create `src/themes/MyTheme.ts` implementing `IThemeDefinition`.
+2. Add entry to `src/themes/index.ts` (`THEME_DEFINITIONS`).
+3. Add value to `src/enums/Theme.ts`.
+4. Add option to `SettingsPage._buildModalHTML()` Appearance section.
+
+### CSS Files
+
+All module CSS is extracted to dedicated `.css` files in `src/styles/`:
+- `settings-modal.css` - settings UI
+- `fluid-mode.css` - fluid layout overrides
+- `components.css` - shared components (cover modal, dropdown, toast, Ao3 panel, status classes)
+- `doc-manager.css` - DocManager modals, drawer, table
+- `story-edit-content.css` - StoryEditContent bulk replace UI
+- `native-overrides.css` - FFN native element overrides (fallback for cross-origin CSS)
+
+Imported via `?raw` and injected as `<style>` tags.
+
+---
+
 ## 6. Doc Download Feature
 
 Author documents (from the FFN doc manager/editor) can be exported as
@@ -420,12 +498,14 @@ src/
   enums/
     Elements.ts                  - All DOM selector keys (add new keys here first)
     DocDownloadFormat.ts         - MARKDOWN = 'md' / HTML = 'html' / DOCX = 'docx'
+    Theme.ts                     - SYSTEM / LIGHT / DARK / SEPIA / HIGH_CONTRAST
     SupportedFormats.ts          - Reader-facing formats (EPUB, MOBI, PDF, HTML, MD)
     Globals.ts                   - USER_AGENT string
     FicHubStatus.ts              - FicHub API status codes
   interfaces/
     ISiteWideModule.ts           - prime() / init() contract
     IDelegate.ts                 - getElement / getElements contract
+    IThemeDefinition.ts          - Theme data shape (tokens, colorMap, isDark)
     IFanficDownloader.ts         - downloadAsEPUB / downloadAsMOBI contract
     StoryMetadata.ts             - Metadata shape for serializers
     ChapterData.ts               - Chapter data shape
@@ -440,7 +520,8 @@ src/
     EarlyBoot.ts                 - Two-phase boot sequencer
     SettingsManager.ts           - Persistent settings (GM storage + in-memory cache + pub-sub)
     SettingsMenu.ts              - Single Tampermonkey menu command -> opens SettingsPage
-    SettingsPage.ts              - Full-page settings UI (fanfiction.net/?ffne_settings=1)
+    SettingsPage.ts              - Settings modal UI
+    ThemeManager.ts              - Theme switching engine (CSS custom properties + CssScanner)
     LayoutManager.ts             - Fluid layout / viewport meta injection
     Core.ts                      - Delegate broker, logging, DOM readiness
     FFNLogger.ts                 - Shared logger (used to avoid circular deps with Core)
@@ -462,9 +543,21 @@ src/
   services/
     ContentParser.ts             - Turndown setup, HTML/Markdown parsing from doc pages
     DocFetchService.ts           - Doc page fetch, content extraction, hidden-iframe refresh
+    CssScanner.ts                - Runtime CSS scanner for FFN native element theming
   styles/
+    ThemeTokens.ts               - CSS custom property defaults + buildTokenCss()
     fluid-mode.css               - Fluid layout overrides (injected via LayoutManager)
     settings-modal.css           - Settings modal UI (injected via SettingsPage)
+    components.css               - Shared components (cover modal, dropdown, toast, status)
+    doc-manager.css              - DocManager modals, drawer, table styles
+    story-edit-content.css       - StoryEditContent bulk replace UI
+    native-overrides.css         - FFN native element overrides (cross-origin CSS fallback)
+  themes/
+    index.ts                     - THEME_DEFINITIONS registry + getThemeDefinition()
+    LightTheme.ts                - Default light theme (empty overrides)
+    DarkTheme.ts                 - Dark theme (full token + colorMap overrides)
+    SepiaTheme.ts                - Warm paper-like reading theme
+    HighContrastTheme.ts         - WCAG-focused high contrast theme
   utils/
     fetchWithBackoff.ts          - Generic HTTP retry/backoff utility for 429 handling
 vite.config.ts                   - Build config; GM grants; CDN requires; externalGlobals
@@ -511,6 +604,28 @@ tsconfig.json                    - Strict TypeScript config
    the `!remote` guard in `SettingsManager._registerValueListeners` prevents
    double-applying changes already handled by `set()`. Always include this guard
    when writing new `GM_addValueChangeListener` callbacks.
+
+10. `--ffne-ui-white` is a surface color that becomes dark in dark theme. Never
+    use it for text on colored backgrounds (modal headers, toasts, badges). Use
+    `--ffne-ui-text-on-accent` instead - it stays light across all themes.
+
+11. `CssScanner` skips `<style>` tags whose `id` starts with `ffne-`, `ffe-`, or
+    `ffn-enhancements`. When adding new injected style tags, use one of these
+    prefixes to prevent the scanner from generating redundant overrides.
+
+12. FFN's main CSS is cross-origin (CDN-served), so `CssScanner` cannot read
+    `cssRules` from those sheets. `native-overrides.css` provides fallback
+    element-level overrides using `var(--ffne-*)` tokens. When FFN adds new
+    UI patterns not covered by these overrides, add rules there rather than
+    trying to expand the scanner's reach.
+
+13. **GOTCHA: Scanner vs native-overrides injection order.** `_injectFfnOverrides`
+    concatenates `[scannerCss, elementCss]`. Scanner preserves `!important` from
+    original rules. When scanner and native-overrides produce identical selectors
+    with `!important` (e.g., `#gui_table1 tbody tr:hover td`), native-overrides
+    wins because it comes LAST. If you swap the order, scanner's mechanically-
+    remapped colors win and semantic tokens stop working. Native-overrides must
+    always be the final word.
 
 ---
 

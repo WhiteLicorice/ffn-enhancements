@@ -22,7 +22,7 @@ import {
     IAo3MigrationMappingRow,
     IAo3MigrationPlan,
 } from '../interfaces/IAo3Migration';
-import { BRAND, SEMANTIC, UI, SHADOW } from '../styles/theme';
+import docManagerStyles from '../styles/doc-manager.css?raw';
 
 const ADVANCED_DRAWER_ID = 'ffne-docmanager-advanced-drawer';
 const ADVANCED_MODAL_ID = 'ffne-docmanager-advanced-modal';
@@ -30,6 +30,7 @@ const IMPORT_MODAL_ID = 'ffne-docmanager-import-modal';
 const AO3_MODAL_ID = 'ffne-docmanager-ao3-modal';
 const ADVANCED_STYLE_ID = 'ffne-docmanager-advanced-styles';
 type BulkImportFormat = 'markdown' | 'html' | 'docx';
+type ActionStatus = 'idle' | 'pending' | 'success' | 'error';
 
 interface BulkImportFormatOption {
     label: string;
@@ -461,7 +462,7 @@ function _renderBulkFailures(
     `).join('');
 
     const retryHtml = onRetry
-        ? '<div style="margin-top:8px;"><button type="button" class="ffne-dm-btn ffne-dm-retry-btn">Retry Failed</button></div>'
+        ? '<div class="ffne-dm-retry-wrap"><button type="button" class="ffne-dm-btn ffne-dm-retry-btn">Retry Failed</button></div>'
         : '';
 
     container.hidden = false;
@@ -671,6 +672,20 @@ function _renderBulkImportRowStatus(row: BulkImportPreviewRow): void {
     if (!statusCell) return;
     statusCell.className = `ffne-dm-status-${row.status}`;
     statusCell.textContent = _getBulkImportRowStatusLabel(row.status);
+}
+
+function _setActionStatus(element: HTMLElement, status: ActionStatus): void {
+    element.classList.remove('ffne-status-pending', 'ffne-status-success', 'ffne-status-error');
+    if (status !== 'idle') {
+        element.classList.add(`ffne-status-${status}`);
+    }
+}
+
+function _setRowRunning(row: HTMLTableRowElement, running: boolean): void {
+    row.classList.toggle('ffne-dm-row-running', running);
+    if (running) {
+        row.style.transition = 'background-color 0.3s ease';
+    }
 }
 
 function _setBulkImportItemStatus(
@@ -1017,305 +1032,7 @@ export const DocManager = {
 
         const style = document.createElement('style');
         style.id = ADVANCED_STYLE_ID;
-        style.textContent = `
-            #${ADVANCED_DRAWER_ID} {
-                position: fixed;
-                left: 50%;
-                bottom: 0;
-                transform: translateX(-50%);
-                z-index: 99998;
-                line-height: 0;
-            }
-            .ffne-dm-btn {
-                appearance: none;
-                border: 1px solid ${UI.BORDER_CHROME};
-                background: ${BRAND.BG};
-                color: ${BRAND.TEXT};
-                font-family: Verdana, Arial, sans-serif;
-                font-size: 12px;
-                line-height: 18px;
-                padding: 4px 10px;
-                border-radius: 3px;
-                cursor: pointer;
-                box-shadow: 0 1px 2px ${SHADOW.SUBTLE};
-            }
-            .ffne-dm-btn:hover {
-                background: ${BRAND.HOVER_BG};
-                color: ${BRAND.HOVER_TEXT};
-            }
-            .ffne-dm-drawer-pull {
-                appearance: none;
-                width: 154px;
-                height: 28px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                gap: 3px;
-                padding: 3px 0 4px;
-                border: 1px solid ThreeDShadow;
-                border-bottom: 0;
-                border-radius: 10px 10px 0 0;
-                background: ButtonFace;
-                color: ButtonText;
-                cursor: pointer;
-                box-shadow: 0 -1px 6px ${SHADOW.DRAWER};
-            }
-            .ffne-dm-drawer-pull:hover {
-                filter: brightness(0.97);
-            }
-            .ffne-dm-drawer-pull:focus-visible {
-                outline: 2px solid Highlight;
-                outline-offset: 2px;
-            }
-            .ffne-dm-drawer-grabber {
-                width: 52px;
-                height: 4px;
-                border-radius: 999px;
-                background: currentColor;
-                opacity: 0.45;
-            }
-            .ffne-dm-drawer-chevron {
-                width: 10px;
-                height: 10px;
-                border-top: 2px solid currentColor;
-                border-left: 2px solid currentColor;
-                transform: rotate(45deg);
-                opacity: 0.72;
-            }
-            .ffne-dm-btn:disabled {
-                color: ${UI.TEXT_MUTED};
-                cursor: default;
-                opacity: 0.65;
-            }
-            .ffne-dm-overlay {
-                position: fixed;
-                inset: 0;
-                z-index: 99999;
-                background: ${SHADOW.MODAL};
-                font-family: Verdana, Arial, sans-serif;
-            }
-            .ffne-dm-modal {
-                position: absolute;
-                left: 50%;
-                top: 50%;
-                transform: translate(-50%, -50%);
-                width: min(720px, calc(100vw - 32px));
-                max-height: min(760px, calc(100vh - 32px));
-                overflow: auto;
-                background: ${UI.WHITE};
-                border: 1px solid ${UI.BORDER_CHROME};
-                box-shadow: 0 3px 18px ${SHADOW.MODAL};
-            }
-            .ffne-dm-modal-sm {
-                width: min(460px, calc(100vw - 32px));
-            }
-            .ffne-dm-modal-wide {
-                width: min(1080px, calc(100vw - 32px));
-            }
-            .ffne-dm-modal-header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 12px;
-                background: ${BRAND.PRIMARY};
-                color: ${UI.WHITE};
-                padding: 7px 10px;
-                border-bottom: 1px solid ${BRAND.DARK};
-            }
-            .ffne-dm-modal-header h3 {
-                margin: 0;
-                font-size: 13px;
-                line-height: 18px;
-                font-weight: 700;
-            }
-            .ffne-dm-close {
-                appearance: none;
-                border: 0;
-                background: transparent;
-                color: ${UI.WHITE};
-                cursor: pointer;
-                font-size: 18px;
-                line-height: 18px;
-                padding: 0 4px;
-            }
-            .ffne-dm-modal-body {
-                padding: 12px;
-                color: ${UI.TEXT_BODY};
-                font-size: 12px;
-            }
-            .ffne-dm-routines {
-                display: grid;
-                gap: 8px;
-            }
-            .ffne-dm-routine {
-                border: 1px solid ${UI.BORDER_ROUTINE};
-                background: ${UI.CARD_BG};
-                padding: 8px;
-            }
-            .ffne-dm-routine-header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 12px;
-            }
-            .ffne-dm-routine-status {
-                margin-top: 4px;
-                color: ${UI.TEXT_DISABLED};
-                font-size: 11px;
-            }
-            .ffne-dm-routine-status:empty {
-                display: none;
-            }
-            .ffne-dm-routine-title {
-                font-weight: 700;
-                color: ${UI.TEXT_BODY};
-            }
-            .ffne-dm-import-controls {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 8px;
-                flex-wrap: wrap;
-                margin-bottom: 10px;
-            }
-            .ffne-dm-input,
-            .ffne-dm-select {
-                font: inherit;
-                padding: 4px 6px;
-                border: 1px solid ${UI.BORDER_INPUT};
-                min-width: 0;
-            }
-            .ffne-dm-input {
-                flex: 1 1 280px;
-            }
-            .ffne-dm-checkbox {
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                font-size: 12px;
-                color: ${UI.TEXT_BODY};
-            }
-            .ffne-dm-form-row {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                flex-wrap: wrap;
-                margin-bottom: 10px;
-            }
-            .ffne-dm-form-row label {
-                flex: 0 0 auto;
-            }
-            .ffne-dm-field-row label {
-                min-width: 130px;
-            }
-            .ffne-dm-file-input {
-                display: none;
-            }
-            .ffne-dm-picker-group {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                flex-wrap: wrap;
-            }
-            .ffne-dm-selection-label {
-                color: ${UI.TEXT_DISABLED};
-                font-size: 11px;
-            }
-            .ffne-dm-summary {
-                margin: 8px 0;
-                padding: 7px 8px;
-                background: ${UI.INFO_BG};
-                border: 1px solid ${UI.BORDER_BRAND_LIGHT};
-                line-height: 1.45;
-            }
-            .ffne-dm-summary-detail {
-                margin-top: 3px;
-            }
-            .ffne-dm-warning {
-                color: ${SEMANTIC.WARNING_TEXT_DARK};
-                background: ${SEMANTIC.WARNING_BG};
-                border-color: ${SEMANTIC.WARNING_BORDER};
-            }
-            .ffne-dm-error {
-                color: ${SEMANTIC.ERROR_TEXT};
-                background: ${SEMANTIC.ERROR_BG};
-                border-color: ${SEMANTIC.ERROR_BORDER};
-            }
-            .ffne-dm-preview {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 8px;
-                cursor: default;
-                user-select: none;
-            }
-            .ffne-dm-preview-scroll {
-                max-height: min(460px, calc(100vh - 310px));
-                overflow: auto;
-                border: 1px solid ${UI.BORDER_BRAND_LIGHT};
-                margin-top: 8px;
-            }
-            .ffne-dm-preview-scroll .ffne-dm-preview {
-                margin-top: 0;
-            }
-            .ffne-dm-preview th {
-                background: ${BRAND.BG};
-                color: ${UI.TEXT_BODY};
-                border: 1px solid ${UI.BORDER_TABLE};
-                padding: 5px 6px;
-                text-align: left;
-                cursor: default;
-            }
-            .ffne-dm-preview td {
-                border: 1px solid ${UI.BORDER_LIGHT};
-                padding: 5px 6px;
-                vertical-align: top;
-                cursor: default;
-            }
-            .ffne-dm-row-running {
-                background: ${SEMANTIC.RUNNING_BG};
-            }
-            .ffne-dm-row-success {
-                background: ${SEMANTIC.SUCCESS_BG};
-            }
-            .ffne-dm-row-failed {
-                background: ${SEMANTIC.ERROR_BG};
-            }
-            .ffne-dm-status-matched { color: ${SEMANTIC.SUCCESS_TEXT}; font-weight: 700; }
-            .ffne-dm-status-missing { color: ${UI.TEXT_MUTED}; }
-            .ffne-dm-status-duplicate { color: ${SEMANTIC.ERROR_TEXT}; font-weight: 700; }
-            .ffne-dm-status-running,
-            .ffne-dm-status-retrying { color: ${SEMANTIC.WARNING_TEXT}; font-weight: 700; }
-            .ffne-dm-status-success { color: ${SEMANTIC.SUCCESS_TEXT}; font-weight: 700; }
-            .ffne-dm-status-failed { color: ${SEMANTIC.ERROR_TEXT}; font-weight: 700; }
-            .ffne-dm-status-mapped { color: ${SEMANTIC.SUCCESS_TEXT}; font-weight: 700; }
-            .ffne-dm-status-skipped { color: ${UI.TEXT_MUTED}; }
-            .ffne-dm-footer {
-                display: flex;
-                justify-content: flex-end;
-                align-items: center;
-                gap: 8px;
-                margin-top: 10px;
-            }
-            .ffne-dm-run-status {
-                margin-right: auto;
-                color: ${UI.TEXT_DISABLED};
-            }
-            .ffne-dm-import-results {
-                margin-top: 10px;
-                padding: 7px 8px;
-                color: ${SEMANTIC.ERROR_TEXT};
-                background: ${SEMANTIC.ERROR_BG};
-                border: 1px solid ${SEMANTIC.ERROR_BORDER};
-            }
-            .ffne-dm-import-results[hidden] {
-                display: none;
-            }
-            .ffne-dm-import-results-title {
-                font-weight: 700;
-                margin-bottom: 6px;
-            }
-        `;
+        style.textContent = docManagerStyles;
         document.head.appendChild(style);
     },
 
@@ -2008,8 +1725,7 @@ export const DocManager = {
             copyLink.innerText = "Copy";
             copyLink.href = "#";
             copyLink.title = "Copy to clipboard";
-            copyLink.style.textDecoration = "none";
-            copyLink.style.whiteSpace = "nowrap";
+            copyLink.className = 'ffne-dm-action-link';
             copyLink.onclick = (e) => {
                 e.preventDefault();
                 this.runSingleClipboardExport(e.currentTarget as HTMLElement, docId, title);
@@ -2026,8 +1742,7 @@ export const DocManager = {
             const exportLink = document.createElement('a');
             exportLink.innerText = "Export";
             exportLink.href = "#";
-            exportLink.style.textDecoration = "none";
-            exportLink.style.whiteSpace = "nowrap";
+            exportLink.className = 'ffne-dm-action-link';
             exportLink.onclick = (e) => {
                 e.preventDefault();
                 this.runSingleExport(e.currentTarget as HTMLElement, docId, title);
@@ -2044,8 +1759,7 @@ export const DocManager = {
             const refreshLink = document.createElement('a');
             refreshLink.innerText = "Refresh";
             refreshLink.href = "#";
-            refreshLink.style.textDecoration = "none";
-            refreshLink.style.whiteSpace = "nowrap";
+            refreshLink.className = 'ffne-dm-action-link';
             refreshLink.onclick = (e) => {
                 e.preventDefault();
                 this.runSingleRefresh(e.currentTarget as HTMLElement, docId, title);
@@ -2088,7 +1802,7 @@ export const DocManager = {
         const originalText = btnElement.innerText;
 
         btnElement.innerText = "...";
-        btnElement.style.color = "gray";
+        _setActionStatus(btnElement, 'pending');
         btnElement.style.cursor = "wait";
 
         const format = SettingsManager.get('docDownloadFormat');
@@ -2110,13 +1824,16 @@ export const DocManager = {
                 saveAs(new Blob([transformed], { type: mimeType }), `${title}.${format}`);
             }
             btnElement.innerText = "Done";
+            _setActionStatus(btnElement, 'success');
             setTimeout(() => {
                 btnElement.innerText = originalText;
-                btnElement.style.color = "";
+                _setActionStatus(btnElement, 'idle');
                 btnElement.style.cursor = "pointer";
             }, 2000);
         } else {
             btnElement.innerText = "Err";
+            _setActionStatus(btnElement, 'error');
+            btnElement.style.cursor = "pointer";
             log("Failed to fetch document content.");
         }
     },
@@ -2137,7 +1854,7 @@ export const DocManager = {
         const originalTitle = btnElement.title;
 
         btnElement.innerText = "...";
-        btnElement.style.color = "gray";
+        _setActionStatus(btnElement, 'pending');
         btnElement.style.cursor = "wait";
 
         const format = SettingsManager.get('docDownloadFormat');
@@ -2169,23 +1886,23 @@ export const DocManager = {
 
             if (success) {
                 btnElement.innerText = "Copied!";
-                btnElement.style.color = "green";
+                _setActionStatus(btnElement, 'success');
                 log(`Clipboard export successful for "${title}"`);
             } else {
                 btnElement.innerText = "Err";
-                btnElement.style.color = "red";
+                _setActionStatus(btnElement, 'error');
                 log(`Clipboard export failed for "${title}"`);
             }
         } else {
             btnElement.innerText = "Err";
-            btnElement.style.color = "red";
+            _setActionStatus(btnElement, 'error');
             log(`Failed to fetch document content for clipboard export.`);
         }
 
         setTimeout(() => {
             btnElement.innerText = originalText;
             btnElement.title = originalTitle;
-            btnElement.style.color = "";
+            _setActionStatus(btnElement, 'idle');
             btnElement.style.cursor = "pointer";
         }, 2500);
     },
@@ -2201,7 +1918,7 @@ export const DocManager = {
         const originalText = btnElement.innerText;
 
         btnElement.innerText = "...";
-        btnElement.style.color = "gray";
+        _setActionStatus(btnElement, 'pending');
         btnElement.style.cursor = "wait";
 
         log(`Starting refresh for ${title} (${docId})`);
@@ -2209,7 +1926,7 @@ export const DocManager = {
 
         if (success) {
             btnElement.innerText = "✓";
-            btnElement.style.color = "green";
+            _setActionStatus(btnElement, 'success');
 
             // Update the Life column to show 365 days
             const row = btnElement.closest('tr') as HTMLTableRowElement;
@@ -2219,16 +1936,16 @@ export const DocManager = {
 
             setTimeout(() => {
                 btnElement.innerText = originalText;
-                btnElement.style.color = "";
+                _setActionStatus(btnElement, 'idle');
                 btnElement.style.cursor = "pointer";
             }, 2000);
         } else {
             btnElement.innerText = "✗";
-            btnElement.style.color = "red";
+            _setActionStatus(btnElement, 'error');
             log("Failed to refresh document.");
             setTimeout(() => {
                 btnElement.innerText = originalText;
-                btnElement.style.color = "";
+                _setActionStatus(btnElement, 'idle');
                 btnElement.style.cursor = "pointer";
             }, 3000);
         }
@@ -2268,9 +1985,7 @@ export const DocManager = {
                 }
             },
             processItem: async (item) => {
-                const originalBg = item.row.style.backgroundColor;
-                item.row.style.backgroundColor = SEMANTIC.RUNNING_BG;
-                item.row.style.transition = 'background-color 0.3s ease';
+                _setRowRunning(item.row, true);
                 try {
                     const content = format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML
                         ? await DocFetchService.fetchPrivateDocAsHtml(item.docId, item.title)
@@ -2287,7 +2002,7 @@ export const DocManager = {
                     }
                     return false;
                 } finally {
-                    item.row.style.backgroundColor = originalBg;
+                    _setRowRunning(item.row, false);
                 }
             },
             onPermanentFailure: (item) => {
@@ -2378,13 +2093,11 @@ export const DocManager = {
                 }
             },
             processItem: async (item) => {
-                const originalBg = item.row.style.backgroundColor;
-                item.row.style.backgroundColor = SEMANTIC.RUNNING_BG;
-                item.row.style.transition = 'background-color 0.3s ease';
+                _setRowRunning(item.row, true);
                 try {
                     return await DocFetchService.refreshPrivateDoc(item.docId, item.title);
                 } finally {
-                    item.row.style.backgroundColor = originalBg;
+                    _setRowRunning(item.row, false);
                 }
             },
             onItemSuccess: (item, pass) => {
@@ -2516,13 +2229,9 @@ export const DocManager = {
                     return false;
                 }
 
-                const originalTableBg = sourceItem.row.style.backgroundColor;
-                const originalModalBg = row.modalRow?.style.backgroundColor || '';
-                sourceItem.row.style.backgroundColor = SEMANTIC.RUNNING_BG;
-                sourceItem.row.style.transition = 'background-color 0.3s ease';
+                _setRowRunning(sourceItem.row, true);
                 if (row.modalRow) {
-                    row.modalRow.style.backgroundColor = SEMANTIC.RUNNING_BG;
-                    row.modalRow.style.transition = 'background-color 0.3s ease';
+                    _setRowRunning(row.modalRow, true);
                 }
 
                 try {
@@ -2636,9 +2345,9 @@ export const DocManager = {
                     setFailure(row, `Unexpected error: ${reason}`);
                     return false;
                 } finally {
-                    sourceItem.row.style.backgroundColor = originalTableBg;
+                    _setRowRunning(sourceItem.row, false);
                     if (row.modalRow) {
-                        row.modalRow.style.backgroundColor = originalModalBg;
+                        _setRowRunning(row.modalRow, false);
                     }
                 }
             },
@@ -2679,8 +2388,7 @@ export const DocManager = {
         if (failedRows.length > 0 && resultsEl) {
             const retryBtn = document.createElement('button');
             retryBtn.textContent = 'Retry Failed';
-            retryBtn.className = 'ffne-dm-action-btn';
-            retryBtn.style.cssText = 'display:block; margin-top:12px;';
+            retryBtn.className = 'ffne-dm-btn ffne-dm-retry-block';
             retryBtn.addEventListener('click', (retryEvent) => {
                 retryBtn.remove();
                 const retryPlan: IAo3MigrationPlan = {
@@ -2751,9 +2459,7 @@ export const DocManager = {
                     return false;
                 }
 
-                const originalBg = item.row.style.backgroundColor;
-                item.row.style.backgroundColor = SEMANTIC.RUNNING_BG;
-                item.row.style.transition = 'background-color 0.3s ease';
+                _setRowRunning(item.row, true);
 
                 try {
                     let html = '';
@@ -2802,7 +2508,7 @@ export const DocManager = {
                     _setBulkImportItemStatus(plan, item, 'failed');
                     return false;
                 } finally {
-                    item.row.style.backgroundColor = originalBg;
+                    _setRowRunning(item.row, false);
                 }
             },
             onItemSuccess: (item, pass) => {
@@ -2841,8 +2547,7 @@ export const DocManager = {
         if (failedItems.length > 0 && resultsEl) {
             const retryBtn = document.createElement('button');
             retryBtn.textContent = 'Retry Failed';
-            retryBtn.className = 'ffne-dm-btn';
-            retryBtn.style.cssText = 'display:block; margin-top:8px;';
+            retryBtn.className = 'ffne-dm-btn ffne-dm-retry-block-tight';
             retryBtn.addEventListener('click', (retryEvent) => {
                 retryBtn.remove();
                 const retryPlan: BulkImportPlan = {

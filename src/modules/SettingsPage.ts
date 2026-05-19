@@ -2,6 +2,7 @@
 
 import { SettingsManager, FFNSettings } from './SettingsManager';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
+import { Theme } from '../enums/Theme';
 import { FFNLogger } from './FFNLogger';
 import modalStyles from '../styles/settings-modal.css?raw';
 
@@ -67,7 +68,7 @@ let _unsubscribers: (() => void)[] = [];
  * **Dismiss:** click the backdrop, press ESC, or click the × button.
  *
  * **Sections:**
- * - Appearance: fluidMode
+ * - Appearance: theme, fluidMode
  * - Document Export: docDownloadFormat
  * - Convert Pasted Text: pasteConvertMarkdown, pasteConvertHtml
  * - Reader: scrollStep
@@ -156,6 +157,19 @@ function _buildModalHTML(): string {
                 <p class="ffne-modal-subtitle">Changes saved automatically. Syncs to all open FanFiction.net tabs.</p>
 
                 ${_buildSection('Appearance', [
+                    _buildSelectRow(
+                        'theme',
+                        'Theme',
+                        'Changes the visual treatment for FFN Enhancements and supported FanFiction.net page chrome.',
+                        [
+                            { value: Theme.SYSTEM,        label: 'System (Auto)' },
+                            { value: Theme.LIGHT,         label: 'Light' },
+                            { value: Theme.DARK,          label: 'Dark' },
+                            { value: Theme.SEPIA,         label: 'Sepia' },
+                            { value: Theme.HIGH_CONTRAST, label: 'High Contrast' },
+                        ],
+                        s.get('theme')
+                    ),
                     _buildToggleRow(
                         'fluidMode',
                         'Fluid Layout',
@@ -312,7 +326,7 @@ function _buildAdvancedSection(rows: string[]): string {
                 <span class="ffne-adv-arrow">▶</span>
                 <span class="ffne-adv-arrow-open">▼</span>
                 Advanced Settings
-                <span style="font-weight:normal; font-size:11px; color:#888; margin-left:8px;">
+                <span class="ffne-advanced-hint">
                     Only adjust these if you know what you are doing.
                 </span>
             </summary>
@@ -432,6 +446,15 @@ function _wireHandlers(
                     // Revert to stored value if an unknown option is somehow selected.
                     el.value = SettingsManager.get('docDownloadFormat');
                 }
+            } else if (key === 'theme') {
+                const known = Object.values(Theme) as string[];
+                if (known.includes(el.value)) {
+                    SettingsManager.set('theme', el.value as Theme);
+                    log('wireHandlers', `theme = ${el.value}`);
+                    _flashSaved(container, key);
+                } else {
+                    el.value = SettingsManager.get('theme');
+                }
             }
         });
     });
@@ -497,6 +520,12 @@ function _registerSubscriptions(container: HTMLElement): (() => void)[] {
         const el = container.querySelector<HTMLSelectElement>('[data-setting="docDownloadFormat"]');
         if (el) el.value = newVal;
         _flashSaved(container, 'docDownloadFormat');
+    }));
+
+    unsubscribers.push(SettingsManager.subscribe('theme', newVal => {
+        const el = container.querySelector<HTMLSelectElement>('[data-setting="theme"]');
+        if (el) el.value = newVal;
+        _flashSaved(container, 'theme');
     }));
 
     // ── Numeric (all handled uniformly) ──

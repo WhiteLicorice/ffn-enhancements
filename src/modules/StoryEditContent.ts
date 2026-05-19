@@ -13,7 +13,7 @@ import { DocFetchService } from '../services/DocFetchService';
 import { StoryReplaceService } from '../services/StoryReplaceService';
 import { runBulkOperation } from '../utils/runBulkOperation';
 import { SettingsManager } from './SettingsManager';
-import { BRAND, SEMANTIC, UI, SHADOW } from '../styles/theme';
+import storyEditContentStyles from '../styles/story-edit-content.css?raw';
 
 const BULK_REPLACE_BUTTON_ID = 'ffne-story-bulk-replace-btn';
 const BULK_REPLACE_MODAL_ID = 'ffne-story-bulk-replace-modal';
@@ -351,7 +351,7 @@ function _renderFailureTable(
     `).join('');
 
     const retryHtml = onRetry
-        ? `<div style="margin-top:8px;"><button type="button" id="ffne-story-bulk-retry" class="ffne-story-bulk-btn">Retry Failed</button></div>`
+        ? `<div class="ffne-story-bulk-retry-wrap"><button type="button" id="ffne-story-bulk-retry" class="ffne-story-bulk-btn">Retry Failed</button></div>`
         : '';
 
     container.hidden = false;
@@ -550,136 +550,7 @@ export const StoryEditContent = {
 
         const style = document.createElement('style');
         style.id = BULK_REPLACE_STYLE_ID;
-        style.textContent = `
-            .ffne-story-bulk-btn {
-                appearance: none;
-                border: 1px solid ${UI.BORDER_CHROME};
-                background: ${BRAND.BG};
-                color: ${BRAND.TEXT};
-                font-family: Verdana, Arial, sans-serif;
-                font-size: 12px;
-                line-height: 18px;
-                padding: 4px 10px;
-                border-radius: 3px;
-                cursor: pointer;
-                margin-left: 6px;
-            }
-            .ffne-story-bulk-overlay {
-                position: fixed;
-                inset: 0;
-                z-index: 99999;
-                background: ${SHADOW.MODAL};
-                font-family: Verdana, Arial, sans-serif;
-            }
-            .ffne-story-bulk-modal {
-                position: absolute;
-                left: 50%;
-                top: 50%;
-                transform: translate(-50%, -50%);
-                width: min(820px, calc(100vw - 32px));
-                max-height: min(760px, calc(100vh - 32px));
-                overflow: auto;
-                background: ${UI.WHITE};
-                border: 1px solid ${UI.BORDER_CHROME};
-                box-shadow: 0 3px 18px ${SHADOW.MODAL};
-            }
-            .ffne-story-bulk-header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 12px;
-                background: ${BRAND.PRIMARY};
-                color: ${UI.WHITE};
-                padding: 7px 10px;
-                border-bottom: 1px solid ${BRAND.DARK};
-            }
-            .ffne-story-bulk-header h3 {
-                margin: 0;
-                font-size: 13px;
-            }
-            .ffne-story-bulk-close {
-                appearance: none;
-                border: 0;
-                background: transparent;
-                color: ${UI.WHITE};
-                cursor: pointer;
-                font-size: 18px;
-                line-height: 18px;
-                padding: 0 4px;
-            }
-            .ffne-story-bulk-body {
-                padding: 12px;
-                color: ${UI.TEXT_BODY};
-                font-size: 12px;
-            }
-            .ffne-story-bulk-summary {
-                margin-bottom: 10px;
-                padding: 7px 8px;
-                background: ${UI.INFO_BG};
-                border: 1px solid ${UI.BORDER_BRAND_LIGHT};
-            }
-            .ffne-story-bulk-summary.ffne-story-bulk-error {
-                color: ${SEMANTIC.ERROR_TEXT};
-                background: ${UI.WHITE}0f0;
-                border-color: ${SEMANTIC.ERROR_BORDER};
-            }
-            .ffne-story-bulk-table {
-                width: 100%;
-                border-collapse: collapse;
-            }
-            .ffne-story-bulk-table th,
-            .ffne-story-bulk-table td {
-                border: 1px solid ${UI.BORDER_LIGHT};
-                padding: 5px 6px;
-                text-align: left;
-                vertical-align: top;
-            }
-            .ffne-story-bulk-table th {
-                background: ${BRAND.BG};
-            }
-            .ffne-story-bulk-row-running {
-                background: ${UI.WHITE}4c2;
-            }
-            .ffne-story-bulk-row-success {
-                background: ${SEMANTIC.SUCCESS_BG};
-            }
-            .ffne-story-bulk-row-failed {
-                background: ${UI.WHITE}0f0;
-            }
-            .ffne-story-bulk-status-duplicate {
-                color: ${SEMANTIC.ERROR_TEXT};
-                font-weight: 700;
-            }
-            .ffne-story-bulk-footer {
-                display: flex;
-                justify-content: flex-end;
-                align-items: center;
-                gap: 8px;
-                margin-top: 10px;
-            }
-            .ffne-story-bulk-run-status {
-                margin-right: auto;
-                color: ${UI.TEXT_DISABLED};
-            }
-            .ffne-story-bulk-results {
-                margin-top: 10px;
-                padding: 7px 8px;
-                color: ${SEMANTIC.ERROR_TEXT};
-                background: ${UI.WHITE}0f0;
-                border: 1px solid ${SEMANTIC.ERROR_BORDER};
-            }
-            .ffne-story-bulk-results[hidden] {
-                display: none;
-            }
-            .ffne-story-bulk-results-title {
-                font-weight: 700;
-                margin-bottom: 6px;
-            }
-            .ffne-story-bulk-select {
-                width: 100%;
-                min-width: 200px;
-            }
-        `;
+        style.textContent = storyEditContentStyles;
         document.head.appendChild(style);
     },
 

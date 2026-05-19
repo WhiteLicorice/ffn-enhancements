@@ -187,22 +187,8 @@ export const Ao3Bridge = {
 
         const panel = document.createElement('div');
         panel.id = PANEL_ID;
+        panel.className = 'ffne-ao3-panel';
         panel.setAttribute('role', 'status');
-        panel.style.cssText = [
-            'position:fixed',
-            'right:12px',
-            'bottom:12px',
-            'z-index:2147483647',
-            'max-width:320px',
-            'padding:10px 12px',
-            'border:1px solid #8a8a8a',
-            'border-radius:4px',
-            'background:#fff',
-            'color:#111',
-            'font:13px/1.35 Arial, sans-serif',
-            'box-shadow:0 2px 10px rgba(0,0,0,.18)',
-            'display:none',
-        ].join(';');
         document.body.appendChild(panel);
     },
 
