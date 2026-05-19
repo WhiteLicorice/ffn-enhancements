@@ -128,6 +128,12 @@ html.__THEME_CLASS__ .xcontrast_txt {
     color: var(--ffne-ui-text-body) !important;
 }
 
+/* Author profile links — preserve FFN's warm orange identity across themes */
+html.__THEME_CLASS__ a[href*="/u/"].xcontrast_txt,
+html.__THEME_CLASS__ a[href*="/u/"] {
+    color: var(--ffne-semantic-warning-text-dark) !important;
+}
+
 html.__THEME_CLASS__ .xgray {
     color: var(--ffne-ui-text-secondary) !important;
 }
@@ -141,6 +147,16 @@ html.__THEME_CLASS__ #storytext,
 html.__THEME_CLASS__ .storytext,
 html.__THEME_CLASS__ #storytextp {
     color: var(--ffne-ui-text-body) !important;
+}
+
+/* --- Navigation bar ---
+   #top is FFN's top-level nav bar with inline background-color: #333399.
+   div[style*="background"] below would override it to card-bg, which in
+   Sepia creates a light bar with unreadable white text. Pin #top to
+   brand-dark (dark in every theme) so menulink text-on-accent stays
+   readable. */
+html.__THEME_CLASS__ #top {
+    background-color: var(--ffne-brand-dark) !important;
 }
 
 /* --- Navigation wrappers --- */
