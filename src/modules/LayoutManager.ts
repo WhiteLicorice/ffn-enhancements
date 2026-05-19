@@ -168,7 +168,7 @@ function _setFluidMode(enable: boolean): void {
 }
 
 /**
- * Applies or removes the Fluid Mode class on html, mirroring it to body when present.
+ * Applies or removes the Fluid Mode class on html and on body when present.
  * @param enable - True to add class, False to remove class.
  */
 function _applyFluidClass(enable: boolean): void {

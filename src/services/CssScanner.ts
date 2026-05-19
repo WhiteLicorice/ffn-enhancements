@@ -370,7 +370,7 @@ function getPseudoElementIndex(selector: string): number {
     const modernIndex = selector.lastIndexOf('::');
     if (modernIndex !== -1) return modernIndex;
 
-    const legacyMatch = /:(before|after|first-letter|first-line)(?=\s|$|:)/i.exec(selector);
+    const legacyMatch = /:(before|after|first-letter|first-line)(?=\s|$|:)/.exec(selector);
     return legacyMatch?.index ?? -1;
 }
 
