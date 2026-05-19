@@ -370,7 +370,7 @@ function getPseudoElementIndex(selector: string): number {
     const modernIndex = selector.lastIndexOf('::');
     if (modernIndex !== -1) return modernIndex;
 
-    const legacyMatch = /:(before|after|first-letter|first-line)\b/i.exec(selector);
+    const legacyMatch = /:(before|after|first-letter|first-line)(?=\s|$|:)/i.exec(selector);
     return legacyMatch?.index ?? -1;
 }
 
@@ -386,23 +386,40 @@ function serializeStyleDeclarations(style: CSSStyleDeclaration): string {
 }
 
 function scopeFlatCssText(cssText: string, themeClass: string, options: ScanOptions): string {
-    const blocks = cssText.match(/(?:\s*\/\*[\s\S]*?\*\/\s*)*[^{}]+\{[^{}]*\}/g);
-    if (!blocks) return cssText;
+    const output: string[] = [];
+    let cursor = 0;
 
-    return blocks.map((block) => {
-        const openIndex = block.indexOf('{');
-        const closeIndex = block.lastIndexOf('}');
-        if (openIndex === -1 || closeIndex === -1) return block;
+    while (cursor < cssText.length) {
+        const openIndex = findNextTopLevelBrace(cssText, cursor);
+        if (openIndex === -1) break;
 
-        const prefixMatch = block.slice(0, openIndex).match(/^(\s*(?:\/\*[\s\S]*?\*\/\s*)*)([\s\S]+)$/);
-        const prefix = prefixMatch?.[1] || '';
-        const selectorText = prefixMatch?.[2]?.trim() || '';
-        if (!selectorText) return block;
+        const closeIndex = findMatchingBrace(cssText, openIndex);
+        if (closeIndex === -1) {
+            output.push(cssText.slice(cursor).trim());
+            break;
+        }
 
-        const body = block.slice(openIndex + 1, closeIndex).trim();
-        const selector = scopeSelector(selectorText, themeClass, options.excludeSelector);
-        return `${prefix}${selector} {\n${indentBlockBody(body)}\n}`;
-    }).join('\n\n');
+        const prelude = cssText.slice(cursor, openIndex);
+        const body = cssText.slice(openIndex + 1, closeIndex);
+        const { leading, remainder } = splitLeadingComments(prelude);
+        const trimmedPrelude = remainder.trim();
+
+        if (trimmedPrelude) {
+            if (trimmedPrelude.startsWith('@media') || trimmedPrelude.startsWith('@supports')) {
+                const nested = scopeFlatCssText(body, themeClass, options);
+                output.push(`${leading}${trimmedPrelude} {\n${indent(nested)}\n}`);
+            } else if (trimmedPrelude.startsWith('@')) {
+                output.push(`${leading}${trimmedPrelude} {\n${indentBlockBody(body)}\n}`);
+            } else {
+                const selector = scopeSelector(trimmedPrelude, themeClass, options.excludeSelector);
+                output.push(`${leading}${selector} {\n${indentBlockBody(body)}\n}`);
+            }
+        }
+
+        cursor = closeIndex + 1;
+    }
+
+    return output.filter(Boolean).join('\n\n');
 }
 
 function indentBlockBody(body: string): string {
@@ -412,6 +429,107 @@ function indentBlockBody(body: string): string {
         .filter(Boolean)
         .map(line => `    ${line}`)
         .join('\n');
+}
+
+function splitLeadingComments(value: string): { leading: string; remainder: string } {
+    let index = 0;
+
+    while (index < value.length) {
+        const char = value[index];
+        if (/\s/.test(char)) {
+            index++;
+            continue;
+        }
+
+        if (value.startsWith('/*', index)) {
+            const end = value.indexOf('*/', index + 2);
+            if (end === -1) {
+                return { leading: value, remainder: '' };
+            }
+            index = end + 2;
+            continue;
+        }
+
+        break;
+    }
+
+    return {
+        leading: value.slice(0, index),
+        remainder: value.slice(index),
+    };
+}
+
+function findNextTopLevelBrace(value: string, startIndex: number): number {
+    let index = startIndex;
+    while (index < value.length) {
+        const skipped = skipCommentOrString(value, index);
+        if (skipped !== index) {
+            index = skipped;
+            continue;
+        }
+
+        if (value[index] === '{') {
+            return index;
+        }
+
+        index++;
+    }
+
+    return -1;
+}
+
+function findMatchingBrace(value: string, openIndex: number): number {
+    let depth = 0;
+    let index = openIndex;
+
+    while (index < value.length) {
+        const skipped = skipCommentOrString(value, index);
+        if (skipped !== index) {
+            index = skipped;
+            continue;
+        }
+
+        if (value[index] === '{') {
+            depth++;
+        } else if (value[index] === '}') {
+            depth--;
+            if (depth === 0) {
+                return index;
+            }
+        }
+
+        index++;
+    }
+
+    return -1;
+}
+
+function skipCommentOrString(value: string, index: number): number {
+    if (value.startsWith('/*', index)) {
+        const end = value.indexOf('*/', index + 2);
+        return end === -1 ? value.length : end + 2;
+    }
+
+    if (value[index] === '"' || value[index] === '\'') {
+        const quote = value[index];
+        let current = index + 1;
+        while (current < value.length) {
+            if (value[current] === '\\') {
+                current += 2;
+                continue;
+            }
+
+            if (value[current] === quote) {
+                return current + 1;
+            }
+
+            current++;
+        }
+
+        return value.length;
+    }
+
+    return index;
 }
 
 function wrapRule(cssRule: string, wrappers: string[]): string {
