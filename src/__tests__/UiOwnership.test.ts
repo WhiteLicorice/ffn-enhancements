@@ -4,6 +4,7 @@ import { Ao3Bridge } from '../modules/Ao3Bridge';
 import { Core } from '../modules/Core';
 import { DocEditor } from '../modules/DocEditor';
 import { StoryDownloader } from '../modules/StoryDownloader';
+import { StoryReader } from '../modules/StoryReader';
 
 describe('FFNE UI ownership markers', () => {
     beforeEach(() => {
@@ -41,5 +42,26 @@ describe('FFNE UI ownership markers', () => {
 
         expect(document.getElementById('ffne-clipboard-toast')?.getAttribute('data-ffne-ui')).toBe('');
         expect(document.getElementById('ffne-ao3-bridge-panel')?.getAttribute('data-ffne-ui')).toBe('');
+    });
+
+    it('marks the cover-art lightbox roots as FFNE-owned UI', () => {
+        document.body.innerHTML = `
+            <div id="profile_top">
+                <span onclick="img_large()">Cover</span>
+            </div>
+            <div id="img_large" class="modal hide fade">
+                <div class="modal-body">
+                    <img src="thumb.jpg" data-original="large.jpg">
+                </div>
+            </div>
+        `;
+
+        StoryReader.fixCoverArtModal();
+
+        const trigger = document.querySelector<HTMLElement>('#profile_top span');
+        trigger?.click();
+
+        expect(document.getElementById('img_large')?.getAttribute('data-ffne-ui')).toBe('');
+        expect(document.querySelector('.ffne-cover-backdrop')?.getAttribute('data-ffne-ui')).toBe('');
     });
 });

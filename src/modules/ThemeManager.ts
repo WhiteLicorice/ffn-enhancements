@@ -105,7 +105,7 @@ function _injectStaticNativeOverrides(
     rootDocument: Document = document,
     styleId: string = STATIC_NATIVE_STYLE_ID,
 ): void {
-    if (definition.name === Theme.LIGHT) {
+    if (definition.name === Theme.LIGHT || !_isFfnHost()) {
         rootDocument.getElementById(styleId)?.remove();
         return;
     }
@@ -229,8 +229,13 @@ function _themeIframe(frame: HTMLIFrameElement, definition: IThemeDefinition): v
 
             _injectTokenStyles(definition, frameDocument, TOKEN_STYLE_ID);
             _applyFrameThemeClass(frameDocument, definition.name);
-            _injectStaticNativeOverrides(definition, frameDocument, IFRAME_STATIC_OVERRIDE_STYLE_ID);
-            _injectScannedFfnOverrides(definition, frameDocument, IFRAME_OVERRIDE_STYLE_ID);
+            if (_isFfnHost()) {
+                _injectStaticNativeOverrides(definition, frameDocument, IFRAME_STATIC_OVERRIDE_STYLE_ID);
+                _injectScannedFfnOverrides(definition, frameDocument, IFRAME_OVERRIDE_STYLE_ID);
+            } else {
+                frameDocument.getElementById(IFRAME_STATIC_OVERRIDE_STYLE_ID)?.remove();
+                frameDocument.getElementById(IFRAME_OVERRIDE_STYLE_ID)?.remove();
+            }
         } catch (e) {
             FFNLogger.log(MODULE_NAME, '_themeIframe', 'Could not theme TinyMCE iframe:', e as object);
         }
