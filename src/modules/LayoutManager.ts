@@ -4,7 +4,7 @@ import { Elements } from '../enums/Elements';
 import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
 import { FFNLogger } from './FFNLogger';
 import { SettingsManager } from './SettingsManager';
-import tokenStyles from '../styles/tokens.css?raw';
+import { TOKEN_CSS } from '../styles/tokens';
 import fluidStyles from '../styles/fluid-mode.css?raw';
 
 // ─── Module-level Constants ────────────────────────────────────────────────────
@@ -284,7 +284,7 @@ function _injectTokenStyles(): void {
 
     const style = document.createElement('style');
     style.id = TOKEN_STYLE_TAG_ID;
-    style.textContent = tokenStyles;
+    style.textContent = TOKEN_CSS;
     if (document.head) {
         document.head.appendChild(style);
     } else {

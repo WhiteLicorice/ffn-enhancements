@@ -1028,7 +1028,7 @@ export const DocManager = {
             }
             .ffne-dm-btn {
                 appearance: none;
-                border: 1px solid #7892ad;
+                border: 1px solid ${UI.BORDER_CHROME};
                 background: ${BRAND.BG};
                 color: ${BRAND.TEXT};
                 font-family: Verdana, Arial, sans-serif;
@@ -1104,7 +1104,7 @@ export const DocManager = {
                 max-height: min(760px, calc(100vh - 32px));
                 overflow: auto;
                 background: ${UI.WHITE};
-                border: 1px solid #7892ad;
+                border: 1px solid ${UI.BORDER_CHROME};
                 box-shadow: 0 3px 18px ${SHADOW.MODAL};
             }
             .ffne-dm-modal-sm {
@@ -1225,7 +1225,7 @@ export const DocManager = {
             .ffne-dm-summary {
                 margin: 8px 0;
                 padding: 7px 8px;
-                background: #f7f9fb;
+                background: ${UI.BG_INFO};
                 border: 1px solid ${UI.BORDER_BRAND_LIGHT};
                 line-height: 1.45;
             }

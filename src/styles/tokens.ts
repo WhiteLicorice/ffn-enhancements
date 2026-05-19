@@ -33,6 +33,7 @@ export const UI = {
     BORDER_INPUT: '#b9c9d9',
     BORDER_TABLE: '#c8d6e4',
     BORDER_BRAND_LIGHT: '#d8e2ec',
+    BORDER_CHROME: '#7892ad',
     TOGGLE_OFF: '#bbb',
     TEXT_BODY: '#333',
     TEXT_SECONDARY: '#666',
@@ -40,6 +41,7 @@ export const UI = {
     TEXT_DISABLED: '#555',
     TEXT_UNIT: '#999',
     CARD_BG: '#fafafa',
+    BG_INFO: '#f7f9fb',
     WHITE: '#fff',
 } as const;
 
@@ -48,10 +50,53 @@ export const SHADOW = {
     MODAL: 'rgba(0, 0, 0, 0.35)',
     OVERLAY: 'rgba(0, 0, 0, 0.55)',
     TOGGLE: 'rgba(0, 0, 0, 0.25)',
-    DROPDOWN: 'rgba(0, 0, 0, 0.15)',
-    DROPDOWN_STRONG: 'rgba(0, 0, 0, 0.175)',
     SUBTLE: 'rgba(0, 0, 0, 0.18)',
     DRAWER: 'rgba(0, 0, 0, 0.22)',
     TOAST: 'rgba(0, 0, 0, 0.3)',
-    IMAGE_MODAL: 'rgba(0, 0, 0, 0.8)',
 } as const;
+
+// ─── CSS Custom Properties (derived — single source of truth) ──────────────
+export const TOKEN_CSS = `/* FFN Enhancements: Design Tokens */
+:root {
+    --ffne-brand-primary: ${BRAND.PRIMARY};
+    --ffne-brand-dark: ${BRAND.DARK};
+    --ffne-brand-bg: ${BRAND.BG};
+    --ffne-brand-text: ${BRAND.TEXT};
+    --ffne-brand-hover-bg: ${BRAND.HOVER_BG};
+    --ffne-brand-hover-text: ${BRAND.HOVER_TEXT};
+    --ffne-brand-focus-glow: ${BRAND.FOCUS_GLOW};
+    --ffne-success-text: ${SEMANTIC.SUCCESS_TEXT};
+    --ffne-success-bg: ${SEMANTIC.SUCCESS_BG};
+    --ffne-error-text: ${SEMANTIC.ERROR_TEXT};
+    --ffne-error-bg: ${SEMANTIC.ERROR_BG};
+    --ffne-error-border: ${SEMANTIC.ERROR_BORDER};
+    --ffne-warning-text: ${SEMANTIC.WARNING_TEXT};
+    --ffne-warning-text-dark: ${SEMANTIC.WARNING_TEXT_DARK};
+    --ffne-warning-bg: ${SEMANTIC.WARNING_BG};
+    --ffne-warning-border: ${SEMANTIC.WARNING_BORDER};
+    --ffne-running-bg: ${SEMANTIC.RUNNING_BG};
+    --ffne-toast-success: ${SEMANTIC.TOAST_SUCCESS};
+    --ffne-toast-error: ${SEMANTIC.TOAST_ERROR};
+    --ffne-border: ${UI.BORDER};
+    --ffne-border-light: ${UI.BORDER_LIGHT};
+    --ffne-border-divider: ${UI.BORDER_DIVIDER};
+    --ffne-border-input: ${UI.BORDER_INPUT};
+    --ffne-border-table: ${UI.BORDER_TABLE};
+    --ffne-border-brand-light: ${UI.BORDER_BRAND_LIGHT};
+    --ffne-border-chrome: ${UI.BORDER_CHROME};
+    --ffne-toggle-off: ${UI.TOGGLE_OFF};
+    --ffne-text-body: ${UI.TEXT_BODY};
+    --ffne-text-secondary: ${UI.TEXT_SECONDARY};
+    --ffne-text-muted: ${UI.TEXT_MUTED};
+    --ffne-text-disabled: ${UI.TEXT_DISABLED};
+    --ffne-text-unit: ${UI.TEXT_UNIT};
+    --ffne-card-bg: ${UI.CARD_BG};
+    --ffne-bg-info: ${UI.BG_INFO};
+    --ffne-white: ${UI.WHITE};
+    --ffne-shadow-modal: ${SHADOW.MODAL};
+    --ffne-shadow-overlay: ${SHADOW.OVERLAY};
+    --ffne-shadow-toggle: ${SHADOW.TOGGLE};
+    --ffne-shadow-subtle: ${SHADOW.SUBTLE};
+    --ffne-shadow-drawer: ${SHADOW.DRAWER};
+    --ffne-shadow-toast: ${SHADOW.TOAST};
+}`;
