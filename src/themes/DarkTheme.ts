@@ -91,6 +91,8 @@ export const DarkTheme: IThemeDefinition = {
         '#1f1f5c': '#e4e7ff',
         '#15154a': '#ffffff',
         '#336699': '#93b7ff',
+        '#333399': '#262a3a',
+        '#e4e3d5': '#181a1f',
         '#236423': '#79d98c',
         '#8b0000': '#ff8b8b',
         '#8a5c00': '#f5c56a',

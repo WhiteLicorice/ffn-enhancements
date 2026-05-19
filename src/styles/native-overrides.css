@@ -79,7 +79,7 @@ html.__THEME_CLASS__ dd,
 html.__THEME_CLASS__ dt,
 html.__THEME_CLASS__ label,
 html.__THEME_CLASS__ span {
-    color: var(--ffne-ui-text-body);
+    color: var(--ffne-ui-text-body) !important;
 }
 
 /* --- Separators --- */
@@ -111,6 +111,106 @@ html.__THEME_CLASS__ #xcenter,
 html.__THEME_CLASS__ #content_parent {
     background-color: var(--ffne-ui-page-bg) !important;
     color: var(--ffne-ui-text-body) !important;
+}
+
+/* --- FFN core theming classes ---
+   .xcontrast / .xcontrast_txt / .xgray are FFN's own theming mechanism.
+   Applied to virtually every container and text element site-wide.
+   Cross-origin CSS sets their colors; inline styles on #content_wrapper
+   set background-color: white. !important is essential here. */
+html.__THEME_CLASS__ .xcontrast,
+html.__THEME_CLASS__ .xcontrast_outer {
+    background-color: var(--ffne-ui-page-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .xcontrast_txt {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .xgray {
+    color: var(--ffne-ui-text-secondary) !important;
+}
+
+/* --- Story page elements --- */
+html.__THEME_CLASS__ #profile_top {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ #storytext,
+html.__THEME_CLASS__ .storytext,
+html.__THEME_CLASS__ #storytextp {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+/* --- Navigation wrappers --- */
+html.__THEME_CLASS__ .menulink {
+    color: var(--ffne-ui-text-on-accent) !important;
+}
+
+html.__THEME_CLASS__ .menulink a {
+    color: var(--ffne-ui-text-on-accent) !important;
+}
+
+html.__THEME_CLASS__ .menulink small {
+    color: var(--ffne-ui-text-on-accent) !important;
+}
+
+html.__THEME_CLASS__ .zmenu {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .maxwidth {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .z-top-container {
+    background-color: var(--ffne-ui-page-bg) !important;
+}
+
+/* Navigation link containers */
+html.__THEME_CLASS__ .lc-wrapper {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .lc {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+/* --- Review section --- */
+html.__THEME_CLASS__ #review {
+    background-color: var(--ffne-ui-page-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ #review_review {
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border-input) !important;
+}
+
+/* --- Modal dialogs --- */
+html.__THEME_CLASS__ .modal-body {
+    background-color: var(--ffne-ui-white) !important;
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .modal-header {
+    background-color: var(--ffne-brand-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .modal-footer {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+/* --- Dropdown dividers --- */
+html.__THEME_CLASS__ .divider {
+    background-color: var(--ffne-ui-border) !important;
+    border-color: var(--ffne-ui-border) !important;
 }
 
 /* Sidebar navigation */
@@ -227,25 +327,33 @@ html.__THEME_CLASS__ #zmenu {
     border-color: var(--ffne-ui-border) !important;
 }
 
-/* --- Bootstrap-style buttons (.btn) --- */
+/* --- Bootstrap-style buttons (.btn) ---
+   Bootstrap uses background-image gradients; background-color alone sits
+   behind the gradient and stays invisible. Must kill the gradient. */
 html.__THEME_CLASS__ .btn {
     background-color: var(--ffne-ui-card-bg) !important;
+    background-image: none !important;
     color: var(--ffne-ui-text-body) !important;
     border-color: var(--ffne-ui-border) !important;
+    text-shadow: none !important;
 }
 
 html.__THEME_CLASS__ .btn:hover,
 html.__THEME_CLASS__ .btn:focus {
     background-color: var(--ffne-brand-hover-bg) !important;
+    background-image: none !important;
     color: var(--ffne-ui-text-body) !important;
     border-color: var(--ffne-ui-border-chrome) !important;
 }
 
 html.__THEME_CLASS__ .btn:active {
     background-color: var(--ffne-brand-bg) !important;
+    background-image: none !important;
+    box-shadow: none !important;
 }
 
 html.__THEME_CLASS__ .btn-group {
+    background-color: transparent !important;
     border-color: var(--ffne-ui-border) !important;
 }
 

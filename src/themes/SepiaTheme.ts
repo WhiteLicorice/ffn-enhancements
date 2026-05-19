@@ -91,6 +91,8 @@ export const SepiaTheme: IThemeDefinition = {
         '#1f1f5c': '#5c4a32',
         '#15154a': '#3f321f',
         '#336699': '#7b6832',
+        '#333399': '#eadfbd',
+        '#e4e3d5': '#f4ecd8',
         '#236423': '#3f6d2a',
         '#8b0000': '#8b2d20',
         '#8a5c00': '#8b5e12',

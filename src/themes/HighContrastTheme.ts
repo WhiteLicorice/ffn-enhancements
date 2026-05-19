@@ -91,6 +91,8 @@ export const HighContrastTheme: IThemeDefinition = {
         '#1f1f5c': '#ffffff',
         '#15154a': '#ffffff',
         '#336699': '#00ffff',
+        '#333399': '#000000',
+        '#e4e3d5': '#000000',
         '#236423': '#00ff66',
         '#8b0000': '#ff5555',
         '#8a5c00': '#ffff00',

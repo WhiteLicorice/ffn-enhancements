@@ -116,17 +116,17 @@ function _buildBootstrapCss(definition: IThemeDefinition): string {
     const s = `html.${_themeClass(definition.name)}`;
     return `
 ${s} {
-    background: var(--ffne-ui-page-bg);
-    color: var(--ffne-ui-text-body);
+    background: var(--ffne-ui-page-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
 }
 ${s} body {
-    background-color: var(--ffne-ui-page-bg);
-    color: var(--ffne-ui-text-body);
+    background-color: var(--ffne-ui-page-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
 }
 ${s} #content_wrapper,
 ${s} #content_wrapper_inner {
-    background-color: var(--ffne-ui-page-bg);
-    color: var(--ffne-ui-text-body);
+    background-color: var(--ffne-ui-page-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
 }
 `;
 }
