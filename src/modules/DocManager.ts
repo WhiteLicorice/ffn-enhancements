@@ -22,6 +22,7 @@ import {
     IAo3MigrationMappingRow,
     IAo3MigrationPlan,
 } from '../interfaces/IAo3Migration';
+import { BRAND, SEMANTIC, UI, SHADOW } from '../styles/tokens';
 
 const ADVANCED_DRAWER_ID = 'ffne-docmanager-advanced-drawer';
 const ADVANCED_MODAL_ID = 'ffne-docmanager-advanced-modal';
@@ -1027,20 +1028,20 @@ export const DocManager = {
             }
             .ffne-dm-btn {
                 appearance: none;
-                border: 1px solid #7892ad;
-                background: #f0f4f8;
-                color: #234d73;
+                border: 1px solid ${UI.BORDER_CHROME};
+                background: ${BRAND.BG};
+                color: ${BRAND.TEXT};
                 font-family: Verdana, Arial, sans-serif;
                 font-size: 12px;
                 line-height: 18px;
                 padding: 4px 10px;
                 border-radius: 3px;
                 cursor: pointer;
-                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+                box-shadow: 0 1px 2px ${SHADOW.SUBTLE};
             }
             .ffne-dm-btn:hover {
-                background: #e3edf7;
-                color: #123a5a;
+                background: ${BRAND.HOVER_BG};
+                color: ${BRAND.HOVER_TEXT};
             }
             .ffne-dm-drawer-pull {
                 appearance: none;
@@ -1058,7 +1059,7 @@ export const DocManager = {
                 background: ButtonFace;
                 color: ButtonText;
                 cursor: pointer;
-                box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.22);
+                box-shadow: 0 -1px 6px ${SHADOW.DRAWER};
             }
             .ffne-dm-drawer-pull:hover {
                 filter: brightness(0.97);
@@ -1083,7 +1084,7 @@ export const DocManager = {
                 opacity: 0.72;
             }
             .ffne-dm-btn:disabled {
-                color: #777;
+                color: ${UI.TEXT_MUTED};
                 cursor: default;
                 opacity: 0.65;
             }
@@ -1091,7 +1092,7 @@ export const DocManager = {
                 position: fixed;
                 inset: 0;
                 z-index: 99999;
-                background: rgba(0, 0, 0, 0.35);
+                background: ${SHADOW.MODAL};
                 font-family: Verdana, Arial, sans-serif;
             }
             .ffne-dm-modal {
@@ -1102,9 +1103,9 @@ export const DocManager = {
                 width: min(720px, calc(100vw - 32px));
                 max-height: min(760px, calc(100vh - 32px));
                 overflow: auto;
-                background: #fff;
-                border: 1px solid #7892ad;
-                box-shadow: 0 3px 18px rgba(0, 0, 0, 0.35);
+                background: ${UI.WHITE};
+                border: 1px solid ${UI.BORDER_CHROME};
+                box-shadow: 0 3px 18px ${SHADOW.MODAL};
             }
             .ffne-dm-modal-sm {
                 width: min(460px, calc(100vw - 32px));
@@ -1117,10 +1118,10 @@ export const DocManager = {
                 align-items: center;
                 justify-content: space-between;
                 gap: 12px;
-                background: #336699;
-                color: #fff;
+                background: ${BRAND.PRIMARY};
+                color: ${UI.WHITE};
                 padding: 7px 10px;
-                border-bottom: 1px solid #254d73;
+                border-bottom: 1px solid ${BRAND.DARK};
             }
             .ffne-dm-modal-header h3 {
                 margin: 0;
@@ -1132,7 +1133,7 @@ export const DocManager = {
                 appearance: none;
                 border: 0;
                 background: transparent;
-                color: #fff;
+                color: ${UI.WHITE};
                 cursor: pointer;
                 font-size: 18px;
                 line-height: 18px;
@@ -1140,7 +1141,7 @@ export const DocManager = {
             }
             .ffne-dm-modal-body {
                 padding: 12px;
-                color: #333;
+                color: ${UI.TEXT_BODY};
                 font-size: 12px;
             }
             .ffne-dm-routines {
@@ -1149,7 +1150,7 @@ export const DocManager = {
             }
             .ffne-dm-routine {
                 border: 1px solid #d8d8d8;
-                background: #fafafa;
+                background: ${UI.CARD_BG};
                 padding: 8px;
             }
             .ffne-dm-routine-header {
@@ -1160,7 +1161,7 @@ export const DocManager = {
             }
             .ffne-dm-routine-status {
                 margin-top: 4px;
-                color: #555;
+                color: ${UI.TEXT_DISABLED};
                 font-size: 11px;
             }
             .ffne-dm-routine-status:empty {
@@ -1168,7 +1169,7 @@ export const DocManager = {
             }
             .ffne-dm-routine-title {
                 font-weight: 700;
-                color: #333;
+                color: ${UI.TEXT_BODY};
             }
             .ffne-dm-import-controls {
                 display: flex;
@@ -1182,7 +1183,7 @@ export const DocManager = {
             .ffne-dm-select {
                 font: inherit;
                 padding: 4px 6px;
-                border: 1px solid #b9c9d9;
+                border: 1px solid ${UI.BORDER_INPUT};
                 min-width: 0;
             }
             .ffne-dm-input {
@@ -1193,7 +1194,7 @@ export const DocManager = {
                 align-items: center;
                 gap: 6px;
                 font-size: 12px;
-                color: #333;
+                color: ${UI.TEXT_BODY};
             }
             .ffne-dm-form-row {
                 display: flex;
@@ -1218,28 +1219,28 @@ export const DocManager = {
                 flex-wrap: wrap;
             }
             .ffne-dm-selection-label {
-                color: #555;
+                color: ${UI.TEXT_DISABLED};
                 font-size: 11px;
             }
             .ffne-dm-summary {
                 margin: 8px 0;
                 padding: 7px 8px;
-                background: #f7f9fb;
-                border: 1px solid #d8e2ec;
+                background: ${UI.BG_INFO};
+                border: 1px solid ${UI.BORDER_BRAND_LIGHT};
                 line-height: 1.45;
             }
             .ffne-dm-summary-detail {
                 margin-top: 3px;
             }
             .ffne-dm-warning {
-                color: #8a3b00;
-                background: #fff8e8;
-                border-color: #e8c98a;
+                color: ${SEMANTIC.WARNING_TEXT_DARK};
+                background: ${SEMANTIC.WARNING_BG};
+                border-color: ${SEMANTIC.WARNING_BORDER};
             }
             .ffne-dm-error {
-                color: #8b0000;
-                background: #fff0f0;
-                border-color: #d8a0a0;
+                color: ${SEMANTIC.ERROR_TEXT};
+                background: ${SEMANTIC.ERROR_BG};
+                border-color: ${SEMANTIC.ERROR_BORDER};
             }
             .ffne-dm-preview {
                 width: 100%;
@@ -1251,44 +1252,44 @@ export const DocManager = {
             .ffne-dm-preview-scroll {
                 max-height: min(460px, calc(100vh - 310px));
                 overflow: auto;
-                border: 1px solid #d8e2ec;
+                border: 1px solid ${UI.BORDER_BRAND_LIGHT};
                 margin-top: 8px;
             }
             .ffne-dm-preview-scroll .ffne-dm-preview {
                 margin-top: 0;
             }
             .ffne-dm-preview th {
-                background: #f0f4f8;
-                color: #333;
-                border: 1px solid #c8d6e4;
+                background: ${BRAND.BG};
+                color: ${UI.TEXT_BODY};
+                border: 1px solid ${UI.BORDER_TABLE};
                 padding: 5px 6px;
                 text-align: left;
                 cursor: default;
             }
             .ffne-dm-preview td {
-                border: 1px solid #ddd;
+                border: 1px solid ${UI.BORDER_LIGHT};
                 padding: 5px 6px;
                 vertical-align: top;
                 cursor: default;
             }
             .ffne-dm-row-running {
-                background: #fff4c2;
+                background: ${SEMANTIC.RUNNING_BG};
             }
             .ffne-dm-row-success {
-                background: #edf9ed;
+                background: ${SEMANTIC.SUCCESS_BG};
             }
             .ffne-dm-row-failed {
-                background: #fff0f0;
+                background: ${SEMANTIC.ERROR_BG};
             }
-            .ffne-dm-status-matched { color: #236423; font-weight: 700; }
-            .ffne-dm-status-missing { color: #777; }
-            .ffne-dm-status-duplicate { color: #8b0000; font-weight: 700; }
+            .ffne-dm-status-matched { color: ${SEMANTIC.SUCCESS_TEXT}; font-weight: 700; }
+            .ffne-dm-status-missing { color: ${UI.TEXT_MUTED}; }
+            .ffne-dm-status-duplicate { color: ${SEMANTIC.ERROR_TEXT}; font-weight: 700; }
             .ffne-dm-status-running,
-            .ffne-dm-status-retrying { color: #8a5c00; font-weight: 700; }
-            .ffne-dm-status-success { color: #236423; font-weight: 700; }
-            .ffne-dm-status-failed { color: #8b0000; font-weight: 700; }
-            .ffne-dm-status-mapped { color: #236423; font-weight: 700; }
-            .ffne-dm-status-skipped { color: #777; }
+            .ffne-dm-status-retrying { color: ${SEMANTIC.WARNING_TEXT}; font-weight: 700; }
+            .ffne-dm-status-success { color: ${SEMANTIC.SUCCESS_TEXT}; font-weight: 700; }
+            .ffne-dm-status-failed { color: ${SEMANTIC.ERROR_TEXT}; font-weight: 700; }
+            .ffne-dm-status-mapped { color: ${SEMANTIC.SUCCESS_TEXT}; font-weight: 700; }
+            .ffne-dm-status-skipped { color: ${UI.TEXT_MUTED}; }
             .ffne-dm-footer {
                 display: flex;
                 justify-content: flex-end;
@@ -1298,14 +1299,14 @@ export const DocManager = {
             }
             .ffne-dm-run-status {
                 margin-right: auto;
-                color: #555;
+                color: ${UI.TEXT_DISABLED};
             }
             .ffne-dm-import-results {
                 margin-top: 10px;
                 padding: 7px 8px;
-                color: #8b0000;
-                background: #fff0f0;
-                border: 1px solid #d8a0a0;
+                color: ${SEMANTIC.ERROR_TEXT};
+                background: ${SEMANTIC.ERROR_BG};
+                border: 1px solid ${SEMANTIC.ERROR_BORDER};
             }
             .ffne-dm-import-results[hidden] {
                 display: none;
@@ -2268,7 +2269,7 @@ export const DocManager = {
             },
             processItem: async (item) => {
                 const originalBg = item.row.style.backgroundColor;
-                item.row.style.backgroundColor = '#fff4c2';
+                item.row.style.backgroundColor = SEMANTIC.RUNNING_BG;
                 item.row.style.transition = 'background-color 0.3s ease';
                 try {
                     const content = format === DocDownloadFormat.DOCX || format === DocDownloadFormat.HTML
@@ -2378,7 +2379,7 @@ export const DocManager = {
             },
             processItem: async (item) => {
                 const originalBg = item.row.style.backgroundColor;
-                item.row.style.backgroundColor = '#fff4c2';
+                item.row.style.backgroundColor = SEMANTIC.RUNNING_BG;
                 item.row.style.transition = 'background-color 0.3s ease';
                 try {
                     return await DocFetchService.refreshPrivateDoc(item.docId, item.title);
@@ -2517,10 +2518,10 @@ export const DocManager = {
 
                 const originalTableBg = sourceItem.row.style.backgroundColor;
                 const originalModalBg = row.modalRow?.style.backgroundColor || '';
-                sourceItem.row.style.backgroundColor = '#fff4c2';
+                sourceItem.row.style.backgroundColor = SEMANTIC.RUNNING_BG;
                 sourceItem.row.style.transition = 'background-color 0.3s ease';
                 if (row.modalRow) {
-                    row.modalRow.style.backgroundColor = '#fff4c2';
+                    row.modalRow.style.backgroundColor = SEMANTIC.RUNNING_BG;
                     row.modalRow.style.transition = 'background-color 0.3s ease';
                 }
 
@@ -2751,7 +2752,7 @@ export const DocManager = {
                 }
 
                 const originalBg = item.row.style.backgroundColor;
-                item.row.style.backgroundColor = '#fff4c2';
+                item.row.style.backgroundColor = SEMANTIC.RUNNING_BG;
                 item.row.style.transition = 'background-color 0.3s ease';
 
                 try {
