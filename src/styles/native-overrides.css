@@ -1,0 +1,200 @@
+/* --- FFN Native Element Overrides ---
+   Fallback for cross-origin stylesheets the CssScanner cannot read.
+   __THEME_CLASS__ is replaced at runtime with the active theme class.
+   All values use CSS custom properties so they adapt per-theme automatically. */
+
+/* --- Tables --- */
+html.__THEME_CLASS__ table {
+    border-color: var(--ffne-ui-border);
+}
+
+html.__THEME_CLASS__ td {
+    background-color: var(--ffne-ui-white);
+    color: var(--ffne-ui-text-body);
+    border-color: var(--ffne-ui-border-light);
+}
+
+html.__THEME_CLASS__ th {
+    background-color: var(--ffne-brand-bg);
+    color: var(--ffne-ui-text-body);
+    border-color: var(--ffne-ui-border-table);
+}
+
+html.__THEME_CLASS__ caption {
+    color: var(--ffne-ui-text-body);
+}
+
+/* --- Form controls --- */
+html.__THEME_CLASS__ input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="image"]),
+html.__THEME_CLASS__ select,
+html.__THEME_CLASS__ textarea {
+    background-color: var(--ffne-ui-card-bg);
+    color: var(--ffne-ui-text-body);
+    border-color: var(--ffne-ui-border-input);
+}
+
+html.__THEME_CLASS__ input[type="submit"],
+html.__THEME_CLASS__ input[type="button"],
+html.__THEME_CLASS__ button {
+    background-color: var(--ffne-brand-bg);
+    color: var(--ffne-brand-text);
+    border-color: var(--ffne-ui-border);
+}
+
+/* --- Links --- */
+html.__THEME_CLASS__ a:link {
+    color: var(--ffne-brand-primary);
+}
+
+html.__THEME_CLASS__ a:visited {
+    color: var(--ffne-brand-primary);
+}
+
+html.__THEME_CLASS__ a:hover {
+    color: var(--ffne-brand-hover-text);
+}
+
+/* --- Text elements --- */
+html.__THEME_CLASS__ h1,
+html.__THEME_CLASS__ h2,
+html.__THEME_CLASS__ h3,
+html.__THEME_CLASS__ h4,
+html.__THEME_CLASS__ h5,
+html.__THEME_CLASS__ h6 {
+    color: var(--ffne-ui-text-strong);
+}
+
+/* --- Separators --- */
+html.__THEME_CLASS__ hr {
+    border-color: var(--ffne-ui-border);
+}
+
+/* --- Code blocks --- */
+html.__THEME_CLASS__ pre,
+html.__THEME_CLASS__ code {
+    background-color: var(--ffne-ui-card-bg);
+    color: var(--ffne-ui-text-body);
+    border-color: var(--ffne-ui-border);
+}
+
+/* --- Fieldsets --- */
+html.__THEME_CLASS__ fieldset {
+    border-color: var(--ffne-ui-border);
+}
+
+html.__THEME_CLASS__ legend {
+    color: var(--ffne-ui-text-body);
+}
+
+/* --- FFN-specific containers --- */
+html.__THEME_CLASS__ #gui_table1 td {
+    background-color: var(--ffne-ui-white);
+}
+
+html.__THEME_CLASS__ #gui_table1 th {
+    background-color: var(--ffne-brand-bg);
+}
+
+html.__THEME_CLASS__ #l_main,
+html.__THEME_CLASS__ #l_menu {
+    background-color: var(--ffne-ui-page-bg);
+}
+
+/* Sidebar navigation */
+html.__THEME_CLASS__ #side_nav_inside a,
+html.__THEME_CLASS__ .side_nav a {
+    color: var(--ffne-brand-primary);
+}
+
+html.__THEME_CLASS__ .side_nav li.active,
+html.__THEME_CLASS__ #side_nav_inside li.active {
+    background-color: var(--ffne-brand-bg);
+}
+
+/* Alert/info panels */
+html.__THEME_CLASS__ .panel_normal {
+    background-color: var(--ffne-ui-card-bg);
+    border-color: var(--ffne-ui-border);
+    color: var(--ffne-ui-text-body);
+}
+
+html.__THEME_CLASS__ .panel_success {
+    background-color: var(--ffne-semantic-success-bg);
+    border-color: var(--ffne-ui-border);
+    color: var(--ffne-semantic-success-text);
+}
+
+html.__THEME_CLASS__ .panel_warning {
+    background-color: var(--ffne-semantic-warning-bg);
+    border-color: var(--ffne-semantic-warning-border);
+    color: var(--ffne-semantic-warning-text);
+}
+
+html.__THEME_CLASS__ .panel_error {
+    background-color: var(--ffne-semantic-error-bg);
+    border-color: var(--ffne-semantic-error-border);
+    color: var(--ffne-semantic-error-text);
+}
+
+/* Breadcrumbs / content header */
+html.__THEME_CLASS__ #content_parent {
+    background-color: var(--ffne-ui-page-bg);
+    color: var(--ffne-ui-text-body);
+}
+
+/* Tab navigation bar */
+html.__THEME_CLASS__ .tab_bar {
+    border-color: var(--ffne-ui-border);
+}
+
+html.__THEME_CLASS__ .tab_bar a {
+    background-color: var(--ffne-ui-card-bg);
+    color: var(--ffne-brand-primary);
+    border-color: var(--ffne-ui-border);
+}
+
+html.__THEME_CLASS__ .tab_bar a.active {
+    background-color: var(--ffne-brand-bg);
+}
+
+/* Dropdown menus */
+html.__THEME_CLASS__ .dropdown-menu {
+    background-color: var(--ffne-ui-white);
+    border-color: var(--ffne-ui-border);
+}
+
+html.__THEME_CLASS__ .dropdown-menu a {
+    color: var(--ffne-ui-text-body);
+}
+
+html.__THEME_CLASS__ .dropdown-menu a:hover {
+    background-color: var(--ffne-brand-bg);
+}
+
+/* Alternating row shading */
+html.__THEME_CLASS__ tr:nth-child(even) td {
+    background-color: var(--ffne-ui-card-bg);
+}
+
+/* Search box */
+html.__THEME_CLASS__ #search_box {
+    background-color: var(--ffne-ui-page-bg);
+}
+
+/* Blockquote */
+html.__THEME_CLASS__ blockquote {
+    border-color: var(--ffne-ui-border);
+    color: var(--ffne-ui-text-secondary);
+}
+
+/* Mark / highlight */
+html.__THEME_CLASS__ mark {
+    background-color: var(--ffne-semantic-running-bg);
+    color: var(--ffne-ui-text-body);
+}
+
+/* Selection */
+html.__THEME_CLASS__ ::selection {
+    background-color: var(--ffne-brand-primary);
+    color: var(--ffne-ui-text-on-accent);
+}

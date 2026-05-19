@@ -384,6 +384,7 @@ All module CSS is extracted to dedicated `.css` files in `src/styles/`:
 - `components.css` - shared components (cover modal, dropdown, toast, Ao3 panel, status classes)
 - `doc-manager.css` - DocManager modals, drawer, table
 - `story-edit-content.css` - StoryEditContent bulk replace UI
+- `native-overrides.css` - FFN native element overrides (fallback for cross-origin CSS)
 
 Imported via `?raw` and injected as `<style>` tags.
 
@@ -550,6 +551,7 @@ src/
     components.css               - Shared components (cover modal, dropdown, toast, status)
     doc-manager.css              - DocManager modals, drawer, table styles
     story-edit-content.css       - StoryEditContent bulk replace UI
+    native-overrides.css         - FFN native element overrides (cross-origin CSS fallback)
   themes/
     index.ts                     - THEME_DEFINITIONS registry + getThemeDefinition()
     LightTheme.ts                - Default light theme (empty overrides)
@@ -610,6 +612,12 @@ tsconfig.json                    - Strict TypeScript config
 11. `CssScanner` skips `<style>` tags whose `id` starts with `ffne-`, `ffe-`, or
     `ffn-enhancements`. When adding new injected style tags, use one of these
     prefixes to prevent the scanner from generating redundant overrides.
+
+12. FFN's main CSS is cross-origin (CDN-served), so `CssScanner` cannot read
+    `cssRules` from those sheets. `native-overrides.css` provides fallback
+    element-level overrides using `var(--ffne-*)` tokens. When FFN adds new
+    UI patterns not covered by these overrides, add rules there rather than
+    trying to expand the scanner's reach.
 
 ---
 

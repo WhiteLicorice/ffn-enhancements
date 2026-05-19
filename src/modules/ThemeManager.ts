@@ -3,6 +3,7 @@ import { ISitewideModule } from '../interfaces/ISiteWideModule';
 import { IThemeDefinition } from '../interfaces/IThemeDefinition';
 import { CssScanner } from '../services/CssScanner';
 import componentsStyles from '../styles/components.css?raw';
+import nativeOverrideStyles from '../styles/native-overrides.css?raw';
 import { buildTokenCss } from '../styles/ThemeTokens';
 import { getThemeDefinition } from '../themes';
 import { FFNLogger } from './FFNLogger';
@@ -89,11 +90,15 @@ function _injectComponentStyles(rootDocument: Document = document): void {
 
 function _injectFfnOverrides(definition: IThemeDefinition, rootDocument: Document, styleId: string): void {
     const style = _upsertStyle(rootDocument, styleId);
-    style.textContent = CssScanner.scanAndOverride(
+    const scannerCss = CssScanner.scanAndOverride(
         definition.colorMap as Record<string, string>,
         _themeClass(definition.name),
         rootDocument,
     );
+    const elementCss = definition.name !== Theme.LIGHT
+        ? _buildScopedNativeOverrides(definition)
+        : '';
+    style.textContent = [elementCss, scannerCss].filter(Boolean).join('\n\n');
 }
 
 function _upsertStyle(rootDocument: Document, id: string): HTMLStyleElement {
@@ -108,16 +113,27 @@ function _upsertStyle(rootDocument: Document, id: string): HTMLStyleElement {
 }
 
 function _buildBootstrapCss(definition: IThemeDefinition): string {
+    const s = `html.${_themeClass(definition.name)}`;
     return `
-html.${_themeClass(definition.name)} {
+${s} {
     background: var(--ffne-ui-page-bg);
     color: var(--ffne-ui-text-body);
 }
-
-html.${_themeClass(definition.name)} body {
+${s} body {
     background-color: var(--ffne-ui-page-bg);
+    color: var(--ffne-ui-text-body);
+}
+${s} #content_wrapper,
+${s} #content_wrapper_inner {
+    background-color: var(--ffne-ui-page-bg);
+    color: var(--ffne-ui-text-body);
 }
 `;
+}
+
+function _buildScopedNativeOverrides(definition: IThemeDefinition): string {
+    const themeClass = _themeClass(definition.name);
+    return nativeOverrideStyles.replace(/__THEME_CLASS__/g, themeClass);
 }
 
 function _applyThemeClass(theme: Theme): void {
