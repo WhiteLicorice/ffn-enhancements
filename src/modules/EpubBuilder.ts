@@ -34,7 +34,7 @@ export const EpubBuilder = {
 
         // 1. Mimetype (Must be first, uncompressed)
         zip.file('mimetype', 'application/epub+zip', { compression: "STORE" });
-
+        
         // 2. Container XML
         zip.file('META-INF/container.xml', `<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -91,11 +91,14 @@ export const EpubBuilder = {
         });
 
         // 9. Generate Blob and Download
-        // Explicitly set mimeType to 'application/epub+zip' to prevent Android
-        // from appending '.zip' to the filename.
+        // Level 1 is ~5x faster than the default (6) while keeping ~80 % of
+        // the compression ratio.  Large multi-chapter stories no longer hang
+        // on "Bundling EPUB..."
         const blob = await zip.generateAsync({
             type: 'blob',
-            mimeType: 'application/epub+zip'
+            mimeType: 'application/epub+zip',
+            compression: "DEFLATE",
+            compressionOptions: { level: 1 },
         });
 
         saveAs(blob, `${meta.title} - ${meta.author}.epub`);

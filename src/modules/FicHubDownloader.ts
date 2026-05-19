@@ -11,6 +11,13 @@ import { Globals } from '../enums/Globals';
 import JSZip from 'jszip';
 
 const MODULE_NAME = 'FicHubDownloader';
+const FICHUB_API_TIMEOUT_MS = 60_000;
+const FICHUB_FILE_TIMEOUT_MS = 120_000;
+const COVER_INJECTION_TIMEOUT_MS = 120_000;
+const EPUB_MIME_TYPE = 'application/epub+zip';
+
+type FicHubTextResponse = { status: number; responseText?: string };
+type FicHubBinaryResponse = { status: number; response?: unknown };
 
 /**
  * Concrete implementation of the Downloader strategy using the FicHub API.
@@ -50,7 +57,11 @@ export const FicHubDownloader: IFanficDownloader = {
             if (metadata.coverBlob) {
                 if (onProgress) onProgress("Injecting Cover...");
                 try {
-                    finalBlob = await _injectCoverIntoEpub(epubBlob, metadata.coverBlob);
+                    finalBlob = await _withTimeout(
+                        _injectCoverIntoEpub(epubBlob, metadata.coverBlob),
+                        COVER_INJECTION_TIMEOUT_MS,
+                        `Cover injection timed out after ${COVER_INJECTION_TIMEOUT_MS}ms.`
+                    );
                     log("Cover injected successfully.");
                 } catch (e) {
                     log("Failed to inject cover. Saving original.", e);
@@ -65,7 +76,7 @@ export const FicHubDownloader: IFanficDownloader = {
 
         } catch (e) {
             log("EPUB Download Failed", e);
-            alert("Download failed. Check console for details.");
+            throw e;
         }
     },
 
@@ -106,15 +117,22 @@ export function checkFicHubFreshness(
 
     return new Promise((resolve) => {
         const apiUrl = `https://fichub.net/api/v0/meta?q=${encodeURIComponent(storyUrl)}`;
+        let settled = false;
+        const resolveOnce = (status: FicHubStatus) => {
+            if (settled) return;
+            settled = true;
+            resolve(status);
+        };
 
         GM_xmlhttpRequest({
             method: "GET",
             url: apiUrl,
             headers: { "User-Agent": Globals.USER_AGENT },
+            timeout: FICHUB_API_TIMEOUT_MS,
             onload: (res) => {
                 if (res.status !== 200) {
                     log(`API Error: ${res.status}`);
-                    resolve(FicHubStatus.ERROR);
+                    resolveOnce(FicHubStatus.ERROR);
                     return;
                 }
 
@@ -123,7 +141,7 @@ export function checkFicHubFreshness(
                     const ficHubMeta = new FicHubMetadataSerializer(jsonData);
 
                     if (!ficHubMeta.getUpdatedDate() || !ficHubMeta.getChapterCount()) {
-                        resolve(FicHubStatus.ERROR);
+                        resolveOnce(FicHubStatus.ERROR);
                         return;
                     }
 
@@ -144,7 +162,7 @@ export function checkFicHubFreshness(
                     // If FicHub has different chapters than the page we are on, it is definitely stale.
                     if (ficHubCount != localCount) {
                         log(`FicHub Stale: Missing chapters (Hub: ${ficHubCount} vs Page: ${localCount})`);
-                        resolve(FicHubStatus.STALE);
+                        resolveOnce(FicHubStatus.STALE);
                         return;
                     }
 
@@ -155,20 +173,24 @@ export function checkFicHubFreshness(
                     const ONE_DAY = 86400000;
                     if (localDate.getTime() > (ficHubDate.getTime() + ONE_DAY)) {
                         log(`FicHub Stale: Content on page is significantly newer (>24h) than Hub cache.`);
-                        resolve(FicHubStatus.STALE);
+                        resolveOnce(FicHubStatus.STALE);
                         return;
                     }
 
-                    resolve(FicHubStatus.FRESH);
+                    resolveOnce(FicHubStatus.FRESH);
 
                 } catch (e) {
                     log("Freshness check failed during parsing.", e);
-                    resolve(FicHubStatus.ERROR);
+                    resolveOnce(FicHubStatus.ERROR);
                 }
             },
             onerror: (err) => {
                 log("Freshness check network error.", err);
-                resolve(FicHubStatus.ERROR);
+                resolveOnce(FicHubStatus.ERROR);
+            },
+            ontimeout: () => {
+                log("Freshness check timed out.");
+                resolveOnce(FicHubStatus.ERROR);
             }
         });
     });
@@ -204,34 +226,43 @@ function _getFicHubDownloadUrl(storyUrl: string, format: SupportedFormats, onPro
     if (onProgress) onProgress("Requesting...");
 
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const resolveOnce = (url: string) => { if (settled) return; settled = true; resolve(url); };
+        const rejectOnce = (err: unknown) => { if (settled) return; settled = true; reject(err); };
+
         GM_xmlhttpRequest({
             method: "GET",
             url: apiUrl,
             headers: { "User-Agent": Globals.USER_AGENT },
-            onload: (res: { status: number; responseText: string }) => {
+            timeout: FICHUB_API_TIMEOUT_MS,
+            onload: (res: FicHubTextResponse) => {
                 if (res.status === 429) {
                     log("Fichub Server Busy (429).");
-                    alert("Fichub Server Busy. Please try again later.");
-                    reject(new Error("429: Server Busy"));
+                    rejectOnce(new Error("429: Server Busy"));
+                    return;
+                }
+
+                if (res.status < 200 || res.status >= 300) {
+                    rejectOnce(new Error(`FicHub API request failed: HTTP ${res.status}`));
                     return;
                 }
 
                 try {
-                    const data = JSON.parse(res.responseText);
+                    const data = JSON.parse(res.responseText || '{}');
                     const rel = data.urls?.[format] || data[format + '_url'];
 
-                    if (rel) {
-                        resolve("https://fichub.net" + rel);
+                    if (typeof rel === 'string' && rel.length > 0) {
+                        resolveOnce(rel.startsWith('http') ? rel : `https://fichub.net${rel}`);
                     } else {
                         log(`Format '${format}' not found in API response.`, data);
-                        alert(`FicHub could not generate a ${format} file for this story.`);
-                        reject(new Error("Format not found"));
+                        rejectOnce(new Error("Format not found"));
                     }
                 } catch (e) {
-                    reject(e);
+                    rejectOnce(e);
                 }
             },
-            onerror: (err) => reject(err)
+            onerror: (err) => rejectOnce(err),
+            ontimeout: () => rejectOnce(new Error(`FicHub API request timed out after ${FICHUB_API_TIMEOUT_MS}ms.`))
         });
     });
 }
@@ -241,16 +272,48 @@ function _getFicHubDownloadUrl(storyUrl: string, format: SupportedFormats, onPro
  */
 function _fetchBlob(url: string): Promise<Blob> {
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const resolveOnce = (blob: Blob) => { if (settled) return; settled = true; resolve(blob); };
+        const rejectOnce = (err: unknown) => { if (settled) return; settled = true; reject(err); };
+
         GM_xmlhttpRequest({
             method: "GET",
             url: url,
+            headers: { Accept: "application/epub+zip,application/octet-stream,*/*" },
             responseType: "blob",
-            onload: (res) => {
-                if (res.status === 200) resolve(res.response);
-                else reject(new Error(`Download failed: ${res.status}`));
+            timeout: FICHUB_FILE_TIMEOUT_MS,
+            onload: (res: FicHubBinaryResponse) => {
+                if (res.status !== 200) {
+                    rejectOnce(new Error(`Download failed: ${res.status}`));
+                    return;
+                }
+
+                const response = res.response;
+                if (response instanceof Blob) {
+                    resolveOnce(response);
+                    return;
+                }
+
+                if (response instanceof ArrayBuffer) {
+                    resolveOnce(new Blob([response], { type: EPUB_MIME_TYPE }));
+                    return;
+                }
+
+                rejectOnce(new Error("FicHub returned no EPUB data."));
             },
-            onerror: reject
+            onerror: (err) => rejectOnce(err),
+            ontimeout: () => rejectOnce(new Error(`FicHub EPUB download timed out after ${FICHUB_FILE_TIMEOUT_MS}ms.`))
         });
+    });
+}
+
+function _withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    return new Promise((resolve, reject) => {
+        const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+        promise.then(
+            (value) => { window.clearTimeout(timer); resolve(value); },
+            (err) => { window.clearTimeout(timer); reject(err); }
+        );
     });
 }
 
@@ -264,6 +327,7 @@ function _fetchBlob(url: string): Promise<Blob> {
 async function _injectCoverIntoEpub(epubBlob: Blob, coverBlob: Blob): Promise<Blob> {
     const log = Core.getLogger(MODULE_NAME, 'injectCover');
     const zip = await JSZip.loadAsync(epubBlob);
+    const coverMimeType = coverBlob.type || 'image/jpeg';
 
     const { opfPath, opfDir } = await _findOpfPath(zip);
     const opfDoc = await _parseOpfDocument(zip, opfPath);
@@ -275,13 +339,20 @@ async function _injectCoverIntoEpub(epubBlob: Blob, coverBlob: Blob): Promise<Bl
         zip.file(_resolveFullPath(opfDir, existingHref), coverBlob);
     } else {
         log("No existing cover found. Injecting image and metadata.");
-        _injectCoverMetadata(zip, opfPath, opfDir, coverBlob, opfDoc);
+        _injectCoverMetadata(zip, opfPath, opfDir, coverBlob, coverMimeType, opfDoc);
     }
 
-    // Note: We deliberately do not add a cover page to the spine or guide,
-    // to preserve the original reading order of the FicHub file.
-
-    return await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip" });
+    // STORE: all entries were decompressed into memory by loadAsync.
+    // Re-compressing them is pure CPU waste — the data was already DEFLATEd
+    // by FicHub and we only touched the cover image + OPF.  STORE turns
+    // generateAsync into a near-instant concatenation.  The output file is
+    // larger (decompressed content), but the operation completes in seconds
+    // instead of minutes for large multi-chapter EPUBs.
+    return await zip.generateAsync({
+        type: "blob",
+        mimeType: EPUB_MIME_TYPE,
+        compression: "STORE",
+    });
 }
 
 /** Reads container.xml to locate the OPF file path within the EPUB ZIP. */
@@ -336,11 +407,12 @@ function _injectCoverMetadata(
     opfPath: string,
     opfDir: string,
     coverBlob: Blob,
+    coverMimeType: string,
     opfDoc: Document
 ): void {
     const OPF_NS = "http://www.idpf.org/2007/opf";
     const COVER_IMAGE_ID = "cover-image";
-    const COVER_IMG_FILENAME = "images/cover.jpg";
+    const COVER_IMG_FILENAME = `images/cover.${_imageExtensionForMimeType(coverMimeType)}`;
 
     const fullImgPath = opfDir ? `${opfDir}/${COVER_IMG_FILENAME}` : COVER_IMG_FILENAME;
     zip.file(fullImgPath, coverBlob);
@@ -363,7 +435,7 @@ function _injectCoverMetadata(
         const itemImg = opfDoc.createElementNS(OPF_NS, "item");
         itemImg.setAttribute("id", COVER_IMAGE_ID);
         itemImg.setAttribute("href", COVER_IMG_FILENAME);
-        itemImg.setAttribute("media-type", "image/jpeg");
+        itemImg.setAttribute("media-type", coverMimeType);
         if (isEpub3) {
             itemImg.setAttribute("properties", "cover-image");
         }
@@ -372,6 +444,13 @@ function _injectCoverMetadata(
 
     const serializer = new XMLSerializer();
     zip.file(opfPath, serializer.serializeToString(opfDoc));
+}
+
+function _imageExtensionForMimeType(mimeType: string): string {
+    if (mimeType.includes('png')) return 'png';
+    if (mimeType.includes('gif')) return 'gif';
+    if (mimeType.includes('webp')) return 'webp';
+    return 'jpg';
 }
 
 /**
