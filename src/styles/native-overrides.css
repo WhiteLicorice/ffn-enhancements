@@ -128,7 +128,9 @@ html.__THEME_CLASS__ .xcontrast_txt {
     color: var(--ffne-ui-text-body) !important;
 }
 
-/* Author profile links — preserve FFN's warm orange identity across themes */
+/* Author profile links in story/page content — preserve FFN's warm
+   orange identity. On page/card backgrounds (light in Light/Sepia,
+   dark in Dark/HC), warning-text-dark is warm amber with good contrast. */
 html.__THEME_CLASS__ a[href*="/u/"].xcontrast_txt,
 html.__THEME_CLASS__ a[href*="/u/"] {
     color: var(--ffne-semantic-warning-text-dark) !important;
@@ -170,6 +172,14 @@ html.__THEME_CLASS__ .menulink a {
 
 html.__THEME_CLASS__ .menulink small {
     color: var(--ffne-ui-text-on-accent) !important;
+}
+
+/* Username in top nav — rendered by render_login() with inline
+   color:orange inside #name_login. Keep warm identity on dark nav bg.
+   #ff9944 meets 4.5:1 on Light/Dark/HC brand-dark; meets 3:1 (large
+   text) on Sepia brand-dark #6f5310. */
+html.__THEME_CLASS__ #name_login a {
+    color: #ff9944 !important;
 }
 
 html.__THEME_CLASS__ .zmenu {
