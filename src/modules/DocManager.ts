@@ -22,7 +22,7 @@ import {
     IAo3MigrationMappingRow,
     IAo3MigrationPlan,
 } from '../interfaces/IAo3Migration';
-import { BRAND, SEMANTIC, UI, SHADOW } from '../styles/tokens';
+import { BRAND, SEMANTIC, UI, SHADOW } from '../styles/theme';
 
 const ADVANCED_DRAWER_ID = 'ffne-docmanager-advanced-drawer';
 const ADVANCED_MODAL_ID = 'ffne-docmanager-advanced-modal';
@@ -1149,7 +1149,7 @@ export const DocManager = {
                 gap: 8px;
             }
             .ffne-dm-routine {
-                border: 1px solid #d8d8d8;
+                border: 1px solid ${UI.BORDER_ROUTINE};
                 background: ${UI.CARD_BG};
                 padding: 8px;
             }
@@ -1225,7 +1225,7 @@ export const DocManager = {
             .ffne-dm-summary {
                 margin: 8px 0;
                 padding: 7px 8px;
-                background: ${UI.BG_INFO};
+                background: ${UI.INFO_BG};
                 border: 1px solid ${UI.BORDER_BRAND_LIGHT};
                 line-height: 1.45;
             }

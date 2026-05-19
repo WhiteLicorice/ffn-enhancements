@@ -10,7 +10,7 @@ export default defineConfig({
         namespace: 'http://tampermonkey.net/',
         version: '15.0',
         author: 'WhiteLicorice',
-        connect: ['fichub.net', 'archiveofourown.org'],
+        connect: ['fichub.net', 'archiveofourown.org', 'www.fanfiction.net', 'fanfiction.net'],
         match: ['https://www.fanfiction.net/*', 'https://archiveofourown.org/*'],
         'run-at': 'document-start',
         grant: [

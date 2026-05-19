@@ -11,7 +11,7 @@ import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
 import { DocIframeHandler } from './DocIframeHandler';
 import { applyExportTransforms } from '../utils/exportTransform';
 import { writeToClipboard } from '../utils/clipboard';
-import { SEMANTIC, UI, SHADOW } from '../styles/tokens';
+import { SEMANTIC, UI, SHADOW } from '../styles/theme';
 
 /**
  * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).

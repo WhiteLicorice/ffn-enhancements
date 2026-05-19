@@ -13,7 +13,7 @@ import { DocFetchService } from '../services/DocFetchService';
 import { StoryReplaceService } from '../services/StoryReplaceService';
 import { runBulkOperation } from '../utils/runBulkOperation';
 import { SettingsManager } from './SettingsManager';
-import { BRAND, SEMANTIC, UI, SHADOW } from '../styles/tokens';
+import { BRAND, SEMANTIC, UI, SHADOW } from '../styles/theme';
 
 const BULK_REPLACE_BUTTON_ID = 'ffne-story-bulk-replace-btn';
 const BULK_REPLACE_MODAL_ID = 'ffne-story-bulk-replace-modal';
@@ -615,12 +615,12 @@ export const StoryEditContent = {
             .ffne-story-bulk-summary {
                 margin-bottom: 10px;
                 padding: 7px 8px;
-                background: ${UI.BG_INFO};
+                background: ${UI.INFO_BG};
                 border: 1px solid ${UI.BORDER_BRAND_LIGHT};
             }
             .ffne-story-bulk-summary.ffne-story-bulk-error {
                 color: ${SEMANTIC.ERROR_TEXT};
-                background: ${SEMANTIC.ERROR_BG};
+                background: ${UI.WHITE}0f0;
                 border-color: ${SEMANTIC.ERROR_BORDER};
             }
             .ffne-story-bulk-table {
@@ -638,13 +638,13 @@ export const StoryEditContent = {
                 background: ${BRAND.BG};
             }
             .ffne-story-bulk-row-running {
-                background: ${SEMANTIC.RUNNING_BG};
+                background: ${UI.WHITE}4c2;
             }
             .ffne-story-bulk-row-success {
                 background: ${SEMANTIC.SUCCESS_BG};
             }
             .ffne-story-bulk-row-failed {
-                background: ${SEMANTIC.ERROR_BG};
+                background: ${UI.WHITE}0f0;
             }
             .ffne-story-bulk-status-duplicate {
                 color: ${SEMANTIC.ERROR_TEXT};
@@ -665,7 +665,7 @@ export const StoryEditContent = {
                 margin-top: 10px;
                 padding: 7px 8px;
                 color: ${SEMANTIC.ERROR_TEXT};
-                background: ${SEMANTIC.ERROR_BG};
+                background: ${UI.WHITE}0f0;
                 border: 1px solid ${SEMANTIC.ERROR_BORDER};
             }
             .ffne-story-bulk-results[hidden] {
