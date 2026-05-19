@@ -296,16 +296,16 @@
     cursor: default;
 }
 
-.ffne-dm-row-running {
-    background: var(--ffne-semantic-running-bg) !important;
+.ffne-dm-preview .ffne-dm-row-running td {
+    background-color: var(--ffne-semantic-running-bg) !important;
 }
 
-.ffne-dm-row-success {
-    background: var(--ffne-semantic-success-bg) !important;
+.ffne-dm-preview .ffne-dm-row-success td {
+    background-color: var(--ffne-semantic-success-bg) !important;
 }
 
-.ffne-dm-row-failed {
-    background: var(--ffne-semantic-error-bg) !important;
+.ffne-dm-preview .ffne-dm-row-failed td {
+    background-color: var(--ffne-semantic-error-bg) !important;
 }
 
 .ffne-dm-status-matched { color: var(--ffne-semantic-success-text); font-weight: 700; }

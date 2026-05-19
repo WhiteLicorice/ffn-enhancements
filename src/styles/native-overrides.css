@@ -1,57 +1,66 @@
 /* --- FFN Native Element Overrides ---
    Fallback for cross-origin stylesheets the CssScanner cannot read.
    __THEME_CLASS__ is replaced at runtime with the active theme class.
-   All values use CSS custom properties so they adapt per-theme automatically. */
+
+   !important is required because FFN uses ID-based selectors (e.g. #gui_table1 td)
+   whose specificity cannot be beaten by class-scoped rules alone. Our own component
+   CSS (doc-manager.css, story-edit-content.css, etc.) uses higher-specificity
+   class chains (e.g. .parent .status td) so their !important rules win over these. */
 
 /* --- Tables --- */
 html.__THEME_CLASS__ table {
-    border-color: var(--ffne-ui-border);
+    border-color: var(--ffne-ui-border) !important;
 }
 
 html.__THEME_CLASS__ td {
-    background-color: var(--ffne-ui-white);
-    color: var(--ffne-ui-text-body);
-    border-color: var(--ffne-ui-border-light);
+    background-color: var(--ffne-ui-white) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border-light) !important;
 }
 
 html.__THEME_CLASS__ th {
-    background-color: var(--ffne-brand-bg);
-    color: var(--ffne-ui-text-body);
-    border-color: var(--ffne-ui-border-table);
+    background-color: var(--ffne-brand-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border-table) !important;
 }
 
 html.__THEME_CLASS__ caption {
-    color: var(--ffne-ui-text-body);
+    color: var(--ffne-ui-text-body) !important;
+}
+
+/* Alternating row shading */
+html.__THEME_CLASS__ tr:nth-child(even) > td {
+    background-color: var(--ffne-ui-card-bg) !important;
 }
 
 /* --- Form controls --- */
 html.__THEME_CLASS__ input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="image"]),
 html.__THEME_CLASS__ select,
 html.__THEME_CLASS__ textarea {
-    background-color: var(--ffne-ui-card-bg);
-    color: var(--ffne-ui-text-body);
-    border-color: var(--ffne-ui-border-input);
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border-input) !important;
 }
 
 html.__THEME_CLASS__ input[type="submit"],
 html.__THEME_CLASS__ input[type="button"],
 html.__THEME_CLASS__ button {
-    background-color: var(--ffne-brand-bg);
-    color: var(--ffne-brand-text);
-    border-color: var(--ffne-ui-border);
+    background-color: var(--ffne-brand-bg) !important;
+    color: var(--ffne-brand-text) !important;
+    border-color: var(--ffne-ui-border) !important;
 }
 
 /* --- Links --- */
 html.__THEME_CLASS__ a:link {
-    color: var(--ffne-brand-primary);
+    color: var(--ffne-brand-primary) !important;
 }
 
 html.__THEME_CLASS__ a:visited {
-    color: var(--ffne-brand-primary);
+    color: var(--ffne-brand-primary) !important;
 }
 
 html.__THEME_CLASS__ a:hover {
-    color: var(--ffne-brand-hover-text);
+    color: var(--ffne-brand-hover-text) !important;
 }
 
 /* --- Text elements --- */
@@ -61,136 +70,143 @@ html.__THEME_CLASS__ h3,
 html.__THEME_CLASS__ h4,
 html.__THEME_CLASS__ h5,
 html.__THEME_CLASS__ h6 {
-    color: var(--ffne-ui-text-strong);
+    color: var(--ffne-ui-text-strong) !important;
+}
+
+html.__THEME_CLASS__ p,
+html.__THEME_CLASS__ li,
+html.__THEME_CLASS__ dd,
+html.__THEME_CLASS__ dt,
+html.__THEME_CLASS__ label,
+html.__THEME_CLASS__ span {
+    color: var(--ffne-ui-text-body);
 }
 
 /* --- Separators --- */
 html.__THEME_CLASS__ hr {
-    border-color: var(--ffne-ui-border);
+    border-color: var(--ffne-ui-border) !important;
 }
 
 /* --- Code blocks --- */
 html.__THEME_CLASS__ pre,
 html.__THEME_CLASS__ code {
-    background-color: var(--ffne-ui-card-bg);
-    color: var(--ffne-ui-text-body);
-    border-color: var(--ffne-ui-border);
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border) !important;
 }
 
 /* --- Fieldsets --- */
 html.__THEME_CLASS__ fieldset {
-    border-color: var(--ffne-ui-border);
+    border-color: var(--ffne-ui-border) !important;
 }
 
 html.__THEME_CLASS__ legend {
-    color: var(--ffne-ui-text-body);
+    color: var(--ffne-ui-text-body) !important;
 }
 
-/* --- FFN-specific containers --- */
-html.__THEME_CLASS__ #gui_table1 td {
-    background-color: var(--ffne-ui-white);
-}
-
-html.__THEME_CLASS__ #gui_table1 th {
-    background-color: var(--ffne-brand-bg);
-}
-
+/* --- FFN-specific layout containers --- */
 html.__THEME_CLASS__ #l_main,
-html.__THEME_CLASS__ #l_menu {
-    background-color: var(--ffne-ui-page-bg);
+html.__THEME_CLASS__ #l_menu,
+html.__THEME_CLASS__ #xcenter,
+html.__THEME_CLASS__ #content_parent {
+    background-color: var(--ffne-ui-page-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
 }
 
 /* Sidebar navigation */
 html.__THEME_CLASS__ #side_nav_inside a,
 html.__THEME_CLASS__ .side_nav a {
-    color: var(--ffne-brand-primary);
+    color: var(--ffne-brand-primary) !important;
 }
 
 html.__THEME_CLASS__ .side_nav li.active,
 html.__THEME_CLASS__ #side_nav_inside li.active {
-    background-color: var(--ffne-brand-bg);
+    background-color: var(--ffne-brand-bg) !important;
 }
 
 /* Alert/info panels */
 html.__THEME_CLASS__ .panel_normal {
-    background-color: var(--ffne-ui-card-bg);
-    border-color: var(--ffne-ui-border);
-    color: var(--ffne-ui-text-body);
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+    color: var(--ffne-ui-text-body) !important;
 }
 
 html.__THEME_CLASS__ .panel_success {
-    background-color: var(--ffne-semantic-success-bg);
-    border-color: var(--ffne-ui-border);
-    color: var(--ffne-semantic-success-text);
+    background-color: var(--ffne-semantic-success-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+    color: var(--ffne-semantic-success-text) !important;
 }
 
 html.__THEME_CLASS__ .panel_warning {
-    background-color: var(--ffne-semantic-warning-bg);
-    border-color: var(--ffne-semantic-warning-border);
-    color: var(--ffne-semantic-warning-text);
+    background-color: var(--ffne-semantic-warning-bg) !important;
+    border-color: var(--ffne-semantic-warning-border) !important;
+    color: var(--ffne-semantic-warning-text) !important;
 }
 
 html.__THEME_CLASS__ .panel_error {
-    background-color: var(--ffne-semantic-error-bg);
-    border-color: var(--ffne-semantic-error-border);
-    color: var(--ffne-semantic-error-text);
+    background-color: var(--ffne-semantic-error-bg) !important;
+    border-color: var(--ffne-semantic-error-border) !important;
+    color: var(--ffne-semantic-error-text) !important;
 }
 
-/* Breadcrumbs / content header */
-html.__THEME_CLASS__ #content_parent {
-    background-color: var(--ffne-ui-page-bg);
-    color: var(--ffne-ui-text-body);
+/* Navigation bar items */
+html.__THEME_CLASS__ .lc-left a,
+html.__THEME_CLASS__ .lc a {
+    color: var(--ffne-ui-text-on-accent) !important;
 }
 
 /* Tab navigation bar */
 html.__THEME_CLASS__ .tab_bar {
-    border-color: var(--ffne-ui-border);
+    border-color: var(--ffne-ui-border) !important;
 }
 
 html.__THEME_CLASS__ .tab_bar a {
-    background-color: var(--ffne-ui-card-bg);
-    color: var(--ffne-brand-primary);
-    border-color: var(--ffne-ui-border);
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-brand-primary) !important;
+    border-color: var(--ffne-ui-border) !important;
 }
 
 html.__THEME_CLASS__ .tab_bar a.active {
-    background-color: var(--ffne-brand-bg);
+    background-color: var(--ffne-brand-bg) !important;
 }
 
 /* Dropdown menus */
 html.__THEME_CLASS__ .dropdown-menu {
-    background-color: var(--ffne-ui-white);
-    border-color: var(--ffne-ui-border);
+    background-color: var(--ffne-ui-white) !important;
+    border-color: var(--ffne-ui-border) !important;
 }
 
 html.__THEME_CLASS__ .dropdown-menu a {
-    color: var(--ffne-ui-text-body);
+    color: var(--ffne-ui-text-body) !important;
 }
 
 html.__THEME_CLASS__ .dropdown-menu a:hover {
-    background-color: var(--ffne-brand-bg);
+    background-color: var(--ffne-brand-bg) !important;
 }
 
-/* Alternating row shading */
-html.__THEME_CLASS__ tr:nth-child(even) td {
-    background-color: var(--ffne-ui-card-bg);
-}
-
-/* Search box */
+/* Search box area */
 html.__THEME_CLASS__ #search_box {
-    background-color: var(--ffne-ui-page-bg);
+    background-color: var(--ffne-ui-page-bg) !important;
+}
+
+/* Announcement banner / misc divs with backgrounds */
+html.__THEME_CLASS__ div[style*="background"],
+html.__THEME_CLASS__ div.alert {
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border) !important;
 }
 
 /* Blockquote */
 html.__THEME_CLASS__ blockquote {
-    border-color: var(--ffne-ui-border);
-    color: var(--ffne-ui-text-secondary);
+    border-color: var(--ffne-ui-border) !important;
+    color: var(--ffne-ui-text-secondary) !important;
 }
 
 /* Mark / highlight */
 html.__THEME_CLASS__ mark {
-    background-color: var(--ffne-semantic-running-bg);
-    color: var(--ffne-ui-text-body);
+    background-color: var(--ffne-semantic-running-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
 }
 
 /* Selection */
