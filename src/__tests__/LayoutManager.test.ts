@@ -15,6 +15,7 @@ describe('LayoutManager', () => {
 
     it('applies the fluid mode class to html during prime without requiring body', () => {
         resetDom('<head></head>');
+        vi.spyOn(document, 'body', 'get').mockReturnValue(null as unknown as HTMLBodyElement);
         vi.spyOn(SettingsManager, 'get').mockImplementation((key) => {
             if (key === 'fluidMode') return true as never;
             return undefined as never;
@@ -22,7 +23,6 @@ describe('LayoutManager', () => {
 
         expect(() => LayoutManager.prime()).not.toThrow();
 
-        expect(document.body).toBeNull();
         expect(document.documentElement.classList.contains('ffn-enhancements-fluid-mode')).toBe(true);
         expect(document.getElementById('ffn-enhancements-layout-styles')).not.toBeNull();
     });

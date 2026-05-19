@@ -83,9 +83,10 @@ export const CssScanner = {
         scratchDocument.head.appendChild(style);
 
         const rules = style.sheet?.cssRules;
-        if (!rules) return cssText;
+        if (!rules) return scopeFlatCssText(cssText, themeClass, options);
 
-        return serializeRules(rules, themeClass, options).join('\n\n');
+        const scopedCss = serializeRules(rules, themeClass, options).join('\n\n');
+        return scopedCss || scopeFlatCssText(cssText, themeClass, options);
     },
 
     clearCache(): void {
@@ -382,6 +383,35 @@ function serializeStyleDeclarations(style: CSSStyleDeclaration): string {
         declarations.push(`    ${property}: ${value}${priority ? ` !${priority}` : ''};`);
     }
     return declarations.join('\n');
+}
+
+function scopeFlatCssText(cssText: string, themeClass: string, options: ScanOptions): string {
+    const blocks = cssText.match(/(?:\s*\/\*[\s\S]*?\*\/\s*)*[^{}]+\{[^{}]*\}/g);
+    if (!blocks) return cssText;
+
+    return blocks.map((block) => {
+        const openIndex = block.indexOf('{');
+        const closeIndex = block.lastIndexOf('}');
+        if (openIndex === -1 || closeIndex === -1) return block;
+
+        const prefixMatch = block.slice(0, openIndex).match(/^(\s*(?:\/\*[\s\S]*?\*\/\s*)*)([\s\S]+)$/);
+        const prefix = prefixMatch?.[1] || '';
+        const selectorText = prefixMatch?.[2]?.trim() || '';
+        if (!selectorText) return block;
+
+        const body = block.slice(openIndex + 1, closeIndex).trim();
+        const selector = scopeSelector(selectorText, themeClass, options.excludeSelector);
+        return `${prefix}${selector} {\n${indentBlockBody(body)}\n}`;
+    }).join('\n\n');
+}
+
+function indentBlockBody(body: string): string {
+    return body
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => `    ${line}`)
+        .join('\n');
 }
 
 function wrapRule(cssRule: string, wrappers: string[]): string {

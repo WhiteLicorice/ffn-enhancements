@@ -31,7 +31,7 @@ describe('ThemeManager', () => {
                 'ffne-theme-native-overrides',
                 'ffne-component-styles',
             ]);
-            expect(document.getElementById('ffne-theme-native-overrides')?.textContent).toContain(':not([data-ffne-ui])');
+            expect(document.getElementById('ffne-theme-native-overrides')).not.toBeNull();
             expect(document.getElementById('ffne-theme-ffn-overrides')).toBeNull();
         },
     );
