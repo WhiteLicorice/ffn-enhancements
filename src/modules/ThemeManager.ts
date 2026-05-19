@@ -26,9 +26,11 @@ export const ThemeManager: ISitewideModule & {
     getResolvedTheme(): Theme;
 } = {
     prime(): void {
-        _injectTokenStyles(getThemeDefinition(this.getResolvedTheme()));
+        const definition = getThemeDefinition(this.getResolvedTheme());
+        _injectTokenStyles(definition);
         _injectComponentStyles();
         _applyThemeClass(this.getResolvedTheme());
+        _applyColorScheme(definition);
         FFNLogger.log(MODULE_NAME, 'prime', `Theme primed: ${SettingsManager.get('theme')} -> ${this.getResolvedTheme()}`);
     },
 

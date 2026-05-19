@@ -58,6 +58,8 @@ export const SepiaTheme: IThemeDefinition = {
         '--ffne-shadow-toast': 'rgba(82,58,22,.32)',
         '--ffne-shadow-dropdown': 'rgba(82,58,22,.22)',
         '--ffne-shadow-cover': 'rgba(50,35,10,.76)',
+
+        '--ffne-ui-text-on-accent': '#fff8ee',
     },
     colorMap: {
         '#ffffff': '#fbf5e8',

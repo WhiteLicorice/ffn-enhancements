@@ -1725,8 +1725,7 @@ export const DocManager = {
             copyLink.innerText = "Copy";
             copyLink.href = "#";
             copyLink.title = "Copy to clipboard";
-            copyLink.style.textDecoration = "none";
-            copyLink.style.whiteSpace = "nowrap";
+            copyLink.className = 'ffne-dm-action-link';
             copyLink.onclick = (e) => {
                 e.preventDefault();
                 this.runSingleClipboardExport(e.currentTarget as HTMLElement, docId, title);
@@ -1743,8 +1742,7 @@ export const DocManager = {
             const exportLink = document.createElement('a');
             exportLink.innerText = "Export";
             exportLink.href = "#";
-            exportLink.style.textDecoration = "none";
-            exportLink.style.whiteSpace = "nowrap";
+            exportLink.className = 'ffne-dm-action-link';
             exportLink.onclick = (e) => {
                 e.preventDefault();
                 this.runSingleExport(e.currentTarget as HTMLElement, docId, title);
@@ -1761,8 +1759,7 @@ export const DocManager = {
             const refreshLink = document.createElement('a');
             refreshLink.innerText = "Refresh";
             refreshLink.href = "#";
-            refreshLink.style.textDecoration = "none";
-            refreshLink.style.whiteSpace = "nowrap";
+            refreshLink.className = 'ffne-dm-action-link';
             refreshLink.onclick = (e) => {
                 e.preventDefault();
                 this.runSingleRefresh(e.currentTarget as HTMLElement, docId, title);

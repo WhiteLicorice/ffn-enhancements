@@ -172,7 +172,7 @@
     border-radius: 6px;
     font-family: Arial, sans-serif;
     font-size: 14px;
-    color: var(--ffne-ui-white);
+    color: var(--ffne-ui-text-on-accent);
     box-shadow: 0 2px 10px var(--ffne-shadow-toast);
     transition: opacity 0.3s ease;
 }

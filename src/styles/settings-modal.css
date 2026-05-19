@@ -186,8 +186,6 @@ details.ffne-settings-section:not([open]) > summary .ffne-adv-arrow-open { displ
     font-family: Verdana, Arial, sans-serif;
     font-size: 13px;
     text-align: right;
-}
-.ffne-number-input {
     background: var(--ffne-ui-white);
     color: var(--ffne-ui-text-body);
 }

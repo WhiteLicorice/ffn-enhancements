@@ -58,6 +58,8 @@ export const HighContrastTheme: IThemeDefinition = {
         '--ffne-shadow-toast': 'rgba(255,255,255,.5)',
         '--ffne-shadow-dropdown': 'rgba(255,255,255,.45)',
         '--ffne-shadow-cover': 'rgba(0,0,0,.92)',
+
+        '--ffne-ui-text-on-accent': '#ffffff',
     },
     colorMap: {
         '#ffffff': '#000000',

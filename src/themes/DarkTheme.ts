@@ -58,6 +58,8 @@ export const DarkTheme: IThemeDefinition = {
         '--ffne-shadow-toast': 'rgba(0,0,0,.55)',
         '--ffne-shadow-dropdown': 'rgba(0,0,0,.5)',
         '--ffne-shadow-cover': 'rgba(0,0,0,.86)',
+
+        '--ffne-ui-text-on-accent': '#ffffff',
     },
     colorMap: {
         '#ffffff': '#20232b',

@@ -112,7 +112,7 @@
     justify-content: space-between;
     gap: 12px;
     background: var(--ffne-brand-primary);
-    color: var(--ffne-ui-white);
+    color: var(--ffne-ui-text-on-accent);
     padding: 7px 10px;
     border-bottom: 1px solid var(--ffne-brand-dark);
 }
@@ -128,7 +128,7 @@
     appearance: none;
     border: 0;
     background: transparent;
-    color: var(--ffne-ui-white);
+    color: var(--ffne-ui-text-on-accent);
     cursor: pointer;
     font-size: 18px;
     line-height: 18px;
@@ -360,4 +360,9 @@
 
 .ffne-dm-retry-wrap {
     margin-top: 8px;
+}
+
+.ffne-dm-action-link {
+    text-decoration: none;
+    white-space: nowrap;
 }

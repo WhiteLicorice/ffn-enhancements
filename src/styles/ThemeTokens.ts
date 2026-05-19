@@ -51,6 +51,8 @@ export const DEFAULT_TOKENS: Record<string, string> = {
     '--ffne-shadow-toast': 'rgba(0,0,0,.3)',
     '--ffne-shadow-dropdown': 'rgba(0,0,0,.175)',
     '--ffne-shadow-cover': 'rgba(0,0,0,.8)',
+
+    '--ffne-ui-text-on-accent': '#fff',
 };
 
 export function buildTokenCss(overrides: Record<string, string> = {}): string {
