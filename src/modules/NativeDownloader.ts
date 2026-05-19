@@ -76,13 +76,20 @@ async function _fetchChapter(storyId: string, chapterNum: number, onProgress?: C
             return contentEl?.innerHTML || "<p>Error: Content missing</p>";
         },
         onError: (resp) => {
-            const msg = resp.status === 429
-                ? `Download aborted: Too many rate limit errors.`
-                : `Download aborted: HTTP ${resp.status} — not retryable.`;
+            const msg = `Download aborted while fetching chapter ${chapterNum}: HTTP ${resp.status}.`;
             throw new Error(msg);
         },
-        onRetry: (_attempt, delay) => {
-            const msg = `Rate limit hit (429). Cooling down for ${delay / 1000}s...`;
+        onRetry: (_attempt, delay, status) => {
+            let msg: string;
+            if (status === 403) {
+                msg = `Chapter ${chapterNum} returned 403 (anti-bot). Cooling down for ${delay / 1000}s...`;
+            } else if (status === 429) {
+                msg = `Rate limit hit on chapter ${chapterNum}. Cooling down for ${delay / 1000}s...`;
+            } else if (status >= 500) {
+                msg = `Chapter ${chapterNum} server error (${status}). Cooling down for ${delay / 1000}s...`;
+            } else {
+                msg = `Chapter ${chapterNum} request failed (status ${status || 'network'}). Retrying in ${delay / 1000}s...`;
+            }
             log(msg);
             if (onProgress) onProgress(msg);
         },

@@ -1,5 +1,5 @@
 /**
- * Shared utility for HTTP fetch with retry on 429 rate-limit responses.
+ * Shared utility for HTTP fetch with retry on transient errors.
  * Supports configurable backoff strategy via getDelay callback.
  */
 
@@ -9,13 +9,19 @@ export interface FetchWithBackoffOptions<T> {
     getDelay: (attempt: number) => number;
     onSuccess: (response: Response) => Promise<T>;
     onError?: (response: Response) => T | null;
-    onRetry?: (attempt: number, delayMs: number) => void;
+    onRetry?: (attempt: number, delayMs: number, status: number) => void;
+}
+
+function _isRetryableStatus(status: number): boolean {
+    return status === 403 || status === 429 || status >= 500;
 }
 
 /**
- * Generic retry loop: fetch `url`, retry on 429 up to `maxRetries` times.
- * Calls `onSuccess` for 2xx, `onError` for other statuses or exhausted retries.
- * Returns `T | null` — caller decides to throw on null if needed.
+ * Generic retry loop: fetch `url`, retry on transient errors up to
+ * `maxRetries` times.  Transient = network errors, 403 (anti-bot),
+ * 429 (rate limit), and 5xx (server faults).
+ * Calls `onSuccess` for 2xx, `onError` for non-retryable statuses or
+ * exhausted retries.  Returns `T | null` — caller decides to throw if needed.
  */
 export async function fetchWithBackoff<T>(options: FetchWithBackoffOptions<T>): Promise<T | null> {
     const { url, maxRetries, getDelay, onSuccess, onError, onRetry } = options;
@@ -25,14 +31,12 @@ export async function fetchWithBackoff<T>(options: FetchWithBackoffOptions<T>): 
         try {
             response = await fetch(url);
         } catch (err) {
-            // Network-level error (DNS failure, connection reset, etc.) — retry if budget left
             if (attempt <= maxRetries) {
                 const delay = getDelay(attempt);
-                onRetry?.(attempt, delay);
+                onRetry?.(attempt, delay, 0);
                 await new Promise(r => setTimeout(r, delay));
                 continue;
             }
-            // Retry budget exhausted for network errors — propagate
             throw err;
         }
 
@@ -40,14 +44,14 @@ export async function fetchWithBackoff<T>(options: FetchWithBackoffOptions<T>): 
             return onSuccess(response);
         }
 
-        if (response.status === 429 && attempt <= maxRetries) {
+        if (_isRetryableStatus(response.status) && attempt <= maxRetries) {
             const delay = getDelay(attempt);
-            onRetry?.(attempt, delay);
+            onRetry?.(attempt, delay, response.status);
             await new Promise(r => setTimeout(r, delay));
             continue;
         }
 
-        // Non-429 error or all retries exhausted
+        // Non-retryable status or all retries exhausted
         if (onError) {
             return onError(response);
         }

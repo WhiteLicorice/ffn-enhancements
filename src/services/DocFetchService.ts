@@ -61,8 +61,8 @@ export const DocFetchService = {
                 }
                 return null;
             },
-            onRetry: (attempt, waitTime) => {
-                log(`Rate limited (429) for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
+            onRetry: (attempt, waitTime, status) => {
+                log(`Transient ${status} for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt})`);
             },
         });
     },
@@ -191,8 +191,8 @@ export const DocFetchService = {
                     log(`[REFRESH ERROR] Failed to fetch document for verification: ${resp.status}`);
                     return null;
                 },
-                onRetry: (retryAttempt, waitTime) => {
-                    log(`[REFRESH] Verification fetch failed. Retrying in ${waitTime}ms... (Attempt ${retryAttempt})`);
+                onRetry: (retryAttempt, waitTime, status) => {
+                    log(`[REFRESH] Verification fetch failed (${status}). Retrying in ${waitTime}ms... (Attempt ${retryAttempt})`);
                 },
             });
 
