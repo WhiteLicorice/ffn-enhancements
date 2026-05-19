@@ -9,6 +9,7 @@ export const DEFAULT_TOKENS: Record<string, string> = {
 
     '--ffne-semantic-success-text': '#236423',
     '--ffne-semantic-success-bg': '#edf9ed',
+    '--ffne-semantic-success-border': '#8fc08f',
     '--ffne-semantic-error-text': '#8b0000',
     '--ffne-semantic-error-bg': '#fff0f0',
     '--ffne-semantic-error-border': '#d8a0a0',

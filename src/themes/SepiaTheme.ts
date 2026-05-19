@@ -16,6 +16,7 @@ export const SepiaTheme: IThemeDefinition = {
 
         '--ffne-semantic-success-text': '#3d6a28',
         '--ffne-semantic-success-bg': '#e8f0d8',
+        '--ffne-semantic-success-border': '#8ea36a',
         '--ffne-semantic-error-text': '#8b2d20',
         '--ffne-semantic-error-bg': '#f4ded5',
         '--ffne-semantic-error-border': '#c98b7a',

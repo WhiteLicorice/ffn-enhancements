@@ -16,6 +16,7 @@ export const HighContrastTheme: IThemeDefinition = {
 
         '--ffne-semantic-success-text': '#00ff66',
         '--ffne-semantic-success-bg': '#002200',
+        '--ffne-semantic-success-border': '#00ff66',
         '--ffne-semantic-error-text': '#ff5555',
         '--ffne-semantic-error-bg': '#330000',
         '--ffne-semantic-error-border': '#ff5555',
