@@ -105,31 +105,13 @@ export const StoryReader = {
         const applyVisibleStyles = (show: boolean) => {
             if (show) {
                 modal.classList.remove('hide', 'fade');
-                // We use 'transparent' background and 0 padding to remove the white border.
-                // We use 'fit-content' and 'margin: 0' to ensure the translate transform centers it perfectly.
-                modal.style.cssText = `
-                    display: block !important;
-                    position: fixed !important;
-                    top: 50% !important;
-                    left: 50% !important;
-                    transform: translate(-50%, -50%) !important;
-                    z-index: 10000 !important;
-                    opacity: 1 !important;
-                    visibility: visible !important;
-                    background: transparent !important;
-                    padding: 0 !important;
-                    border: none !important;
-                    box-shadow: none !important;
-                    width: fit-content !important; 
-                    height: auto !important;
-                    margin: 0 !important;
-                    overflow: visible !important;
-                `;
+                modal.classList.add('ffne-cover-modal');
+                modal.style.display = 'block';
 
                 // Ensure the inner body and image are also forced visible
                 const modalBody = modal.querySelector('.modal-body') as HTMLElement;
                 if (modalBody) {
-                    modalBody.style.cssText = 'display: block !important; padding: 0 !important; overflow: visible !important; background: transparent !important; max-height: none !important;';
+                    modalBody.classList.add('ffne-cover-modal-body');
                 }
             } else {
                 modal.style.display = 'none';
@@ -158,17 +140,7 @@ export const StoryReader = {
                 if (originalSrc) {
                     img.src = originalSrc;
                     img.className = 'cimage'; // Strips 'lazy'
-                    // Apply styles directly to the image for proper sizing and a nice shadow (instead of the container having the shadow)
-                    img.style.cssText = `
-                        display: block !important; 
-                        opacity: 1 !important; 
-                        visibility: visible !important; 
-                        max-width: 90vw; 
-                        max-height: 90vh; 
-                        margin: 0 auto !important;
-                        box-shadow: 0 0 20px rgba(0,0,0,0.8); 
-                        border-radius: 4px;
-                    `;
+                    img.classList.add('ffne-cover-img');
                     log('Image source updated.');
                 }
             }
@@ -177,16 +149,7 @@ export const StoryReader = {
             let backdrop = document.querySelector('.ffe-modal-backdrop') as HTMLElement;
             if (!backdrop) {
                 backdrop = document.createElement('div');
-                backdrop.className = 'ffe-modal-backdrop';
-                backdrop.style.cssText = `
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100vw;
-                    height: 100vh;
-                    background: rgba(0, 0, 0, 0.8);
-                    z-index: 9999;
-                `;
+                backdrop.className = 'ffe-modal-backdrop ffne-cover-backdrop';
                 document.body.appendChild(backdrop);
             }
             backdrop.style.display = 'block';

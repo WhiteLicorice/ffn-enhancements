@@ -3,7 +3,7 @@
 #__MODAL_ID__ {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--ffne-shadow-overlay);
     z-index: 999999;
     display: flex;
     align-items: center;
@@ -12,9 +12,9 @@
 }
 
 .ffne-modal-panel {
-    background: #fff;
+    background: var(--ffne-ui-white);
     border-radius: 5px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 8px 32px var(--ffne-shadow-modal);
     width: 100%;
     max-width: 640px;
     max-height: 90vh;
@@ -22,7 +22,7 @@
     flex-direction: column;
     font-family: Verdana, Arial, sans-serif;
     font-size: 13px;
-    color: #333;
+    color: var(--ffne-ui-text-body);
     overflow: hidden;
 }
 
@@ -31,15 +31,15 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    background: #f0f0f7;
-    border-bottom: 2px solid #29297a;
+    background: var(--ffne-brand-bg);
+    border-bottom: 2px solid var(--ffne-brand-primary);
     flex-shrink: 0;
 }
 
 .ffne-modal-header h2 {
     font-size: 16px;
     font-weight: bold;
-    color: #29297a;
+    color: var(--ffne-brand-primary);
     margin: 0;
 }
 
@@ -48,14 +48,14 @@
     border: none;
     font-size: 22px;
     line-height: 1;
-    color: #666;
+    color: var(--ffne-ui-text-secondary);
     cursor: pointer;
     padding: 0 2px;
 }
-.ffne-modal-close-btn:hover { color: #333; }
+.ffne-modal-close-btn:hover { color: var(--ffne-ui-text-body); }
 
 .ffne-modal-subtitle {
-    color: #666;
+    color: var(--ffne-ui-text-secondary);
     font-size: 11px;
     margin: 0 0 14px;
 }
@@ -68,19 +68,19 @@
 
 /* -- Section card -- */
 .ffne-settings-section {
-    background: #fff;
-    border: 1px solid #ccc;
+    background: var(--ffne-ui-white);
+    border: 1px solid var(--ffne-ui-border);
     border-radius: 4px;
     margin-bottom: 14px;
     overflow: hidden;
 }
 .ffne-settings-section-header {
-    background: #f0f0f7;
-    border-bottom: 1px solid #ccc;
+    background: var(--ffne-brand-bg);
+    border-bottom: 1px solid var(--ffne-ui-border);
     padding: 8px 14px;
     font-weight: bold;
     font-size: 13px;
-    color: #29297a;
+    color: var(--ffne-brand-primary);
 }
 details.ffne-settings-section > summary.ffne-settings-section-header {
     cursor: pointer;
@@ -98,7 +98,7 @@ details.ffne-settings-section:not([open]) > summary .ffne-adv-arrow-open { displ
     display: flex;
     align-items: center;
     padding: 10px 14px;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--ffne-ui-border-divider);
     gap: 12px;
 }
 .ffne-settings-row:last-child { border-bottom: none; }
@@ -111,7 +111,7 @@ details.ffne-settings-section:not([open]) > summary .ffne-adv-arrow-open { displ
 }
 .ffne-settings-row-label small {
     display: block;
-    color: #777;
+    color: var(--ffne-ui-text-muted);
     font-size: 11px;
     line-height: 1.4;
 }
@@ -140,7 +140,7 @@ details.ffne-settings-section:not([open]) > summary .ffne-adv-arrow-open { displ
 .ffne-toggle-slider {
     position: absolute;
     inset: 0;
-    background: #bbb;
+    background: var(--ffne-ui-toggle-off);
     border-radius: 24px;
     cursor: pointer;
     transition: background 0.2s;
@@ -152,68 +152,80 @@ details.ffne-settings-section:not([open]) > summary .ffne-adv-arrow-open { displ
     width: 18px;
     left: 3px;
     bottom: 3px;
-    background: #fff;
+    background: var(--ffne-ui-white);
     border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    box-shadow: 0 1px 3px var(--ffne-shadow-toggle);
     transition: transform 0.2s;
 }
-.ffne-toggle input:checked + .ffne-toggle-slider { background: #29297a; }
+.ffne-toggle input:checked + .ffne-toggle-slider { background: var(--ffne-brand-primary); }
 .ffne-toggle input:checked + .ffne-toggle-slider::before { transform: translateX(20px); }
 .ffne-toggle input:focus-visible + .ffne-toggle-slider {
-    outline: 2px solid #29297a;
+    outline: 2px solid var(--ffne-brand-primary);
     outline-offset: 2px;
 }
 
 /* -- Select -- */
 .ffne-select {
     padding: 4px 8px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--ffne-ui-border);
     border-radius: 3px;
     font-family: Verdana, Arial, sans-serif;
     font-size: 13px;
-    background: #fff;
+    background: var(--ffne-ui-white);
+    color: var(--ffne-ui-text-body);
     cursor: pointer;
 }
-.ffne-select:focus { outline: none; border-color: #29297a; box-shadow: 0 0 0 2px rgba(41,41,122,.2); }
+.ffne-select:focus { outline: none; border-color: var(--ffne-brand-primary); box-shadow: 0 0 0 2px var(--ffne-brand-focus-glow); }
 
 /* -- Number input -- */
 .ffne-number-input {
     width: 76px;
     padding: 4px 6px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--ffne-ui-border);
     border-radius: 3px;
     font-family: Verdana, Arial, sans-serif;
     font-size: 13px;
     text-align: right;
 }
-.ffne-number-input:focus { outline: none; border-color: #29297a; box-shadow: 0 0 0 2px rgba(41,41,122,.2); }
-.ffne-number-input:invalid { border-color: #c00; }
+.ffne-number-input {
+    background: var(--ffne-ui-white);
+    color: var(--ffne-ui-text-body);
+}
+.ffne-number-input:focus { outline: none; border-color: var(--ffne-brand-primary); box-shadow: 0 0 0 2px var(--ffne-brand-focus-glow); }
+.ffne-number-input:invalid { border-color: var(--ffne-semantic-invalid); }
 
 /* -- Section subtitle -- */
 .ffne-section-subtitle {
-    color: #777;
+    color: var(--ffne-ui-text-muted);
     font-size: 11px;
     line-height: 1.4;
     padding: 8px 14px 4px;
     margin: 0;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--ffne-ui-border-divider);
 }
 
 /* -- Warning note (amber) -- */
 .ffne-warning {
     display: block;
-    color: #8a5c00;
+    color: var(--ffne-semantic-warning-text);
     font-size: 11px;
     line-height: 1.4;
     margin-top: 3px;
 }
 
 /* -- Unit label -- */
-.ffne-unit { color: #999; font-size: 11px; }
+.ffne-unit { color: var(--ffne-ui-text-unit); font-size: 11px; }
+
+.ffne-advanced-hint {
+    color: var(--ffne-ui-text-unit);
+    font-size: 11px;
+    font-weight: normal;
+    margin-left: 8px;
+}
 
 /* -- Save flash indicator -- */
 .ffne-saved {
-    color: #2a7;
+    color: var(--ffne-semantic-indicator-saved);
     font-size: 11px;
     opacity: 0;
     transition: opacity 0.25s;

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsPage } from '../modules/SettingsPage';
 import { SettingsManager } from '../modules/SettingsManager';
+import { Theme } from '../enums/Theme';
 
 describe('SettingsPage', () => {
     beforeEach(() => {
@@ -33,5 +34,22 @@ describe('SettingsPage', () => {
         expect(toggle).not.toBeNull();
         expect(toggle?.type).toBe('checkbox');
         expect(toggle?.checked).toBe(true);
+    });
+
+    it('shows the theme selector defaulted to system', () => {
+        SettingsPage.openModal();
+
+        const select = document.querySelector<HTMLSelectElement>('[data-setting="theme"]');
+
+        expect(document.body.textContent).toContain('Theme');
+        expect(select).not.toBeNull();
+        expect(select?.value).toBe(Theme.SYSTEM);
+        expect(Array.from(select?.options || []).map(option => option.value)).toEqual([
+            Theme.SYSTEM,
+            Theme.LIGHT,
+            Theme.DARK,
+            Theme.SEPIA,
+            Theme.HIGH_CONTRAST,
+        ]);
     });
 });

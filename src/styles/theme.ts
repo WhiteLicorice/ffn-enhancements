@@ -1,3 +1,6 @@
+// Deprecated reference tokens for FFN Enhancements UI.
+// Runtime styling now uses CSS custom properties from ThemeTokens.ts.
+//
 // Reusable design tokens for FFN Enhancements UI.
 // Values drawn from FFN's native colour palette for visual consistency.
 // Used via template literals in injected <style> blocks — no CSS custom

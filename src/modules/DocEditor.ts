@@ -11,7 +11,6 @@ import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
 import { DocIframeHandler } from './DocIframeHandler';
 import { applyExportTransforms } from '../utils/exportTransform';
 import { writeToClipboard } from '../utils/clipboard';
-import { SEMANTIC, UI, SHADOW } from '../styles/theme';
 
 /**
  * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).
@@ -321,15 +320,8 @@ export const DocEditor = {
 
         const toast = document.createElement('div');
         toast.id = 'ffne-clipboard-toast';
+        toast.className = `ffne-toast ${isError ? 'ffne-toast-error' : 'ffne-toast-success'}`;
         toast.textContent = message;
-        toast.style.cssText = `
-            position: fixed; bottom: 20px; right: 20px; z-index: 999999;
-            padding: 10px 20px; border-radius: 6px;
-            font-family: Arial, sans-serif; font-size: 14px;
-            color: ${UI.WHITE}; background-color: ${isError ? SEMANTIC.TOAST_ERROR : SEMANTIC.TOAST_SUCCESS};
-            box-shadow: 0 2px 10px ${SHADOW.TOAST};
-            transition: opacity 0.3s ease;
-        `;
         document.body.appendChild(toast);
 
         setTimeout(() => {

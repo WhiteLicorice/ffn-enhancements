@@ -11,6 +11,7 @@ import { StoryDownloader } from './modules/StoryDownloader';
 import { LayoutManager } from './modules/LayoutManager';
 import { StoryEditContent } from './modules/StoryEditContent';
 import { Ao3Bridge } from './modules/Ao3Bridge';
+import { ThemeManager } from './modules/ThemeManager';
 
 /**
  * The Entry Point / Router.
@@ -36,13 +37,24 @@ const isAo3Host = hostname === 'archiveofourown.org';
 // 1. SettingsManager MUST be first — all downstream modules (including LayoutManager)
 //    read from its cache in their own prime() / init() calls.
 // 2. SettingsMenu MUST come after SettingsManager so menu labels reflect stored values.
-// 3. LayoutManager MUST come after SettingsManager so prime() can restore fluidMode
+// 3. ThemeManager MUST come after SettingsManager so it can read the stored theme
+//    and inject token CSS before any feature modules render UI.
+// 4. LayoutManager MUST come after ThemeManager so its structural CSS layers after
+//    the base theme tokens while still priming before first paint.
+// 5. LayoutManager MUST come after SettingsManager so prime() can restore fluidMode
 //    preference before first paint, preventing FOUC.
 //
 if (isFfnHost) {
     EarlyBoot.register(SettingsManager);
     EarlyBoot.register(SettingsMenu);
+    EarlyBoot.register(ThemeManager);
     EarlyBoot.register(LayoutManager);
+} else if (isAo3Host) {
+    EarlyBoot.register(SettingsManager);
+    EarlyBoot.register(ThemeManager);
+}
+
+if (isFfnHost || isAo3Host) {
     EarlyBoot.prime();
 }
 
@@ -69,6 +81,7 @@ const bootstrap = () => {
     Core.startup(window.location);
 
     if (isAo3Host) {
+        EarlyBoot.init();
         safeInit('Ao3Bridge', () => Ao3Bridge.init());
         return;
     }

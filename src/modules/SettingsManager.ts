@@ -2,6 +2,7 @@
 
 import { GM_getValue, GM_setValue, GM_addValueChangeListener } from '$';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
+import { Theme } from '../enums/Theme';
 import { FFNLogger } from './FFNLogger';
 import { ISitewideModule } from '../interfaces/ISiteWideModule';
 
@@ -23,6 +24,12 @@ export interface FFNSettings {
      * Does NOT affect story-page downloads (those are always via FicHub/Native).
      */
     docDownloadFormat: DocDownloadFormat;
+
+    /**
+     * Visual theme for FFN Enhancements UI and runtime FFN color remapping.
+     * SYSTEM follows the browser/OS `prefers-color-scheme` value.
+     */
+    theme: Theme;
 
     /**
      * Whether to apply full-width ("Fluid") layout, removing FFN's fixed-width borders.
@@ -131,6 +138,7 @@ export interface FFNSettings {
  */
 const DEFAULTS: FFNSettings = {
     docDownloadFormat: DocDownloadFormat.MARKDOWN,
+    theme: Theme.SYSTEM,
     fluidMode: true,
     pasteConvertMarkdown: true,
     pasteConvertHtml: true,
@@ -155,6 +163,7 @@ const DEFAULTS: FFNSettings = {
  */
 const ENUM_SETTINGS: Partial<Record<keyof FFNSettings, Record<string, string>>> = {
     docDownloadFormat: DocDownloadFormat,
+    theme: Theme,
 };
 
 // ─── Internal State ───────────────────────────────────────────────────────────
@@ -317,6 +326,7 @@ function _loadAll(): void {
     // stale values from earlier storage snapshots.
     _cache = { ...DEFAULTS };
     _loadEnum('docDownloadFormat', DocDownloadFormat);
+    _loadEnum('theme', Theme);
     _loadBool('fluidMode');
     _loadBool('pasteConvertMarkdown');
     _loadBool('pasteConvertHtml');

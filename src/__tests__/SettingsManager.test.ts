@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GM_getValue } from '$';
 import { _parseStoredValue, SettingsManager } from '../modules/SettingsManager';
 import type { FFNSettings } from '../modules/SettingsManager';
+import { Theme } from '../enums/Theme';
 
 // ─── boolean values ──────────────────────────────────────────────────────
 
@@ -112,6 +113,22 @@ describe('_parseStoredValue — string enum', () => {
 
     it('returns undefined for undefined raw value', () => {
         expect(_parseStoredValue(key, undefined)).toBeUndefined();
+    });
+});
+
+describe('_parseStoredValue — theme enum', () => {
+    const key = 'theme' as keyof FFNSettings;
+
+    it('accepts valid theme values', () => {
+        expect(_parseStoredValue(key, Theme.SYSTEM)).toBe(Theme.SYSTEM);
+        expect(_parseStoredValue(key, Theme.DARK)).toBe(Theme.DARK);
+        expect(_parseStoredValue(key, Theme.SEPIA)).toBe(Theme.SEPIA);
+        expect(_parseStoredValue(key, Theme.HIGH_CONTRAST)).toBe(Theme.HIGH_CONTRAST);
+    });
+
+    it('rejects unknown theme values', () => {
+        expect(_parseStoredValue(key, 'amoled')).toBeUndefined();
+        expect(_parseStoredValue(key, '')).toBeUndefined();
     });
 });
 

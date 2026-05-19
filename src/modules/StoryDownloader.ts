@@ -61,24 +61,24 @@ export const StoryDownloader = {
             <div class="modal fade hide" id="ffe-download-modal" style="display: none;">
                 <div class="modal-header">
                     <button type="button" class="close" id="ffe-modal-close-x">×</button>
-                    <h3 id="ffe-modal-title" style="font-family: inherit;">Select Download Method</h3>
+                    <h3 id="ffe-modal-title" class="ffne-dl-modal-title">Select Download Method</h3>
                 </div>
-                <div class="modal-body" style="text-align: center; min-height: 150px; font-family: Verdana, Arial, sans-serif;">
-                    <p style="margin-bottom: 20px;">Choose a source for your file:</p>
+                <div class="modal-body ffne-dl-modal-body">
+                    <p class="ffne-dl-modal-intro">Choose a source for your file:</p>
                     
-                    <div style="display: flex; justify-content: center; gap: 20px; margin-bottom: 20px;">
-                        <button id="ffe-btn-native" class="btn icon-book" style="width: 140px; padding: 10px;">
-                            Native<br><span style="font-size: 0.8em; font-weight: normal;">(Browser)</span>
+                    <div class="ffne-dl-modal-actions">
+                        <button id="ffe-btn-native" class="btn icon-book ffne-dl-source-btn">
+                            Native<br><span class="ffne-dl-source-subtitle">(Browser)</span>
                         </button>
 
-                        <button id="ffe-btn-fichub" class="btn icon-cloud-download" style="width: 140px; padding: 10px;">
-                            FicHub<br><span style="font-size: 0.8em; font-weight: normal;">(Archive)</span>
+                        <button id="ffe-btn-fichub" class="btn icon-cloud-download ffne-dl-source-btn">
+                            FicHub<br><span class="ffne-dl-source-subtitle">(Archive)</span>
                         </button>
                     </div>
 
-                    <div class="alert alert-info" style="text-align: left; margin: 0 20px; font-size: 0.9em; padding: 10px 15px;">
-                        <ul style="margin: 0; padding-left: 20px; list-style-type: disc;">
-                            <li style="margin-bottom: 5px;">
+                    <div class="alert alert-info ffne-dl-note">
+                        <ul class="ffne-dl-note-list">
+                            <li>
                                 <strong>Native:</strong> Generates the file directly from this page. Guaranteed to be the latest version, but takes longer.
                             </li>
                             <li>
@@ -117,7 +117,7 @@ export const StoryDownloader = {
         this.abortController = new AbortController();
 
         const container = document.createElement('div');
-        container.style.cssText = "display: inline-block; position: relative; margin-right: 5px; vertical-align: top; float: right;";
+        container.className = 'ffne-dl-container';
 
         this.mainBtn = document.createElement('button');
         this.mainBtn.className = 'btn';
@@ -128,12 +128,7 @@ export const StoryDownloader = {
         };
 
         const menu = document.createElement('ul');
-        menu.style.cssText = `
-            display: none; position: absolute; top: 100%; right: 0; z-index: 1000;
-            min-width: 100px; padding: 5px 0; margin: 2px 0 0;
-            background-color: #fff; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px;
-            box-shadow: 0 6px 12px rgba(0,0,0,0.175); list-style: none; text-align: left;
-        `;
+        menu.className = 'ffne-dl-menu';
         this.dropdown = menu;
 
         const formats = [
@@ -148,7 +143,6 @@ export const StoryDownloader = {
             const a = document.createElement('a');
             a.innerText = fmt.label;
             a.href = "#";
-            a.style.cssText = "display: block; padding: 3px 20px; color: #333; text-decoration: none;";
             a.onclick = (e) => {
                 e.preventDefault();
                 if (this.isDownloading) return;
