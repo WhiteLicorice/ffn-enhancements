@@ -111,10 +111,10 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    background: var(--ffne-brand-primary);
+    background: var(--ffne-brand-dark);
     color: var(--ffne-ui-text-on-accent);
     padding: 7px 10px;
-    border-bottom: 1px solid var(--ffne-brand-dark);
+    border-bottom: 1px solid var(--ffne-brand-primary);
 }
 
 .ffne-dm-modal-header h3 {

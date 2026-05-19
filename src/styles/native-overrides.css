@@ -311,7 +311,7 @@ html.__THEME_CLASS__ mark {
 
 /* --- Section headers (.tcat) --- */
 html.__THEME_CLASS__ .tcat {
-    background-color: var(--ffne-brand-primary) !important;
+    background-color: var(--ffne-brand-dark) !important;
     color: var(--ffne-ui-text-on-accent) !important;
     border-color: var(--ffne-ui-border) !important;
 }
@@ -378,6 +378,271 @@ html.__THEME_CLASS__ #p_footer span[class^="icon-"] {
 
 html.__THEME_CLASS__ #p_footer div[style*="color"] {
     color: var(--ffne-ui-text-muted) !important;
+}
+
+/* --- TinyMCE 4 editor chrome ---
+   TinyMCE skin CSS is cross-origin (CDN), so CssScanner cannot read it.
+   These rules theme the editor toolbar, menubar, statusbar, and dialogs. */
+html.__THEME_CLASS__ .mce-panel {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-container-body {
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-toolbar,
+html.__THEME_CLASS__ .mce-toolbar-grp {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-menubar {
+    background-color: var(--ffne-brand-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-menubtn {
+    color: var(--ffne-brand-text) !important;
+}
+
+html.__THEME_CLASS__ .mce-menubtn button {
+    color: var(--ffne-brand-text) !important;
+}
+
+html.__THEME_CLASS__ .mce-menubtn.mce-active button,
+html.__THEME_CLASS__ .mce-menubtn button:hover {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    color: var(--ffne-brand-hover-text) !important;
+}
+
+html.__THEME_CLASS__ .mce-btn {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-btn:hover,
+html.__THEME_CLASS__ .mce-btn:focus {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    border-color: var(--ffne-ui-border-chrome) !important;
+}
+
+html.__THEME_CLASS__ .mce-btn.mce-active,
+html.__THEME_CLASS__ .mce-btn.mce-active:hover {
+    background-color: var(--ffne-brand-bg) !important;
+    border-color: var(--ffne-ui-border-chrome) !important;
+}
+
+html.__THEME_CLASS__ .mce-btn button {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-btn button:hover,
+html.__THEME_CLASS__ .mce-btn.mce-active button {
+    color: var(--ffne-brand-text) !important;
+}
+
+html.__THEME_CLASS__ .mce-ico {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-btn:hover .mce-ico,
+html.__THEME_CLASS__ .mce-btn.mce-active .mce-ico {
+    color: var(--ffne-brand-text) !important;
+}
+
+html.__THEME_CLASS__ .mce-listbox {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border-input) !important;
+}
+
+html.__THEME_CLASS__ .mce-listbox button {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-listbox:hover {
+    background-color: var(--ffne-brand-hover-bg) !important;
+}
+
+html.__THEME_CLASS__ .mce-menu {
+    background-color: var(--ffne-ui-white) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-menu-item {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-menu-item:hover,
+html.__THEME_CLASS__ .mce-menu-item.mce-active,
+html.__THEME_CLASS__ .mce-menu-item.mce-selected {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-menu-item-text {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-menu-item:hover .mce-menu-item-text,
+html.__THEME_CLASS__ .mce-menu-item.mce-active .mce-menu-item-text,
+html.__THEME_CLASS__ .mce-menu-item.mce-selected .mce-menu-item-text {
+    color: var(--ffne-brand-hover-text) !important;
+}
+
+html.__THEME_CLASS__ .mce-menu-item .mce-ico {
+    color: var(--ffne-ui-text-muted) !important;
+}
+
+html.__THEME_CLASS__ .mce-menu-item:hover .mce-ico,
+html.__THEME_CLASS__ .mce-menu-item.mce-selected .mce-ico {
+    color: var(--ffne-brand-hover-text) !important;
+}
+
+html.__THEME_CLASS__ .mce-tabs {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-tab {
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-tab:hover {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    color: var(--ffne-brand-hover-text) !important;
+}
+
+html.__THEME_CLASS__ .mce-tab.mce-active {
+    background-color: var(--ffne-brand-bg) !important;
+    color: var(--ffne-brand-text) !important;
+}
+
+html.__THEME_CLASS__ .mce-statusbar {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+    color: var(--ffne-ui-text-muted) !important;
+}
+
+html.__THEME_CLASS__ .mce-path {
+    color: var(--ffne-ui-text-muted) !important;
+}
+
+html.__THEME_CLASS__ .mce-path-item {
+    color: var(--ffne-ui-text-secondary) !important;
+}
+
+html.__THEME_CLASS__ .mce-path-item:hover {
+    color: var(--ffne-brand-primary) !important;
+}
+
+html.__THEME_CLASS__ .mce-splitbtn {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-splitbtn:hover {
+    background-color: var(--ffne-brand-hover-bg) !important;
+}
+
+html.__THEME_CLASS__ .mce-splitbtn .mce-open {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-colorbtn .mce-open {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-colorbox {
+    border-color: var(--ffne-ui-border-input) !important;
+}
+
+html.__THEME_CLASS__ .mce-widget {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-window {
+    background-color: var(--ffne-ui-white) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-window .mce-window-head {
+    background-color: var(--ffne-brand-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-window .mce-title {
+    color: var(--ffne-brand-text) !important;
+}
+
+html.__THEME_CLASS__ .mce-window .mce-foot {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-window .mce-btn {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-textbox {
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border-input) !important;
+}
+
+html.__THEME_CLASS__ .mce-combobox {
+    border-color: var(--ffne-ui-border-input) !important;
+}
+
+html.__THEME_CLASS__ .mce-combobox input {
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-label {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-formitem {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .mce-grid td {
+    border-color: var(--ffne-ui-border-divider) !important;
+}
+
+html.__THEME_CLASS__ .mce-grid td.mce-grid-cell-hover {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    border-color: var(--ffne-ui-border-chrome) !important;
+}
+
+html.__THEME_CLASS__ .mce-grid td.mce-grid-cell-selected {
+    background-color: var(--ffne-brand-bg) !important;
+    border-color: var(--ffne-ui-border-chrome) !important;
+}
+
+html.__THEME_CLASS__ .mce-colorpick-hsv,
+html.__THEME_CLASS__ .mce-colorpicker-hsv {
+    background-color: var(--ffne-ui-card-bg) !important;
+}
+
+html.__THEME_CLASS__ .mce-colorpicker-hue {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-resizehandle {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .mce-edit-area {
+    background-color: var(--ffne-ui-page-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
 }
 
 /* Selection */
