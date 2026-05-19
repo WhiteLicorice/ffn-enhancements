@@ -619,6 +619,14 @@ tsconfig.json                    - Strict TypeScript config
     UI patterns not covered by these overrides, add rules there rather than
     trying to expand the scanner's reach.
 
+13. **GOTCHA: Scanner vs native-overrides injection order.** `_injectFfnOverrides`
+    concatenates `[scannerCss, elementCss]`. Scanner preserves `!important` from
+    original rules. When scanner and native-overrides produce identical selectors
+    with `!important` (e.g., `#gui_table1 tbody tr:hover td`), native-overrides
+    wins because it comes LAST. If you swap the order, scanner's mechanically-
+    remapped colors win and semantic tokens stop working. Native-overrides must
+    always be the final word.
+
 ---
 
 ## 11. Checklist: Adding a New Setting

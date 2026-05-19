@@ -339,7 +339,7 @@ html.__THEME_CLASS__ .divider {
     border-color: var(--ffne-ui-border) !important;
 }
 
-/* Sidebar navigation */
+/* Sidebar navigation (#side_nav) */
 html.__THEME_CLASS__ #side_nav_inside a,
 html.__THEME_CLASS__ .side_nav a {
     color: var(--ffne-brand-primary) !important;
@@ -348,6 +348,43 @@ html.__THEME_CLASS__ .side_nav a {
 html.__THEME_CLASS__ .side_nav li.active,
 html.__THEME_CLASS__ #side_nav_inside li.active {
     background-color: var(--ffne-brand-bg) !important;
+}
+
+/* --- Accordion sidebar (.topnav) ---
+   FFN injects an inline <style> block with hardcoded hover colors:
+   L1 hover #675C7C (purple) + white, L2 hover #D6EEFF (pale blue) +
+   black, L3 hover #D3CEB8 (beige) + black. These hex values are NOT
+   in our colorMap, so the scanner only remaps white/black text while
+   leaving bg unchanged — producing unreadable combos in dark themes. */
+html.__THEME_CLASS__ .topnav {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ ul.topnav li a {
+    color: var(--ffne-ui-text-body) !important;
+}
+
+/* L1: top-level item hover (FFN: #675C7C purple) */
+html.__THEME_CLASS__ ul.topnav li a:hover {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    color: var(--ffne-brand-hover-text) !important;
+}
+
+/* L2: nested item hover + active (FFN: #D6EEFF pale blue) */
+html.__THEME_CLASS__ ul.topnav ul li a:hover,
+html.__THEME_CLASS__ ul.topnav ul li.active {
+    background-color: var(--ffne-brand-bg) !important;
+    color: var(--ffne-brand-text) !important;
+}
+
+/* L3: deeply nested item hover (FFN: #D3CEB8 beige) */
+html.__THEME_CLASS__ ul.topnav ul ul li a:hover {
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ ul.topnav span {
+    color: var(--ffne-ui-text-body) !important;
 }
 
 /* Alert/info panels */

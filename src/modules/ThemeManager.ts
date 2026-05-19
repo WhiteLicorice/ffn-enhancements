@@ -98,7 +98,7 @@ function _injectFfnOverrides(definition: IThemeDefinition, rootDocument: Documen
     const elementCss = definition.name !== Theme.LIGHT
         ? _buildScopedNativeOverrides(definition)
         : '';
-    style.textContent = [elementCss, scannerCss].filter(Boolean).join('\n\n');
+    style.textContent = [scannerCss, elementCss].filter(Boolean).join('\n\n');
 }
 
 function _upsertStyle(rootDocument: Document, id: string): HTMLStyleElement {

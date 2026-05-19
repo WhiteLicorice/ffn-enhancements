@@ -99,5 +99,8 @@ export const HighContrastTheme: IThemeDefinition = {
         '#8a3b00': '#ffcc00',
         '#c00000': '#ff5555',
         '#22aa77': '#00ff66',
+        '#675c7c': '#cccccc',
+        '#d6eeff': '#111111',
+        '#d3ceb8': '#222222',
     },
 };

@@ -99,5 +99,8 @@ export const DarkTheme: IThemeDefinition = {
         '#8a3b00': '#f5a623',
         '#c00000': '#ff7777',
         '#22aa77': '#6bd69a',
+        '#675c7c': '#8b7ba0',
+        '#d6eeff': '#1e2840',
+        '#d3ceb8': '#3d3828',
     },
 };
