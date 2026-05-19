@@ -7,7 +7,10 @@
    CSS (doc-manager.css, story-edit-content.css, etc.) uses higher-specificity
    class chains (e.g. .parent .status td) so their !important rules win over these. */
 
-/* --- Tables --- */
+/* --- Tables ---
+   FFN uses Bootstrap .table .table-striped with #gui_table1 / #gui_table2
+   IDs in cross-origin CSS. Row-level backgrounds set via ID selectors need
+   !important to override. */
 html.__THEME_CLASS__ table {
     border-color: var(--ffne-ui-border) !important;
 }
@@ -28,9 +31,106 @@ html.__THEME_CLASS__ caption {
     color: var(--ffne-ui-text-body) !important;
 }
 
-/* Alternating row shading */
+/* Border overrides for table sections — FFN cross-origin CSS and inline
+   styles (e.g. <thead style='border-top:1px solid #ddd'>) set pale blue
+   borders that must shift with theme. */
+html.__THEME_CLASS__ thead,
+html.__THEME_CLASS__ tbody,
+html.__THEME_CLASS__ tfoot {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ thead td,
+html.__THEME_CLASS__ thead th,
+html.__THEME_CLASS__ tfoot td,
+html.__THEME_CLASS__ tfoot th {
+    border-color: var(--ffne-ui-border-table) !important;
+}
+
+/* Row-level backgrounds — FFN cross-origin CSS sets bg on tr elements
+   via #gui_table1/#gui_table2 ID selectors. td override above handles
+   cells, but row bg bleeds through transparent cells. */
+html.__THEME_CLASS__ tr {
+    background-color: transparent !important;
+}
+
+html.__THEME_CLASS__ tr td,
+html.__THEME_CLASS__ tr th {
+    border-color: var(--ffne-ui-border-light) !important;
+}
+
+/* Alternating row shading — matches Bootstrap .table-striped (odd rows) */
+html.__THEME_CLASS__ .table-striped tbody tr:nth-child(odd) > td,
+html.__THEME_CLASS__ .table-striped tbody tr:nth-child(odd) > th,
 html.__THEME_CLASS__ tr:nth-child(even) > td {
     background-color: var(--ffne-ui-card-bg) !important;
+}
+
+/* Row hover — FFN uses ID selectors for hover, need !important to win */
+html.__THEME_CLASS__ tr:hover > td,
+html.__THEME_CLASS__ tr:hover > th,
+html.__THEME_CLASS__ .table-striped tbody tr:hover > td,
+html.__THEME_CLASS__ .table-striped tbody tr:hover > th {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    color: var(--ffne-brand-hover-text) !important;
+}
+
+/* FFN profile/doc-manager tables use Bootstrap .table classes.
+   .table-bordered is on a wrapper div, not the table itself — use
+   broad selectors to catch all child tables. */
+html.__THEME_CLASS__ .table {
+    background-color: var(--ffne-ui-white) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .table-bordered,
+html.__THEME_CLASS__ .table-bordered table {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .table-bordered td,
+html.__THEME_CLASS__ .table-bordered th {
+    border-color: var(--ffne-ui-border-light) !important;
+}
+
+/* FFN's gui_table1/gui_table2 — profile/account settings tables.
+   Cross-origin CSS uses these IDs with high specificity. */
+html.__THEME_CLASS__ #gui_table1,
+html.__THEME_CLASS__ #gui_table2 {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ #gui_table1 td,
+html.__THEME_CLASS__ #gui_table2 td {
+    background-color: var(--ffne-ui-white) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border-light) !important;
+}
+
+html.__THEME_CLASS__ #gui_table1 th,
+html.__THEME_CLASS__ #gui_table2 th {
+    background-color: var(--ffne-brand-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border-table) !important;
+}
+
+html.__THEME_CLASS__ #gui_table1 thead td,
+html.__THEME_CLASS__ #gui_table1 thead th,
+html.__THEME_CLASS__ #gui_table2 thead td,
+html.__THEME_CLASS__ #gui_table2 thead th {
+    border-color: var(--ffne-ui-border-table) !important;
+}
+
+html.__THEME_CLASS__ #gui_table1 tr:nth-child(even) td,
+html.__THEME_CLASS__ #gui_table2 tr:nth-child(even) td {
+    background-color: var(--ffne-ui-card-bg) !important;
+}
+
+html.__THEME_CLASS__ #gui_table1 tbody tr:hover td,
+html.__THEME_CLASS__ #gui_table2 tbody tr:hover td {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    color: var(--ffne-brand-hover-text) !important;
 }
 
 /* --- Form controls --- */
