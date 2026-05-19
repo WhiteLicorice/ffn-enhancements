@@ -3,6 +3,8 @@
 import { SettingsManager, FFNSettings } from './SettingsManager';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
 import { Theme } from '../enums/Theme';
+import { markFfneUiRoot } from '../utils/ffneUi';
+import { injectStyleOnce } from '../utils/injectStyleOnce';
 import { FFNLogger } from './FFNLogger';
 import modalStyles from '../styles/settings-modal.css?raw';
 
@@ -96,7 +98,7 @@ export const SettingsPage = {
 
         _injectStyles();
 
-        const backdrop = document.createElement('div');
+        const backdrop = markFfneUiRoot(document.createElement('div'));
         backdrop.id = MODAL_ID;
         backdrop.innerHTML = _buildModalHTML();
         document.body.appendChild(backdrop);
@@ -135,12 +137,7 @@ export const SettingsPage = {
 // ─── CSS Injection ────────────────────────────────────────────────────────────
 
 function _injectStyles(): void {
-    if (document.getElementById(STYLES_ID)) return;
-
-    const style = document.createElement('style');
-    style.id = STYLES_ID;
-    style.textContent = modalStyles.replace(/__MODAL_ID__/g, MODAL_ID);
-    document.head.appendChild(style);
+    injectStyleOnce(STYLES_ID, modalStyles.replace(/__MODAL_ID__/g, MODAL_ID));
 }
 
 // ─── HTML Builder ─────────────────────────────────────────────────────────────

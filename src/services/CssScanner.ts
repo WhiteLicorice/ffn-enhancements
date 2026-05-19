@@ -26,6 +26,10 @@ interface DeclarationOverride {
     priority: string;
 }
 
+interface ScanOptions {
+    excludeSelector?: string;
+}
+
 export const CssScanner = {
     _cache: new Map<string, string>(),
 
@@ -33,6 +37,7 @@ export const CssScanner = {
         colorMap: ColorMap,
         themeClass: string = '',
         rootDocument: Document = document,
+        options: ScanOptions = {},
     ): string {
         const normalizedMap = normalizeColorMap(colorMap);
         if (Object.keys(normalizedMap).length === 0) return '';
@@ -40,6 +45,7 @@ export const CssScanner = {
         const cacheKey = [
             rootDocument.location?.pathname || 'document',
             themeClass,
+            options.excludeSelector || '',
             JSON.stringify(normalizedMap),
         ].join('|');
         const cached = this._cache.get(cacheKey);
@@ -56,7 +62,7 @@ export const CssScanner = {
                 continue;
             }
 
-            output.push(...scanRules(rules, normalizedMap, themeClass));
+            output.push(...scanRules(rules, normalizedMap, themeClass, options));
         }
 
         const css = output.join('\n\n');
@@ -64,12 +70,36 @@ export const CssScanner = {
         return css;
     },
 
+    scopeCssText(
+        cssText: string,
+        themeClass: string = '',
+        options: ScanOptions = {},
+    ): string {
+        if (!cssText.trim()) return '';
+
+        const scratchDocument = document.implementation.createHTMLDocument('');
+        const style = scratchDocument.createElement('style');
+        style.textContent = cssText;
+        scratchDocument.head.appendChild(style);
+
+        const rules = style.sheet?.cssRules;
+        if (!rules) return cssText;
+
+        return serializeRules(rules, themeClass, options).join('\n\n');
+    },
+
     clearCache(): void {
         this._cache.clear();
     },
 };
 
-function scanRules(rules: CSSRuleList, colorMap: ColorMap, themeClass: string, wrappers: string[] = []): string[] {
+function scanRules(
+    rules: CSSRuleList,
+    colorMap: ColorMap,
+    themeClass: string,
+    options: ScanOptions,
+    wrappers: string[] = [],
+): string[] {
     const output: string[] = [];
 
     for (const rule of Array.from(rules)) {
@@ -77,7 +107,7 @@ function scanRules(rules: CSSRuleList, colorMap: ColorMap, themeClass: string, w
             const declarations = getDeclarationOverrides(rule.style, colorMap);
             if (declarations.length === 0) continue;
 
-            const selector = scopeSelector(rule.selectorText, themeClass);
+            const selector = scopeSelector(rule.selectorText, themeClass, options.excludeSelector);
             const body = declarations
                 .map(({ property, value, priority }) => `    ${property}: ${value}${priority ? ` !${priority}` : ''};`)
                 .join('\n');
@@ -88,7 +118,33 @@ function scanRules(rules: CSSRuleList, colorMap: ColorMap, themeClass: string, w
 
         if (isGroupingRule(rule)) {
             const prelude = getGroupingPrelude(rule);
-            output.push(...scanRules(rule.cssRules, colorMap, themeClass, [...wrappers, prelude]));
+            output.push(...scanRules(rule.cssRules, colorMap, themeClass, options, [...wrappers, prelude]));
+        }
+    }
+
+    return output;
+}
+
+function serializeRules(
+    rules: CSSRuleList,
+    themeClass: string,
+    options: ScanOptions,
+    wrappers: string[] = [],
+): string[] {
+    const output: string[] = [];
+
+    for (const rule of Array.from(rules)) {
+        if (isStyleRule(rule)) {
+            const selector = scopeSelector(rule.selectorText, themeClass, options.excludeSelector);
+            const declarations = serializeStyleDeclarations(rule.style);
+            const cssRule = `${selector} {\n${declarations}\n}`;
+            output.push(wrapRule(cssRule, wrappers));
+            continue;
+        }
+
+        if (isGroupingRule(rule)) {
+            const prelude = getGroupingPrelude(rule);
+            output.push(...serializeRules(rule.cssRules, themeClass, options, [...wrappers, prelude]));
         }
     }
 
@@ -269,19 +325,63 @@ function getGroupingPrelude(rule: CSSRule): string {
     return rule.cssText.slice(0, rule.cssText.indexOf('{')).trim();
 }
 
-function scopeSelector(selectorText: string, themeClass: string): string {
-    if (!themeClass) return selectorText;
+function scopeSelector(selectorText: string, themeClass: string, excludeSelector?: string): string {
+    const exclusionSuffix = buildExclusionSuffix(excludeSelector);
 
     return selectorText
         .split(',')
         .map(selector => {
             const trimmed = selector.trim();
-            if (trimmed === 'html') return `html.${themeClass}`;
-            if (trimmed.startsWith('html.')) return trimmed.replace(/^html/, `html.${themeClass}`);
-            if (trimmed.startsWith('html ')) return trimmed.replace(/^html/, `html.${themeClass}`);
-            return `html.${themeClass} ${trimmed}`;
+            const themed = applyThemeScope(trimmed, themeClass);
+            return exclusionSuffix ? appendSelectorSuffix(themed, exclusionSuffix) : themed;
         })
         .join(', ');
+}
+
+function applyThemeScope(selector: string, themeClass: string): string {
+    if (!themeClass) return selector;
+    if (selector === 'html') return `html.${themeClass}`;
+    if (selector.startsWith('html.')) return selector.replace(/^html/, `html.${themeClass}`);
+    if (selector.startsWith('html ')) return selector.replace(/^html/, `html.${themeClass}`);
+    return `html.${themeClass} ${selector}`;
+}
+
+function buildExclusionSuffix(excludeSelector?: string): string {
+    if (!excludeSelector) return '';
+    return excludeSelector
+        .split(',')
+        .map(selector => selector.trim())
+        .filter(Boolean)
+        .map(selector => `:not(${selector})`)
+        .join('');
+}
+
+function appendSelectorSuffix(selector: string, suffix: string): string {
+    const pseudoElementIndex = getPseudoElementIndex(selector);
+    if (pseudoElementIndex === -1) {
+        return `${selector}${suffix}`;
+    }
+
+    return `${selector.slice(0, pseudoElementIndex)}${suffix}${selector.slice(pseudoElementIndex)}`;
+}
+
+function getPseudoElementIndex(selector: string): number {
+    const modernIndex = selector.lastIndexOf('::');
+    if (modernIndex !== -1) return modernIndex;
+
+    const legacyMatch = /:(before|after|first-letter|first-line)\b/i.exec(selector);
+    return legacyMatch?.index ?? -1;
+}
+
+function serializeStyleDeclarations(style: CSSStyleDeclaration): string {
+    const declarations: string[] = [];
+    for (let i = 0; i < style.length; i++) {
+        const property = style.item(i);
+        const value = style.getPropertyValue(property);
+        const priority = style.getPropertyPriority(property);
+        declarations.push(`    ${property}: ${value}${priority ? ` !${priority}` : ''};`);
+    }
+    return declarations.join('\n');
 }
 
 function wrapRule(cssRule: string, wrappers: string[]): string {

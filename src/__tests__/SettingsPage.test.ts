@@ -52,4 +52,10 @@ describe('SettingsPage', () => {
             Theme.HIGH_CONTRAST,
         ]);
     });
+
+    it('marks the settings modal root as FFNE-owned UI', () => {
+        SettingsPage.openModal();
+
+        expect(document.getElementById('ffne-settings-modal')?.getAttribute('data-ffne-ui')).toBe('');
+    });
 });

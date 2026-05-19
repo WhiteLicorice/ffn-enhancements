@@ -140,6 +140,33 @@ describe('DocManager module', () => {
     });
 });
 
+describe('DocManager FFNE UI roots', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        SettingsManager.prime();
+    });
+
+    afterEach(() => {
+        cleanupDOM();
+    });
+
+    it('marks the drawer and modal roots as FFNE-owned UI', () => {
+        DocManager.injectAdvancedDrawer();
+        expect(document.getElementById('ffne-docmanager-advanced-drawer')?.getAttribute('data-ffne-ui')).toBe('');
+
+        DocManager.openAdvancedRoutinesModal();
+        expect(document.getElementById('ffne-docmanager-advanced-modal')?.getAttribute('data-ffne-ui')).toBe('');
+
+        DocManager.closeAdvancedRoutinesModal();
+        DocManager.openBulkImportModal();
+        expect(document.getElementById('ffne-docmanager-import-modal')?.getAttribute('data-ffne-ui')).toBe('');
+
+        DocManager.closeBulkImportModal();
+        DocManager.openAo3MigrationModal();
+        expect(document.getElementById('ffne-docmanager-ao3-modal')?.getAttribute('data-ffne-ui')).toBe('');
+    });
+});
+
 // ─── Regression: button reference captured in closure survives async gap ────
 
 describe('DocManager bulk operation button reference', () => {

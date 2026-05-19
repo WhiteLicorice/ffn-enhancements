@@ -5,6 +5,7 @@ import { Elements } from '../enums/Elements';
 import { FicHubDownloader } from './FicHubDownloader';
 import { NativeDownloader } from './NativeDownloader';
 import { SupportedFormats } from '../enums/SupportedFormats';
+import { markFfneUiRoot } from '../utils/ffneUi';
 
 /**
  * Module handling the UI integration for story downloads.
@@ -95,6 +96,9 @@ export const StoryDownloader = {
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.modal = document.getElementById('ffe-download-modal');
+        if (this.modal instanceof HTMLElement) {
+            markFfneUiRoot(this.modal);
+        }
 
         // Bind manual close handlers
         const closeX = document.getElementById('ffe-modal-close-x');
@@ -116,7 +120,7 @@ export const StoryDownloader = {
         }
         this.abortController = new AbortController();
 
-        const container = document.createElement('div');
+        const container = markFfneUiRoot(document.createElement('div'));
         container.className = 'ffne-dl-container';
 
         this.mainBtn = document.createElement('button');
@@ -238,6 +242,7 @@ export const StoryDownloader = {
             const backdrop = document.createElement('div');
             backdrop.className = 'modal-backdrop fade';
             backdrop.id = 'ffe-modal-backdrop';
+            markFfneUiRoot(backdrop);
             document.body.appendChild(backdrop);
             void backdrop.offsetHeight;
             backdrop.classList.add('in');

@@ -14,6 +14,7 @@ import {
 } from '../interfaces/IAo3Bridge';
 import { Core } from './Core';
 import { Ao3Service } from '../services/Ao3Service';
+import { markFfneUiRoot } from '../utils/ffneUi';
 
 const PANEL_ID = 'ffne-ao3-bridge-panel';
 const AO3_BRIDGE_MAX_FUTURE_SKEW_MS = 30 * 1000;
@@ -185,7 +186,7 @@ export const Ao3Bridge = {
     _injectPanel(): void {
         if (document.getElementById(PANEL_ID)) return;
 
-        const panel = document.createElement('div');
+        const panel = markFfneUiRoot(document.createElement('div'));
         panel.id = PANEL_ID;
         panel.className = 'ffne-ao3-panel';
         panel.setAttribute('role', 'status');

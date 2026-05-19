@@ -2,6 +2,7 @@
 
 import { Elements } from '../enums/Elements';
 import { LayoutManagerDelegate } from '../delegates/LayoutManagerDelegate';
+import { injectStyleOnce } from '../utils/injectStyleOnce';
 import { FFNLogger } from './FFNLogger';
 import { SettingsManager } from './SettingsManager';
 import fluidStyles from '../styles/fluid-mode.css?raw';
@@ -19,7 +20,7 @@ const MODULE_NAME = 'LayoutManager';
 const STYLE_TAG_ID = 'ffn-enhancements-layout-styles';
 
 /**
- * The class name applied to the body when Fluid Mode is active.
+ * The class name applied to the root element when Fluid Mode is active.
  */
 const FLUID_CLASS = 'ffn-enhancements-fluid-mode';
 
@@ -32,10 +33,10 @@ const FLUID_CLASS = 'ffn-enhancements-fluid-mode';
 let _isFluid = true;
 
 /**
- * Observer used to apply Fluid Mode class as soon as <body> becomes available
+ * Observer used to inject the viewport meta tag once <head> becomes available
  * when running at document-start.
  */
-let _bodyObserver: MutationObserver | null = null;
+let _viewportObserver: MutationObserver | null = null;
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ export const LayoutManager = {
      */
     prime(): void {
         _injectFluidStyles();
+        _injectViewportMeta();
         // Restore persisted preference. SettingsManager.prime() runs first
         // (guaranteed by EarlyBoot registration order), so the stored value
         // is already in cache — no async required.
@@ -76,10 +78,6 @@ export const LayoutManager = {
         // Call _setFluidMode to apply DOM mutations (width overrides, etc.)
         // now that the DOM is fully available.
         _setFluidMode(_isFluid);
-
-        // FFN lacks a viewport meta tag, which breaks zooming/reflow on many devices.
-        // We inject it permanently to modernize the page behavior.
-        _injectViewportMeta();
 
         // Cross-tab sync: apply fluidMode changes made in any other tab immediately
         // (e.g., user toggles the setting in the settings page tab).
@@ -170,68 +168,23 @@ function _setFluidMode(enable: boolean): void {
 }
 
 /**
- * Applies or removes the Fluid Mode class on body, with a body observer fallback
- * for early document-start execution.
+ * Applies or removes the Fluid Mode class on html, mirroring it to body when present.
  * @param enable - True to add class, False to remove class.
  */
 function _applyFluidClass(enable: boolean): void {
+    const root = document.documentElement;
     const body = document.body;
 
-    if (_bodyObserver) {
-        _bodyObserver.disconnect();
-        _bodyObserver = null;
+    root.classList.toggle(FLUID_CLASS, enable);
+
+    if (enable) {
+        _log('applyFluidClass', 'Fluid mode enabled (Class added).');
+    } else {
+        _log('applyFluidClass', 'Fluid mode disabled (Class removed).');
     }
 
     if (body) {
-        if (enable) {
-            if (!body.classList.contains(FLUID_CLASS)) {
-                body.classList.add(FLUID_CLASS);
-                _log('applyFluidClass', 'Fluid mode enabled (Class added).');
-            }
-        } else if (body.classList.contains(FLUID_CLASS)) {
-            body.classList.remove(FLUID_CLASS);
-            _log('applyFluidClass', 'Fluid mode disabled (Class removed).');
-        }
-        return;
-    }
-
-    if (enable) {
-        _bodyObserver = new MutationObserver((mutations) => {
-            let bodyAdded = false;
-            for (const mutation of mutations) {
-                for (const node of mutation.addedNodes) {
-                    if (node === document.body) {
-                        bodyAdded = true;
-                        break;
-                    }
-                }
-
-                if (bodyAdded) {
-                    break;
-                }
-            }
-
-            if (!bodyAdded) {
-                return;
-            }
-
-            const currentBody = document.body;
-            if (!currentBody) {
-                return;
-            }
-
-            if (!currentBody.classList.contains(FLUID_CLASS)) {
-                currentBody.classList.add(FLUID_CLASS);
-                _log('applyFluidClass', 'Fluid mode enabled on body creation.');
-            }
-
-            if (_bodyObserver) {
-                _bodyObserver.disconnect();
-                _bodyObserver = null;
-            }
-        });
-
-        _bodyObserver.observe(document.documentElement, { childList: true });
+        body.classList.toggle(FLUID_CLASS, enable);
     }
 }
 
@@ -253,17 +206,34 @@ function _removeWidthControl(): void {
  * (usually ~980px) regardless of zoom level or device width.
  */
 function _injectViewportMeta(): void {
-    if (!document.querySelector('meta[name="viewport"]')) {
+    if (document.querySelector('meta[name="viewport"]')) {
+        if (_viewportObserver) {
+            _viewportObserver.disconnect();
+            _viewportObserver = null;
+        }
+        return;
+    }
+
+    if (document.head) {
         const meta = document.createElement('meta');
         meta.name = 'viewport';
         meta.content = 'width=device-width, initial-scale=1.0';
-        if (document.head) {
-            document.head.appendChild(meta);
-        } else {
-            document.documentElement.appendChild(meta); // shouldn't happen
-        }
+        document.head.appendChild(meta);
         _log('injectViewportMeta', 'Injected missing Viewport Meta tag.');
+        return;
     }
+
+    if (_viewportObserver) return;
+
+    _viewportObserver = new MutationObserver(() => {
+        if (!document.head) return;
+        _injectViewportMeta();
+        if (_viewportObserver) {
+            _viewportObserver.disconnect();
+            _viewportObserver = null;
+        }
+    });
+    _viewportObserver.observe(document.documentElement, { childList: true });
 }
 
 /**
@@ -272,17 +242,8 @@ function _injectViewportMeta(): void {
  * and document.write() scripts to set widths.
  */
 function _injectFluidStyles(): void {
-    if (document.getElementById(STYLE_TAG_ID)) {
-        return; // Styles already injected
-    }
-
-    const style = document.createElement('style');
-    style.id = STYLE_TAG_ID;
-    style.textContent = fluidStyles.replace(/__FLUID_CLASS__/g, FLUID_CLASS);
-    if (document.head) {
-        document.head.appendChild(style);
-    } else {
-        document.documentElement.appendChild(style); // shouldn't happen
-    }
+    injectStyleOnce(STYLE_TAG_ID, fluidStyles.replace(/__FLUID_CLASS__/g, FLUID_CLASS), document, [
+        'ffne-theme-ffn-overrides',
+    ]);
     _log('injectFluidStyles', 'Fluid styles injected into head.');
 }

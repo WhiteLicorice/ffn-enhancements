@@ -47,4 +47,19 @@ describe('CssScanner', () => {
 
         expect(css).toBe('');
     });
+
+    it('excludes FFNE-owned UI descendants from generated selectors', () => {
+        const style = document.createElement('style');
+        style.textContent = '.native-panel td { color: #333; }';
+        document.head.appendChild(style);
+
+        const css = CssScanner.scanAndOverride(
+            { '#333': '#eee' },
+            'ffne-theme-dark',
+            document,
+            { excludeSelector: '[data-ffne-ui], [data-ffne-ui] *' },
+        );
+
+        expect(css).toContain('html.ffne-theme-dark .native-panel td:not([data-ffne-ui]):not([data-ffne-ui] *)');
+    });
 });
