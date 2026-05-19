@@ -209,6 +209,69 @@ html.__THEME_CLASS__ mark {
     color: var(--ffne-ui-text-body) !important;
 }
 
+/* --- Section headers (.tcat) --- */
+html.__THEME_CLASS__ .tcat {
+    background-color: var(--ffne-brand-primary) !important;
+    color: var(--ffne-ui-text-on-accent) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .tcat b,
+html.__THEME_CLASS__ .tcat a {
+    color: var(--ffne-ui-text-on-accent) !important;
+}
+
+/* --- Menu bar (#zmenu) --- */
+html.__THEME_CLASS__ #zmenu {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+/* --- Bootstrap-style buttons (.btn) --- */
+html.__THEME_CLASS__ .btn {
+    background-color: var(--ffne-ui-card-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .btn:hover,
+html.__THEME_CLASS__ .btn:focus {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    color: var(--ffne-ui-text-body) !important;
+    border-color: var(--ffne-ui-border-chrome) !important;
+}
+
+html.__THEME_CLASS__ .btn:active {
+    background-color: var(--ffne-brand-bg) !important;
+}
+
+html.__THEME_CLASS__ .btn-group {
+    border-color: var(--ffne-ui-border) !important;
+}
+
+html.__THEME_CLASS__ .caret {
+    border-top-color: var(--ffne-ui-text-body) !important;
+    border-bottom-color: var(--ffne-ui-text-body) !important;
+}
+
+/* --- Footer (#p_footer) --- */
+html.__THEME_CLASS__ #p_footer {
+    background-color: var(--ffne-ui-page-bg) !important;
+    color: var(--ffne-ui-text-muted) !important;
+}
+
+html.__THEME_CLASS__ #p_footer a {
+    color: var(--ffne-ui-text-secondary) !important;
+}
+
+html.__THEME_CLASS__ #p_footer span[class^="icon-"] {
+    color: var(--ffne-ui-text-muted) !important;
+}
+
+html.__THEME_CLASS__ #p_footer div[style*="color"] {
+    color: var(--ffne-ui-text-muted) !important;
+}
+
 /* Selection */
 html.__THEME_CLASS__ ::selection {
     background-color: var(--ffne-brand-primary);
