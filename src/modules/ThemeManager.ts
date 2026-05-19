@@ -32,11 +32,7 @@ export const ThemeManager: ISitewideModule & {
 } = {
     prime(): void {
         const definition = getThemeDefinition(this.getResolvedTheme());
-        _injectTokenStyles(definition);
-        _injectStaticNativeOverrides(definition);
-        _injectComponentStyles();
-        _applyThemeClass(this.getResolvedTheme());
-        _applyColorScheme(definition);
+        _applyTheme(definition, false);
         FFNLogger.log(MODULE_NAME, 'prime', `Theme primed: ${SettingsManager.get('theme')} -> ${this.getResolvedTheme()}`);
     },
 
@@ -44,7 +40,12 @@ export const ThemeManager: ISitewideModule & {
         _applyTheme(getThemeDefinition(this.getResolvedTheme()), true);
         _subscribeToSettingChanges();
         _watchSystemPreference();
-        _watchTinyMceIframes();
+        if (_isFfnHost()) {
+            _watchTinyMceIframes();
+        } else {
+            _stopTinyMceIframeWatcher();
+            _clearTinyMceIframes();
+        }
     },
 
     setTheme(theme: Theme): void {
@@ -69,10 +70,18 @@ function _applyTheme(definition: IThemeDefinition, scanNativeCss: boolean): void
     _injectTokenStyles(definition);
     _injectStaticNativeOverrides(definition);
     _injectComponentStyles();
+
+    if (!_isFfnHost()) {
+        _clearPageThemeChrome(document);
+        document.getElementById(SCANNED_FFN_OVERRIDES_STYLE_ID)?.remove();
+        _clearTinyMceIframes();
+        return;
+    }
+
     _applyThemeClass(definition.name);
     _applyColorScheme(definition);
 
-    if (scanNativeCss && _isFfnHost()) {
+    if (scanNativeCss) {
         _injectScannedFfnOverrides(definition, document, SCANNED_FFN_OVERRIDES_STYLE_ID);
     } else {
         document.getElementById(SCANNED_FFN_OVERRIDES_STYLE_ID)?.remove();
@@ -199,6 +208,12 @@ function _watchSystemPreference(): void {
 }
 
 function _watchTinyMceIframes(): void {
+    if (!_isFfnHost()) {
+        _stopTinyMceIframeWatcher();
+        _clearTinyMceIframes();
+        return;
+    }
+
     if (_iframeObserver) return;
 
     _themeTinyMceIframes(getThemeDefinition(ThemeManager.getResolvedTheme()));
@@ -218,10 +233,20 @@ function _watchTinyMceIframes(): void {
 }
 
 function _themeTinyMceIframes(definition: IThemeDefinition): void {
+    if (!_isFfnHost()) {
+        _clearTinyMceIframes();
+        return;
+    }
+
     document.querySelectorAll<HTMLIFrameElement>('iframe[id$="_ifr"]').forEach(frame => _themeIframe(frame, definition));
 }
 
 function _themeIframe(frame: HTMLIFrameElement, definition: IThemeDefinition): void {
+    if (!_isFfnHost()) {
+        _clearIframeTheme(frame);
+        return;
+    }
+
     const apply = () => {
         try {
             const frameDocument = frame.contentDocument;
@@ -229,13 +254,8 @@ function _themeIframe(frame: HTMLIFrameElement, definition: IThemeDefinition): v
 
             _injectTokenStyles(definition, frameDocument, TOKEN_STYLE_ID);
             _applyFrameThemeClass(frameDocument, definition.name);
-            if (_isFfnHost()) {
-                _injectStaticNativeOverrides(definition, frameDocument, IFRAME_STATIC_OVERRIDE_STYLE_ID);
-                _injectScannedFfnOverrides(definition, frameDocument, IFRAME_OVERRIDE_STYLE_ID);
-            } else {
-                frameDocument.getElementById(IFRAME_STATIC_OVERRIDE_STYLE_ID)?.remove();
-                frameDocument.getElementById(IFRAME_OVERRIDE_STYLE_ID)?.remove();
-            }
+            _injectStaticNativeOverrides(definition, frameDocument, IFRAME_STATIC_OVERRIDE_STYLE_ID);
+            _injectScannedFfnOverrides(definition, frameDocument, IFRAME_OVERRIDE_STYLE_ID);
         } catch (e) {
             FFNLogger.log(MODULE_NAME, '_themeIframe', 'Could not theme TinyMCE iframe:', e as object);
         }
@@ -254,6 +274,45 @@ function _applyFrameThemeClass(rootDocument: Document, theme: Theme): void {
     Object.values(Theme).forEach(value => root.classList.remove(_themeClass(value)));
     root.classList.add(_themeClass(theme));
     root.style.colorScheme = getThemeDefinition(theme).isDark ? 'dark' : 'light';
+}
+
+function _clearPageThemeChrome(rootDocument: Document): void {
+    const root = rootDocument.documentElement;
+    Object.values(Theme).forEach(value => root.classList.remove(_themeClass(value)));
+    root.style.colorScheme = '';
+}
+
+function _clearTinyMceIframes(): void {
+    document.querySelectorAll<HTMLIFrameElement>('iframe[id$="_ifr"]').forEach(frame => _clearIframeTheme(frame));
+}
+
+function _clearIframeTheme(frame: HTMLIFrameElement): void {
+    const clear = () => {
+        try {
+            const frameDocument = frame.contentDocument;
+            if (!frameDocument) return;
+
+            _clearPageThemeChrome(frameDocument);
+            frameDocument.getElementById(TOKEN_STYLE_ID)?.remove();
+            frameDocument.getElementById(IFRAME_STATIC_OVERRIDE_STYLE_ID)?.remove();
+            frameDocument.getElementById(IFRAME_OVERRIDE_STYLE_ID)?.remove();
+        } catch (e) {
+            FFNLogger.log(MODULE_NAME, '_clearIframeTheme', 'Could not clear TinyMCE iframe theme:', e as object);
+        }
+    };
+
+    if (frame.contentDocument?.readyState === 'complete') {
+        clear();
+        return;
+    }
+
+    frame.addEventListener('load', clear, { once: true });
+}
+
+function _stopTinyMceIframeWatcher(): void {
+    if (!_iframeObserver) return;
+    _iframeObserver.disconnect();
+    _iframeObserver = null;
 }
 
 function _prefersDark(): boolean {

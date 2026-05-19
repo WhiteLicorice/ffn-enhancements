@@ -53,5 +53,36 @@ describe('ThemeManager', () => {
         expect(document.getElementById('ffne-theme-tokens')).not.toBeNull();
         expect(document.getElementById('ffne-component-styles')).not.toBeNull();
         expect(document.getElementById('ffne-theme-native-overrides')).toBeNull();
+        expect(document.documentElement.className).toBe('');
+        expect(document.documentElement.style.colorScheme).toBe('');
+    });
+
+    it('does not theme AO3 TinyMCE iframes or leave old iframe theme hooks behind', () => {
+        resetDom();
+        jsdom.reconfigure({ url: 'https://archiveofourown.org/works/1/chapters/2/edit' });
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key) => {
+            if (key === 'theme') return Theme.DARK;
+            return undefined as never;
+        });
+
+        const iframe = document.createElement('iframe');
+        iframe.id = 'content_ifr';
+        document.body.appendChild(iframe);
+        const frameDocument = iframe.contentDocument!;
+        frameDocument.documentElement.classList.add('ffne-theme-dark');
+        frameDocument.documentElement.style.colorScheme = 'dark';
+        const oldTokenStyle = frameDocument.createElement('style');
+        oldTokenStyle.id = 'ffne-theme-tokens';
+        oldTokenStyle.textContent = 'html.ffne-theme-dark body { background: black !important; }';
+        frameDocument.head.appendChild(oldTokenStyle);
+
+        ThemeManager.prime();
+        ThemeManager.init();
+
+        expect(frameDocument.documentElement.className).toBe('');
+        expect(frameDocument.documentElement.style.colorScheme).toBe('');
+        expect(frameDocument.getElementById('ffne-theme-tokens')).toBeNull();
+        expect(frameDocument.getElementById('ffne-theme-iframe-native-overrides')).toBeNull();
+        expect(frameDocument.getElementById('ffne-theme-iframe-overrides')).toBeNull();
     });
 });
