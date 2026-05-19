@@ -32,7 +32,7 @@ describe('ThemeManager', () => {
                 'ffne-component-styles',
             ]);
             expect(document.getElementById('ffne-theme-native-overrides')).not.toBeNull();
-            expect(document.getElementById('ffne-theme-ffn-overrides')).toBeNull();
+            expect(document.getElementById('ffne-theme-scanned-ffn-overrides')).toBeNull();
         },
     );
 });

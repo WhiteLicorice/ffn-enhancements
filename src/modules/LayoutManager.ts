@@ -243,7 +243,7 @@ function _injectViewportMeta(): void {
  */
 function _injectFluidStyles(): void {
     injectStyleOnce(STYLE_TAG_ID, fluidStyles.replace(/__FLUID_CLASS__/g, FLUID_CLASS), document, [
-        'ffne-theme-ffn-overrides',
+        'ffne-theme-scanned-ffn-overrides',
     ]);
     _log('injectFluidStyles', 'Fluid styles injected into head.');
 }
