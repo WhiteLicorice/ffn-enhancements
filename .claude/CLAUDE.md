@@ -47,13 +47,13 @@ npm run dev     # vite               (dev server, hot reload for quick iteration
   `externalGlobals`. These are not bundled; they are injected as `@require`
   directives in the userscript header instead. Keep the pinned `@require` URLs and
   `externalGlobals` entries in sync:
+  - The first `@require` entry is a tiny `util.fn2dataUrl(...)` paint-gate prelude.
+    It must stay first so the gate installs before the heavy CDN libraries load and
+    before the main bundle starts executing.
   - `jszip` -> `JSZip`
   - `file-saver` -> `saveAs`
   - `turndown` -> `TurndownService`
   - `marked` -> `marked`
-- `vite.config.ts` also emits a tiny zero-dependency paint-gate banner via
-  `build.rollupOptions.output.banner`. It must stay tiny and self-contained because
-  it runs before the main bundle and before any CDN `@require` script becomes usable.
 
 ---
 
@@ -633,9 +633,10 @@ tsconfig.json                    - Strict TypeScript config
      remapped colors win and semantic tokens stop working. Native-overrides must
      always be the final word.
 
-14. **GOTCHA: Paint-gate banner sync.** The tiny banner in `vite.config.ts` must
+14. **GOTCHA: Paint-gate prelude sync.** The tiny paint-gate prelude in
+    `vite.config.ts` must
     keep the same root class, style id, overlay id, CSS selectors, and overlay
-    inline styles as `src/modules/PaintGate.ts`. If they drift apart, the banner
+    inline styles as `src/modules/PaintGate.ts`. If they drift apart, the prelude
     can paint one gate while the module primes/releases another, causing flicker or
     a stuck overlay.
 
