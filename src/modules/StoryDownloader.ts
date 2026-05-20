@@ -124,7 +124,10 @@ export const StoryDownloader = {
         container.className = 'ffne-dl-container';
 
         this.mainBtn = document.createElement('button');
+        this.mainBtn.type = 'button';
         this.mainBtn.className = 'btn';
+        this.mainBtn.setAttribute('aria-haspopup', 'menu');
+        this.mainBtn.setAttribute('aria-expanded', 'false');
         this.mainBtn.innerHTML = "Download &#9662;";
         this.mainBtn.onclick = (e) => {
             e.preventDefault();
@@ -133,6 +136,7 @@ export const StoryDownloader = {
 
         const menu = document.createElement('ul');
         menu.className = 'ffne-dl-menu';
+        menu.setAttribute('role', 'menu');
         this.dropdown = menu;
 
         const formats = [
@@ -145,6 +149,7 @@ export const StoryDownloader = {
         formats.forEach(fmt => {
             const li = document.createElement('li');
             const a = document.createElement('a');
+            a.setAttribute('role', 'menuitem');
             a.innerText = fmt.label;
             a.href = "#";
             a.onclick = (e) => {
@@ -180,7 +185,17 @@ export const StoryDownloader = {
      * @param force - Optional boolean to force show (true) or hide (false).
      */
     toggleDropdown: function (force?: boolean) {
-        if (this.dropdown) this.dropdown.style.display = (force ?? this.dropdown.style.display === 'none') ? 'block' : 'none';
+        if (!this.dropdown) return;
+
+        const inlineDisplay = this.dropdown.style.display;
+        const computedDisplay = window.getComputedStyle(this.dropdown).display;
+        const isVisible = inlineDisplay
+            ? inlineDisplay !== 'none'
+            : computedDisplay !== 'none';
+        const shouldShow = force ?? !isVisible;
+
+        this.dropdown.style.display = shouldShow ? 'block' : 'none';
+        this.mainBtn?.setAttribute('aria-expanded', String(shouldShow));
     },
 
     /**

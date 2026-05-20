@@ -47,10 +47,37 @@ describe('ThemeManager', () => {
             expect(nativeOverrideStyles).toContain('.panel_success');
             expect(nativeOverrideStyles).toContain('--ffne-semantic-success-border');
             expect(componentStyles).toContain('.ffne-dl-container');
+            expect(componentStyles).toContain('.ffne-dl-container > .btn');
+            expect(componentStyles).toContain('background-image: none !important');
             expect(nativeStyle).not.toBeNull();
             expect(document.getElementById('ffne-theme-scanned-ffn-overrides')).toBeNull();
         },
     );
+
+    it('component styles cover late-inserted FFNE download UI without native overrides', () => {
+        resetDom();
+        jsdom.reconfigure({ url: 'https://www.fanfiction.net/s/1/1/Test' });
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key) => {
+            if (key === 'theme') return Theme.DARK;
+            return undefined as never;
+        });
+
+        ThemeManager.prime();
+
+        const container = document.createElement('div');
+        container.setAttribute('data-ffne-ui', '');
+        container.className = 'ffne-dl-container';
+        const button = document.createElement('button');
+        button.className = 'btn';
+        container.appendChild(button);
+        document.body.appendChild(container);
+
+        expect(document.getElementById('ffne-component-styles')).not.toBeNull();
+        expect(componentStyles).toContain('.ffne-dl-container');
+        expect(componentStyles).toContain('.ffne-dl-container > .btn');
+        expect(componentStyles).toContain('background-image: none !important');
+        expect(document.querySelector('[data-ffne-ui].ffne-dl-container .btn')).toBe(button);
+    });
 
     it('does not inject FFN native overrides outside FFN hosts', () => {
         resetDom();

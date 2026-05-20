@@ -26,7 +26,11 @@ describe('PaintGate', () => {
         PaintGate.prime();
 
         const style = document.getElementById('ffne-paint-gate-style');
+        const overlay = document.getElementById('ffne-paint-gate-overlay');
         expect(style?.parentElement).toBe(document.documentElement);
+        expect(overlay?.parentElement).toBe(document.documentElement);
+        expect(overlay?.getAttribute('style')).toContain('position:fixed !important');
+        expect(overlay?.getAttribute('style')).toContain('background:#000 !important');
         expect(style?.textContent).toContain('opacity: 0 !important');
         expect(style?.textContent).toContain('html.ffne-paint-gated::before');
         expect(document.documentElement.classList.contains('ffne-paint-gated')).toBe(true);
@@ -48,6 +52,7 @@ describe('PaintGate', () => {
 
         expect(document.documentElement.classList.contains('ffne-paint-gated')).toBe(false);
         expect(document.getElementById('ffne-paint-gate-style')).toBeNull();
+        expect(document.getElementById('ffne-paint-gate-overlay')).toBeNull();
         expect(document.documentElement.style.backgroundColor).toBe('');
     });
 
@@ -82,6 +87,7 @@ describe('PaintGate', () => {
 
         expect(document.documentElement.classList.contains('ffne-paint-gated')).toBe(false);
         expect(document.getElementById('ffne-paint-gate-style')).toBeNull();
+        expect(document.getElementById('ffne-paint-gate-overlay')).toBeNull();
         expect(warnSpy).toHaveBeenCalledOnce();
     });
 

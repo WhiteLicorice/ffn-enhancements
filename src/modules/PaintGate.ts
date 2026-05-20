@@ -3,6 +3,7 @@ import { injectStyleOnce } from '../utils/injectStyleOnce';
 
 const MODULE_NAME = 'PaintGate';
 const STYLE_ID = 'ffne-paint-gate-style';
+const OVERLAY_ID = 'ffne-paint-gate-overlay';
 const ROOT_CLASS = 'ffne-paint-gated';
 const FFN_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
 const FAIL_SAFE_TIMEOUT_MS = 5000;
@@ -39,6 +40,24 @@ html.${ROOT_CLASS}::before {
 }
 `;
 
+const overlayStyle = [
+    'position:fixed !important',
+    'inset:0 !important',
+    'width:100vw !important',
+    'height:100vh !important',
+    'z-index:2147483647 !important',
+    `background:${BLACK} !important`,
+    'display:block !important',
+    'visibility:visible !important',
+    'opacity:1 !important',
+    'pointer-events:none !important',
+    'margin:0 !important',
+    'padding:0 !important',
+    'border:0 !important',
+    'box-shadow:none !important',
+    'contain:strict !important',
+].join(';');
+
 export const PaintGate: ISitewideModule & {
     release(): void;
     releaseAfterPaint(): void;
@@ -48,6 +67,7 @@ export const PaintGate: ISitewideModule & {
 
         _clearReleaseSchedule();
         _ensureStyle();
+        _ensureOverlay();
 
         if (!_isPrimed) {
             _previousRootBackground = document.documentElement.style.backgroundColor;
@@ -80,6 +100,7 @@ export const PaintGate: ISitewideModule & {
             root.style.backgroundColor = _previousRootBackground;
         }
         document.getElementById(STYLE_ID)?.remove();
+        document.getElementById(OVERLAY_ID)?.remove();
 
         _previousRootBackground = '';
         _isPrimed = false;
@@ -115,6 +136,24 @@ function _ensureStyle(): void {
     injectStyleOnce(STYLE_ID, paintGateCss);
 }
 
+function _ensureOverlay(): void {
+    const root = document.documentElement;
+    if (!root) return;
+
+    let overlay = document.getElementById(OVERLAY_ID);
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = OVERLAY_ID;
+        overlay.setAttribute('aria-hidden', 'true');
+    }
+
+    overlay.setAttribute('style', overlayStyle);
+
+    if (overlay.parentNode !== root) {
+        root.appendChild(overlay);
+    }
+}
+
 function _watchForHead(): void {
     if (document.head) {
         _disconnectHeadObserver();
@@ -127,6 +166,7 @@ function _watchForHead(): void {
     _headObserver = new MutationObserver(() => {
         if (!document.head) return;
         _ensureStyle();
+        _ensureOverlay();
         _disconnectHeadObserver();
     });
     _headObserver.observe(document.documentElement, { childList: true });

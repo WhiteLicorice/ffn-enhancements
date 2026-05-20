@@ -36,6 +36,26 @@ describe('FFNE UI ownership markers', () => {
         expect(document.getElementById('ffe-modal-backdrop')?.getAttribute('data-ffne-ui')).toBe('');
     });
 
+    it('opens the story downloader menu on the first toggle when CSS hides it', () => {
+        vi.spyOn(Core, 'getElement').mockReturnValue(null);
+        const style = document.createElement('style');
+        style.textContent = '.ffne-dl-menu { display: none; }';
+        document.head.appendChild(style);
+        const header = document.createElement('div');
+        document.body.appendChild(header);
+
+        StoryDownloader.injectDropdown(header);
+        StoryDownloader.toggleDropdown();
+
+        expect(StoryDownloader.dropdown?.style.display).toBe('block');
+        expect(StoryDownloader.mainBtn?.getAttribute('aria-expanded')).toBe('true');
+
+        StoryDownloader.toggleDropdown();
+
+        expect(StoryDownloader.dropdown?.style.display).toBe('none');
+        expect(StoryDownloader.mainBtn?.getAttribute('aria-expanded')).toBe('false');
+    });
+
     it('marks clipboard toasts and AO3 bridge panel as FFNE-owned UI', () => {
         DocEditor._showToast('Copied!', false);
         Ao3Bridge._injectPanel();
