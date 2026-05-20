@@ -172,6 +172,7 @@ const ENUM_SETTINGS: Partial<Record<keyof FFNSettings, Record<string, string>>> 
  * Prefix applied to all GM storage keys to avoid collisions with other userscripts.
  */
 const STORAGE_PREFIX = 'ffne_';
+const THEME_CACHE_KEY = 'ffne_theme_cache';
 
 const MODULE_NAME = 'SettingsManager';
 
@@ -244,6 +245,7 @@ export const SettingsManager: ISitewideModule & {
      */
     prime(): void {
         _loadAll();
+        _mirrorThemeCache(_cache.theme);
         _registerValueListeners();
         FFNLogger.log(MODULE_NAME, 'prime', 'Settings loaded; cross-tab listeners registered.');
     },
@@ -275,6 +277,9 @@ export const SettingsManager: ISitewideModule & {
         // GM_setValue only accepts string | number | boolean.
         // All FFNSettings values are one of those types.
         GM_setValue(STORAGE_PREFIX + key, value as string | number | boolean);
+        if (key === 'theme') {
+            _mirrorThemeCache(_parseStoredValue('theme', value));
+        }
         _notifySubscribers(key, value, old);
         FFNLogger.log(MODULE_NAME, 'set', `Saved: ${String(key)} = ${String(value)}`);
     },
@@ -409,6 +414,9 @@ function _registerValueListeners(): void {
                         const old = _cache[key];
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         (_cache as Record<string, any>)[key] = parsed;
+                        if (key === 'theme') {
+                            _mirrorThemeCache(parsed as Theme | undefined);
+                        }
                         _notifySubscribers(key, parsed as FFNSettings[typeof key], old);
                     }
                 }
@@ -455,6 +463,21 @@ export function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unkn
     }
 
     return undefined;
+}
+
+/**
+ * Mirrors the validated theme into localStorage so the earliest prelude can read it.
+ * @param theme The validated theme value to cache for fallback reads.
+ * @returns Nothing; localStorage failures are swallowed to avoid breaking startup.
+ */
+function _mirrorThemeCache(theme: Theme | undefined): void {
+    if (theme === undefined) return;
+
+    try {
+        window.localStorage.setItem(THEME_CACHE_KEY, theme);
+    } catch {
+        FFNLogger.log(MODULE_NAME, '_mirrorThemeCache', 'localStorage unavailable; skipping theme cache mirror.');
+    }
 }
 
 /**

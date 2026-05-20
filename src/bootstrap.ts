@@ -10,7 +10,6 @@ import { LayoutManager } from './modules/LayoutManager';
 import { StoryEditContent } from './modules/StoryEditContent';
 import { Ao3Bridge } from './modules/Ao3Bridge';
 import { ThemeManager } from './modules/ThemeManager';
-import { PaintGate } from './modules/PaintGate';
 
 const FFN_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
 const AO3_HOST = 'archiveofourown.org';
@@ -50,12 +49,8 @@ export function bootstrap(locationLike: Pick<Location, 'pathname' | 'hostname' |
 
     if (!isFfnHost(hostname)) return;
 
-    try {
-        EarlyBoot.init();
-        initActiveRoute(path);
-    } finally {
-        PaintGate.releaseAfterPaint();
-    }
+    EarlyBoot.init();
+    initActiveRoute(path);
 }
 
 export function installBootstrap(

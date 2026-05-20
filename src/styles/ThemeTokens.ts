@@ -56,11 +56,11 @@ export const DEFAULT_TOKENS: Record<string, string> = {
     '--ffne-ui-text-on-accent': '#fff',
 };
 
-export function buildTokenCss(overrides: Record<string, string> = {}): string {
+export function buildTokenCss(overrides: Record<string, string> = {}, selector: string = ':root'): string {
     const merged = { ...DEFAULT_TOKENS, ...overrides };
     const declarations = Object.entries(merged)
         .map(([name, value]) => `    ${name}: ${value};`)
         .join('\n');
 
-    return `:root {\n${declarations}\n}`;
+    return `${selector} {\n${declarations}\n}`;
 }

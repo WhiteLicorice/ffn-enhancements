@@ -6,6 +6,7 @@ import { FicHubDownloader } from './FicHubDownloader';
 import { NativeDownloader } from './NativeDownloader';
 import { SupportedFormats } from '../enums/SupportedFormats';
 import { markFfneUiRoot } from '../utils/ffneUi';
+import { ThemeManager } from './ThemeManager';
 
 /**
  * Module handling the UI integration for story downloads.
@@ -38,6 +39,7 @@ export const StoryDownloader = {
      */
     init: function () {
         const log = Core.getLogger(this.MODULE_NAME, 'init');
+        ThemeManager.ensureComponentStyles();
         Core.onDomReady(() => {
             const header = Core.getElement(Elements.PROFILE_HEADER);
             if (header) {
@@ -57,6 +59,7 @@ export const StoryDownloader = {
     injectModal: function () {
         // Prevent duplicate injection
         if (document.getElementById('ffe-download-modal')) return;
+        ThemeManager.ensureComponentStyles();
 
         const modalHtml = `
             <div class="modal fade hide" id="ffe-download-modal" style="display: none;">
@@ -114,6 +117,7 @@ export const StoryDownloader = {
      */
     injectDropdown: function (parentGroup: HTMLElement) {
         const log = Core.getLogger(this.MODULE_NAME, 'injectDropdown');
+        ThemeManager.ensureComponentStyles();
 
         if (this.abortController) {
             this.abortController.abort();

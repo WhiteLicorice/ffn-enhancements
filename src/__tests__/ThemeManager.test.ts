@@ -4,10 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Theme } from '../enums/Theme';
 import { ThemeManager } from '../modules/ThemeManager';
 import { SettingsManager } from '../modules/SettingsManager';
+import { themeClass } from '../utils/themeClass';
 
 declare const jsdom: { reconfigure(options: { url: string }): void };
 
-const nativeOverrideStyles = readFileSync(join(process.cwd(), 'src/styles/native-overrides.css'), 'utf8');
 const componentStyles = readFileSync(join(process.cwd(), 'src/styles/components.css'), 'utf8');
 
 function resetDom(): void {
@@ -24,7 +24,7 @@ describe('ThemeManager', () => {
     });
 
     it.each([Theme.DARK, Theme.HIGH_CONTRAST])(
-        'prime injects static native overrides for %s before init',
+        'prime only reconciles theme chrome for %s and keeps the critical prelude intact',
         (theme) => {
             resetDom();
             jsdom.reconfigure({ url: 'https://www.fanfiction.net/docs/docs.php' });
@@ -32,29 +32,23 @@ describe('ThemeManager', () => {
                 if (key === 'theme') return theme;
                 return undefined as never;
             });
+            const criticalStyle = document.createElement('style');
+            criticalStyle.id = 'ffne-theme-critical';
+            document.head.appendChild(criticalStyle);
 
             ThemeManager.prime();
 
-            const tokenStyle = document.getElementById('ffne-theme-tokens');
-            const nativeStyle = document.getElementById('ffne-theme-native-overrides');
-            expect(Array.from(document.querySelectorAll('style')).map(style => style.id)).toEqual([
-                'ffne-theme-tokens',
-                'ffne-theme-native-overrides',
-                'ffne-component-styles',
-            ]);
-            expect(tokenStyle?.textContent).toContain('--ffne-semantic-warning-text-dark');
-            expect(nativeOverrideStyles).toContain('#profile_top a[href*="/r/"]');
-            expect(nativeOverrideStyles).toContain('.panel_success');
-            expect(nativeOverrideStyles).toContain('--ffne-semantic-success-border');
-            expect(componentStyles).toContain('.ffne-dl-container');
-            expect(componentStyles).toContain('.ffne-dl-container > .btn');
-            expect(componentStyles).toContain('background-image: none !important');
-            expect(nativeStyle).not.toBeNull();
+            expect(document.documentElement.classList.contains(themeClass(theme))).toBe(true);
+            expect(document.documentElement.style.colorScheme).toBe('dark');
+            expect(document.getElementById('ffne-theme-critical')).toBe(criticalStyle);
+            expect(document.getElementById('ffne-theme-tokens')).toBeNull();
+            expect(document.getElementById('ffne-theme-native-overrides')).toBeNull();
             expect(document.getElementById('ffne-theme-scanned-ffn-overrides')).toBeNull();
+            expect(document.getElementById('ffne-component-styles')).toBeNull();
         },
     );
 
-    it('component styles cover late-inserted FFNE download UI without native overrides', () => {
+    it('init injects full theme styles and component styles for late FFNE download UI', () => {
         resetDom();
         jsdom.reconfigure({ url: 'https://www.fanfiction.net/s/1/1/Test' });
         vi.spyOn(SettingsManager, 'get').mockImplementation((key) => {
@@ -63,6 +57,7 @@ describe('ThemeManager', () => {
         });
 
         ThemeManager.prime();
+        ThemeManager.init();
 
         const container = document.createElement('div');
         container.setAttribute('data-ffne-ui', '');
@@ -73,13 +68,23 @@ describe('ThemeManager', () => {
         document.body.appendChild(container);
 
         expect(document.getElementById('ffne-component-styles')).not.toBeNull();
+        expect(document.getElementById('ffne-theme-tokens')).not.toBeNull();
+        expect(document.getElementById('ffne-theme-native-overrides')).not.toBeNull();
         expect(componentStyles).toContain('.ffne-dl-container');
-        expect(componentStyles).toContain('.ffne-dl-container > .btn');
+        expect(componentStyles).toContain('[data-ffne-ui].ffne-dl-container > .btn');
         expect(componentStyles).toContain('background-image: none !important');
         expect(document.querySelector('[data-ffne-ui].ffne-dl-container .btn')).toBe(button);
     });
 
-    it('does not inject FFN native overrides outside FFN hosts', () => {
+    it('ensureComponentStyles is idempotent', () => {
+        resetDom();
+        ThemeManager.ensureComponentStyles();
+        ThemeManager.ensureComponentStyles();
+
+        expect(document.querySelectorAll('#ffne-component-styles')).toHaveLength(1);
+    });
+
+    it('does not inject FFN native overrides outside FFN hosts during init', () => {
         resetDom();
         jsdom.reconfigure({ url: 'https://archiveofourown.org/works/1' });
         vi.spyOn(SettingsManager, 'get').mockImplementation((key) => {
@@ -88,12 +93,13 @@ describe('ThemeManager', () => {
         });
 
         ThemeManager.prime();
+        ThemeManager.init();
 
         expect(document.getElementById('ffne-theme-tokens')).not.toBeNull();
         expect(document.getElementById('ffne-component-styles')).not.toBeNull();
         expect(document.getElementById('ffne-theme-native-overrides')).toBeNull();
-        expect(document.documentElement.className).toBe('');
-        expect(document.documentElement.style.colorScheme).toBe('');
+        expect(document.documentElement.classList.contains('ffne-theme-dark')).toBe(true);
+        expect(document.documentElement.style.colorScheme).toBe('dark');
     });
 
     it('does not theme AO3 TinyMCE iframes or leave old iframe theme hooks behind', () => {

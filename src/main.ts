@@ -1,4 +1,3 @@
-import './earlyPaintGate';
 import { installBootstrap } from './bootstrap';
 import { Core } from './modules/Core';
 

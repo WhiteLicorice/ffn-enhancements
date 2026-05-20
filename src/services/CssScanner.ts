@@ -1,3 +1,5 @@
+import { ScopeCssOptions, scopeCssText as scopeCssTextValue, scopeSelector } from '../utils/scopeCssText';
+
 type ColorMap = Record<string, string>;
 
 const COLOR_VALUE_RE = /#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\b|rgba?\(\s*[^)]+\)|\b(?:black|white|gray|grey|red|green|blue|yellow|transparent)\b/gi;
@@ -26,10 +28,6 @@ interface DeclarationOverride {
     priority: string;
 }
 
-interface ScanOptions {
-    excludeSelector?: string;
-}
-
 export const CssScanner = {
     _cache: new Map<string, string>(),
 
@@ -37,7 +35,7 @@ export const CssScanner = {
         colorMap: ColorMap,
         themeClass: string = '',
         rootDocument: Document = document,
-        options: ScanOptions = {},
+        options: ScopeCssOptions = {},
     ): string {
         const normalizedMap = normalizeColorMap(colorMap);
         if (Object.keys(normalizedMap).length === 0) return '';
@@ -73,20 +71,11 @@ export const CssScanner = {
     scopeCssText(
         cssText: string,
         themeClass: string = '',
-        options: ScanOptions = {},
+        options: ScopeCssOptions = {},
     ): string {
         if (!cssText.trim()) return '';
 
-        const scratchDocument = document.implementation.createHTMLDocument('');
-        const style = scratchDocument.createElement('style');
-        style.textContent = cssText;
-        scratchDocument.head.appendChild(style);
-
-        const rules = style.sheet?.cssRules;
-        if (!rules) return scopeFlatCssText(cssText, themeClass, options);
-
-        const scopedCss = serializeRules(rules, themeClass, options).join('\n\n');
-        return scopedCss || scopeFlatCssText(cssText, themeClass, options);
+        return scopeCssTextValue(cssText, themeClass, options);
     },
 
     clearCache(): void {
@@ -98,7 +87,7 @@ function scanRules(
     rules: CSSRuleList,
     colorMap: ColorMap,
     themeClass: string,
-    options: ScanOptions,
+    options: ScopeCssOptions,
     wrappers: string[] = [],
 ): string[] {
     const output: string[] = [];
@@ -120,32 +109,6 @@ function scanRules(
         if (isGroupingRule(rule)) {
             const prelude = getGroupingPrelude(rule);
             output.push(...scanRules(rule.cssRules, colorMap, themeClass, options, [...wrappers, prelude]));
-        }
-    }
-
-    return output;
-}
-
-function serializeRules(
-    rules: CSSRuleList,
-    themeClass: string,
-    options: ScanOptions,
-    wrappers: string[] = [],
-): string[] {
-    const output: string[] = [];
-
-    for (const rule of Array.from(rules)) {
-        if (isStyleRule(rule)) {
-            const selector = scopeSelector(rule.selectorText, themeClass, options.excludeSelector);
-            const declarations = serializeStyleDeclarations(rule.style);
-            const cssRule = `${selector} {\n${declarations}\n}`;
-            output.push(wrapRule(cssRule, wrappers));
-            continue;
-        }
-
-        if (isGroupingRule(rule)) {
-            const prelude = getGroupingPrelude(rule);
-            output.push(...serializeRules(rule.cssRules, themeClass, options, [...wrappers, prelude]));
         }
     }
 
@@ -324,212 +287,6 @@ function getGroupingPrelude(rule: CSSRule): string {
         return `@supports ${rule.conditionText}`;
     }
     return rule.cssText.slice(0, rule.cssText.indexOf('{')).trim();
-}
-
-function scopeSelector(selectorText: string, themeClass: string, excludeSelector?: string): string {
-    const exclusionSuffix = buildExclusionSuffix(excludeSelector);
-
-    return selectorText
-        .split(',')
-        .map(selector => {
-            const trimmed = selector.trim();
-            const themed = applyThemeScope(trimmed, themeClass);
-            return exclusionSuffix ? appendSelectorSuffix(themed, exclusionSuffix) : themed;
-        })
-        .join(', ');
-}
-
-function applyThemeScope(selector: string, themeClass: string): string {
-    if (!themeClass) return selector;
-    if (selector === 'html') return `html.${themeClass}`;
-    if (selector.startsWith('html.')) return selector.replace(/^html/, `html.${themeClass}`);
-    if (selector.startsWith('html ')) return selector.replace(/^html/, `html.${themeClass}`);
-    return `html.${themeClass} ${selector}`;
-}
-
-function buildExclusionSuffix(excludeSelector?: string): string {
-    if (!excludeSelector) return '';
-    return excludeSelector
-        .split(',')
-        .map(selector => selector.trim())
-        .filter(Boolean)
-        .map(selector => `:not(${selector})`)
-        .join('');
-}
-
-function appendSelectorSuffix(selector: string, suffix: string): string {
-    const pseudoElementIndex = getPseudoElementIndex(selector);
-    if (pseudoElementIndex === -1) {
-        return `${selector}${suffix}`;
-    }
-
-    return `${selector.slice(0, pseudoElementIndex)}${suffix}${selector.slice(pseudoElementIndex)}`;
-}
-
-function getPseudoElementIndex(selector: string): number {
-    const modernIndex = selector.lastIndexOf('::');
-    if (modernIndex !== -1) return modernIndex;
-
-    const legacyMatch = /:(before|after|first-letter|first-line)(?=\s|$|:)/.exec(selector);
-    return legacyMatch?.index ?? -1;
-}
-
-function serializeStyleDeclarations(style: CSSStyleDeclaration): string {
-    const declarations: string[] = [];
-    for (let i = 0; i < style.length; i++) {
-        const property = style.item(i);
-        const value = style.getPropertyValue(property);
-        const priority = style.getPropertyPriority(property);
-        declarations.push(`    ${property}: ${value}${priority ? ` !${priority}` : ''};`);
-    }
-    return declarations.join('\n');
-}
-
-function scopeFlatCssText(cssText: string, themeClass: string, options: ScanOptions): string {
-    const output: string[] = [];
-    let cursor = 0;
-
-    while (cursor < cssText.length) {
-        const openIndex = findNextTopLevelBrace(cssText, cursor);
-        if (openIndex === -1) break;
-
-        const closeIndex = findMatchingBrace(cssText, openIndex);
-        if (closeIndex === -1) {
-            output.push(cssText.slice(cursor).trim());
-            break;
-        }
-
-        const prelude = cssText.slice(cursor, openIndex);
-        const body = cssText.slice(openIndex + 1, closeIndex);
-        const { leading, remainder } = splitLeadingComments(prelude);
-        const trimmedPrelude = remainder.trim();
-
-        if (trimmedPrelude) {
-            if (trimmedPrelude.startsWith('@media') || trimmedPrelude.startsWith('@supports')) {
-                const nested = scopeFlatCssText(body, themeClass, options);
-                output.push(`${leading}${trimmedPrelude} {\n${indent(nested)}\n}`);
-            } else if (trimmedPrelude.startsWith('@')) {
-                output.push(`${leading}${trimmedPrelude} {\n${indentBlockBody(body)}\n}`);
-            } else {
-                const selector = scopeSelector(trimmedPrelude, themeClass, options.excludeSelector);
-                output.push(`${leading}${selector} {\n${indentBlockBody(body)}\n}`);
-            }
-        }
-
-        cursor = closeIndex + 1;
-    }
-
-    return output.filter(Boolean).join('\n\n');
-}
-
-function indentBlockBody(body: string): string {
-    return body
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map(line => `    ${line}`)
-        .join('\n');
-}
-
-function splitLeadingComments(value: string): { leading: string; remainder: string } {
-    let index = 0;
-
-    while (index < value.length) {
-        const char = value[index];
-        if (/\s/.test(char)) {
-            index++;
-            continue;
-        }
-
-        if (value.startsWith('/*', index)) {
-            const end = value.indexOf('*/', index + 2);
-            if (end === -1) {
-                return { leading: value, remainder: '' };
-            }
-            index = end + 2;
-            continue;
-        }
-
-        break;
-    }
-
-    return {
-        leading: value.slice(0, index),
-        remainder: value.slice(index),
-    };
-}
-
-function findNextTopLevelBrace(value: string, startIndex: number): number {
-    let index = startIndex;
-    while (index < value.length) {
-        const skipped = skipCommentOrString(value, index);
-        if (skipped !== index) {
-            index = skipped;
-            continue;
-        }
-
-        if (value[index] === '{') {
-            return index;
-        }
-
-        index++;
-    }
-
-    return -1;
-}
-
-function findMatchingBrace(value: string, openIndex: number): number {
-    let depth = 0;
-    let index = openIndex;
-
-    while (index < value.length) {
-        const skipped = skipCommentOrString(value, index);
-        if (skipped !== index) {
-            index = skipped;
-            continue;
-        }
-
-        if (value[index] === '{') {
-            depth++;
-        } else if (value[index] === '}') {
-            depth--;
-            if (depth === 0) {
-                return index;
-            }
-        }
-
-        index++;
-    }
-
-    return -1;
-}
-
-function skipCommentOrString(value: string, index: number): number {
-    if (value.startsWith('/*', index)) {
-        const end = value.indexOf('*/', index + 2);
-        return end === -1 ? value.length : end + 2;
-    }
-
-    if (value[index] === '"' || value[index] === '\'') {
-        const quote = value[index];
-        let current = index + 1;
-        while (current < value.length) {
-            if (value[current] === '\\') {
-                current += 2;
-                continue;
-            }
-
-            if (value[current] === quote) {
-                return current + 1;
-            }
-
-            current++;
-        }
-
-        return value.length;
-    }
-
-    return index;
 }
 
 function wrapRule(cssRule: string, wrappers: string[]): string {

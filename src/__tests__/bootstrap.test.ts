@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bootstrap } from '../bootstrap';
 import { Core } from '../modules/Core';
 import { EarlyBoot } from '../modules/EarlyBoot';
-import { PaintGate } from '../modules/PaintGate';
 import { StoryDownloader } from '../modules/StoryDownloader';
 import { StoryReader } from '../modules/StoryReader';
+import { ThemeManager } from '../modules/ThemeManager';
 
 declare const jsdom: { reconfigure(options: { url: string }): void };
 
@@ -21,22 +21,22 @@ describe('bootstrap', () => {
         jsdom.reconfigure({ url: 'https://www.fanfiction.net/' });
     });
 
-    it('releases the paint gate after story route init inserts the downloader UI', () => {
+    it('runs story route init after EarlyBoot init has ensured component styles', () => {
         jsdom.reconfigure({ url: 'https://www.fanfiction.net/s/123/1/Test' });
         vi.spyOn(Core, 'startup').mockImplementation(() => {});
-        vi.spyOn(EarlyBoot, 'init').mockImplementation(() => {});
+        vi.spyOn(EarlyBoot, 'init').mockImplementation(() => {
+            ThemeManager.ensureComponentStyles();
+        });
         vi.spyOn(StoryReader, 'init').mockImplementation(() => {});
         vi.spyOn(StoryDownloader, 'init').mockImplementation(() => {
+            expect(document.getElementById('ffne-component-styles')).not.toBeNull();
             const container = document.createElement('div');
             container.className = 'ffne-dl-container';
             document.body.appendChild(container);
         });
-        const releaseSpy = vi.spyOn(PaintGate, 'releaseAfterPaint').mockImplementation(() => {
-            expect(document.querySelector('.ffne-dl-container')).not.toBeNull();
-        });
 
         bootstrap(window.location);
 
-        expect(releaseSpy).toHaveBeenCalledOnce();
+        expect(document.querySelector('.ffne-dl-container')).not.toBeNull();
     });
 });

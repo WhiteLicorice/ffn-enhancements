@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GM_getValue } from '$';
+import { GM_addValueChangeListener, GM_getValue, GM_setValue } from '$';
 import { _parseStoredValue, SettingsManager } from '../modules/SettingsManager';
 import type { FFNSettings } from '../modules/SettingsManager';
 import { Theme } from '../enums/Theme';
@@ -168,6 +168,10 @@ describe('_parseStoredValue — edge cases', () => {
 describe('SettingsManager prime', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
+        vi.mocked(GM_getValue).mockImplementation(() => undefined);
+        vi.mocked(GM_setValue).mockImplementation(() => {});
+        vi.mocked(GM_addValueChangeListener).mockImplementation(() => 1);
+        window.localStorage.clear();
     });
 
     it('resets the cache to defaults before each reload', () => {
@@ -182,5 +186,33 @@ describe('SettingsManager prime', () => {
         SettingsManager.prime();
 
         expect(SettingsManager.get('pasteForceIntercept')).toBe(false);
+    });
+
+    it('mirrors the validated theme into localStorage during prime and local set', () => {
+        vi.mocked(GM_getValue).mockImplementation((key: string) => (
+            key === 'ffne_theme' ? Theme.SEPIA : undefined
+        ));
+
+        SettingsManager.prime();
+        expect(window.localStorage.getItem('ffne_theme_cache')).toBe(Theme.SEPIA);
+
+        SettingsManager.set('theme', Theme.HIGH_CONTRAST);
+
+        expect(window.localStorage.getItem('ffne_theme_cache')).toBe(Theme.HIGH_CONTRAST);
+    });
+
+    it('mirrors remote theme changes into localStorage', () => {
+        let themeListener: ((name: string, oldValue: unknown, newValue: unknown, remote?: boolean) => void) | undefined;
+        vi.mocked(GM_addValueChangeListener).mockImplementation((name, listener) => {
+            if (name === 'ffne_theme') {
+                themeListener = listener;
+            }
+            return 1;
+        });
+
+        SettingsManager.prime();
+        themeListener?.('ffne_theme', Theme.SYSTEM, Theme.DARK, true);
+
+        expect(window.localStorage.getItem('ffne_theme_cache')).toBe(Theme.DARK);
     });
 });
