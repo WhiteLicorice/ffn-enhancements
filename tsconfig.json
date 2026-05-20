@@ -20,8 +20,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
 
-    /* Custom types from plugins */
-    "types": ["vite-plugin-monkey/client"]
+    /* Custom types from plugins + browser extension APIs */
+    "types": ["vite-plugin-monkey/client", "chrome"]
   },
   "include": ["src"]
 }
