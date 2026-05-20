@@ -16,7 +16,7 @@ function copyDirRecursive(src: string, dest: string): void {
     }
 }
 
-function patchManifest(manifestPath: string): void {
+export function patchManifest(manifestPath: string): void {
     const target = getBuildTarget();
     const requestedVersion = process.env.FFNE_VERSION;
 
@@ -33,16 +33,28 @@ function patchManifest(manifestPath: string): void {
     }
 
     if (target === 'firefox') {
-        // Firefox MV3 uses background.scripts (event pages), not service_worker.
-        // Include both keys for cross-browser compat: FF uses scripts, Chrome uses service_worker.
-        // GOTCHA: Do NOT set type: 'module' — the bundled script has no imports/exports,
-        // and module scripts are deferred, which breaks action.onClicked listener
-        // persistence in Firefox event page wake-up cycles.
+        // Firefox MV3 uses event pages (background.scripts), NOT service workers.
+        // CRITICAL: Emit ONLY `scripts`. Do NOT also include `service_worker`.
+        // Firefox 121+ has experimental SW support behind the
+        // `extensions.backgroundServiceWorker.enabled` pref. When BOTH keys are
+        // present, Firefox can prefer `service_worker`, attempt to load the
+        // bundle as a real ServiceWorker, fail silently (no `type: "module"`;
+        // uses chrome.action which isn't on the SW scope), and never fall back
+        // to the event-page `scripts` entry. Result: action.onClicked is never
+        // wired and clicking the toolbar icon does nothing. See CLAUDE.md
+        // Gotcha #15.
+        //
+        // We also do NOT set type:'module' — the bundled service-worker.js has
+        // no imports/exports, and module scripts defer execution past the event
+        // dispatch that wakes the event page.
         manifest.background = {
             scripts: ['background/service-worker.js'],
-            service_worker: 'background/service-worker.js',
         };
+        // Keep browser_specific_settings for AMO.
     } else {
+        // Chrome MV3 uses service workers. The source manifest already declares
+        // { service_worker, type: 'module' } — leave it intact and just strip
+        // the Firefox-only block.
         delete manifest.browser_specific_settings;
     }
 

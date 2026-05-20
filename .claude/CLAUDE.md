@@ -56,8 +56,8 @@ npm test        # vitest run -v
   `FFNE_TARGET` env var controls which target is built (`chrome` or `firefox`).
 - `patchManifest()` in `vite.config.ts` handles target-specific manifest tweaks:
   - **Chrome:** Removes `browser_specific_settings` (CWS rejects it).
-  - **Firefox:** Uses cross-browser background format — both `scripts` (event page) and
-    `service_worker` keys. Does NOT set `type: "module"` (see Gotcha #15).
+  - **Firefox:** Uses event-page `background.scripts` only — does NOT include
+    `service_worker` and does NOT set `type: "module"` (see Gotcha #15).
 
 ### 2.1 Extension Icon Click → Settings Modal Flow
 
@@ -732,18 +732,33 @@ tsconfig.json                    - Strict TypeScript config
     the parent document via `iframe.contentDocument`, so do not build features
     that depend on the userscript executing inside subframes.
 
-15. **GOTCHA: `type: "module"` on `background.scripts` breaks `action.onClicked` in
-    Firefox.** Firefox MV3 uses event pages (`background.scripts`), not service workers
-    (`background.service_worker`). Module scripts (`type: "module"`) execute deferred
-    (after page parse), but `action.onClicked` requires listeners registered synchronously
-    at the start of page execution. In event page wake-up cycles, deferred module execution
-    misses the event dispatch that triggered the wake-up — the icon click appears to do nothing.
-    Fix: use classic scripts (omit `type` or set `"classic"`) for background in Firefox.
-    The Vite-bundled `service-worker.js` has no imports/exports, so module type is unnecessary.
-    The `patchManifest` in `vite.config.ts` handles this per-target. Both `scripts` and
-    `service_worker` keys should be present in the Firefox manifest for cross-browser compat
-    (Firefox uses `scripts`, ignores `service_worker`; Chrome uses `service_worker`, ignores
-    `scripts` in MV3). See [MDN background manifest docs](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background).
+15. **GOTCHA: Do NOT include `service_worker` in the Firefox manifest.** Firefox
+    MV3 uses event pages (`background.scripts`). Firefox 121+ has experimental
+    `background.service_worker` support behind the
+    `extensions.backgroundServiceWorker.enabled` pref. When BOTH `scripts` and
+    `service_worker` keys are present, Firefox may prefer `service_worker`,
+    attempt to load the bundle as a real ServiceWorker, fail silently (no
+    `type: "module"`; uses `chrome.action.*` which is not on the SW scope on
+    Firefox), and never fall back to `scripts`. Result: `action.onClicked`
+    listener never registers and the toolbar icon click is a silent no-op.
+
+    The Firefox manifest must contain ONLY `background.scripts` — no
+    `service_worker`, no `type: "module"`. Module scripts execute deferred,
+    missing the wake-up event dispatch in event-page lifecycles. The bundled
+    `service-worker.js` has no imports/exports, so module mode is unnecessary.
+
+    Chrome's manifest retains `service_worker` + `type: "module"`. The
+    `patchManifest` helper in `vite.config.ts` handles the per-target split and
+    is exported for unit testing in `src/__tests__/viteConfig.test.ts`.
+
+    Two related defensive practices:
+    - Register listeners against `(globalThis.browser?.action ?? chrome.action).onClicked`
+      so the binding works regardless of which namespace Firefox decides to
+      expose first during event-page wake-up.
+    - Do NOT filter inbound `window.postMessage` events by `event.source` ===
+      `window` — Firefox `scripting.executeScript({ func })` can deliver messages
+      with a null source. Gate on `event.data.type` only (the type field is a
+      private contract).
 
 ---
 

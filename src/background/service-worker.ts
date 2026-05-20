@@ -11,7 +11,14 @@ const SUPPORTED_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net', 'archiv
 console.log('FFN Enhancements service worker loaded.');
 
 // Clicking the extension icon opens the Settings modal on the active tab.
-chrome.action.onClicked.addListener(async (tab) => {
+// Resolve the action API once. Firefox prefers `browser.action`; both Chrome
+// and Firefox also expose `chrome.action` as a compat alias. Registering once
+// against whichever is present avoids edge cases where one binding is stale
+// during event-page wake-up.
+const actionApi: typeof chrome.action =
+    (globalThis as { browser?: { action?: typeof chrome.action } }).browser?.action
+    ?? chrome.action;
+actionApi.onClicked.addListener(async (tab) => {
     await openSettingsForTab(tab);
 });
 
@@ -137,7 +144,7 @@ async function dispatchOpenSettingsViaPostMessage(tabId: number): Promise<boolea
         await scriptingExecuteScriptFunc(tabId, triggerSettingsModalViaPostMessage);
         return true;
     } catch (err) {
-        console.warn('FFN Enhancements could not dispatch open-settings via postMessage.', err);
+        console.error('FFN-Enhancements: open-settings dispatch via postMessage failed.', err);
         return false;
     }
 }
@@ -159,7 +166,7 @@ async function injectContentScript(tabId: number): Promise<boolean> {
         });
         return true;
     } catch (err) {
-        console.warn('FFN Enhancements could not inject content script for Settings.', err);
+        console.error('FFN-Enhancements: content script injection for Settings failed.', err);
         return false;
     }
 }
