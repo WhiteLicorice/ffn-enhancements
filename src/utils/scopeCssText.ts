@@ -2,6 +2,13 @@ export interface ScopeCssOptions {
     excludeSelector?: string;
 }
 
+/**
+ * Scopes raw CSS text to a theme class and optional exclusion selector.
+ * @param cssText The CSS text to scope.
+ * @param themeClass The root theme class to prepend to selectors.
+ * @param options Optional selector exclusions to append as :not(...) guards.
+ * @returns The scoped CSS text.
+ */
 export function scopeCssText(
     cssText: string,
     themeClass: string = '',
@@ -43,6 +50,13 @@ export function scopeCssText(
     return output.filter(Boolean).join('\n\n');
 }
 
+/**
+ * Scopes a selector list to a theme class and optional exclusion selector.
+ * @param selectorText The selector list to scope.
+ * @param themeClass The root theme class to prepend to selectors.
+ * @param excludeSelector Optional selector exclusions to append as :not(...) guards.
+ * @returns The scoped selector list.
+ */
 export function scopeSelector(selectorText: string, themeClass: string, excludeSelector?: string): string {
     const exclusionSuffix = buildExclusionSuffix(excludeSelector);
 

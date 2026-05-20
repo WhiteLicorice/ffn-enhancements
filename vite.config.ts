@@ -3,12 +3,23 @@ import { join } from 'node:path';
 import { defineConfig } from 'vite';
 import monkey, { util } from 'vite-plugin-monkey';
 import { buildCriticalThemeCss } from './src/build/criticalThemeCss';
-import { installCriticalThemePrelude } from './src/prelude/themePrelude';
+import {
+  CRITICAL_THEME_STYLE_ID,
+  installCriticalThemePrelude,
+  PRELUDE_ATTRIBUTE,
+  THEME_CACHE_KEY,
+  THEME_STORAGE_KEY,
+} from './src/prelude/themePrelude';
 
 export default defineConfig(async () => {
   const nativeOverrideStyles = readFileSync(join(process.cwd(), 'src/styles/native-overrides.css'), 'utf8');
   const criticalThemeCss = buildCriticalThemeCss(nativeOverrideStyles);
-  const criticalThemePrelude = await util.fn2dataUrl(installCriticalThemePrelude, criticalThemeCss);
+  const criticalThemePrelude = await util.fn2dataUrl(installCriticalThemePrelude, criticalThemeCss, {
+    styleId: CRITICAL_THEME_STYLE_ID,
+    storageKey: THEME_STORAGE_KEY,
+    cacheKey: THEME_CACHE_KEY,
+    preludeAttribute: PRELUDE_ATTRIBUTE,
+  });
 
   return {
     plugins: [

@@ -67,6 +67,10 @@ export const ThemeManager: ISitewideModule & {
         return _prefersDark() ? Theme.DARK : Theme.LIGHT;
     },
 
+    /**
+     * Ensures FFNE component styles are present before custom UI is inserted.
+     * Safe to call repeatedly; injection is idempotent.
+     */
     ensureComponentStyles(): void {
         _injectComponentStyles();
     },

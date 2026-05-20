@@ -465,6 +465,11 @@ export function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unkn
     return undefined;
 }
 
+/**
+ * Mirrors the validated theme into localStorage so the earliest prelude can read it.
+ * @param theme The validated theme value to cache for fallback reads.
+ * @returns Nothing; localStorage failures are swallowed to avoid breaking startup.
+ */
 function _mirrorThemeCache(theme: Theme | undefined): void {
     if (theme === undefined) return;
 
