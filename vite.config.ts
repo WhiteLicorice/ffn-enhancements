@@ -13,6 +13,7 @@ export default defineConfig({
         connect: ['fichub.net', 'archiveofourown.org', 'www.fanfiction.net', 'fanfiction.net'],
         match: ['https://www.fanfiction.net/*', 'https://archiveofourown.org/*'],
         'run-at': 'document-start',
+        noframes: true,
         grant: [
           'GM_xmlhttpRequest',
           'GM_getValue',
@@ -33,4 +34,9 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    minify: 'esbuild',
+    cssMinify: true,
+    target: 'es2020',
+  },
 });
