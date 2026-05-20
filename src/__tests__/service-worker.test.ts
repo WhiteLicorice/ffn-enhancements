@@ -181,14 +181,17 @@ describe('service worker action click', () => {
         expect(mockChromeTabs.state.queryCalls).toContainEqual({ url: [...CONTENT_SCRIPT_TAB_PATTERNS] });
         expect(mockChromeScripting.insertCSSCalls).toHaveLength(3);
         expect(mockChromeTabs.state.executeScriptCalls).toHaveLength(6);
-        expect(mockChromeTabs.state.executeScriptCalls).toEqual([
-            expectFilesCall(11, CONTENT_SCRIPT_JS_FILES[0]),
-            expectFilesCall(12, CONTENT_SCRIPT_JS_FILES[0]),
-            expectFilesCall(13, CONTENT_SCRIPT_JS_FILES[0]),
-            expectFilesCall(11, CONTENT_SCRIPT_JS_FILES[1]),
-            expectFilesCall(12, CONTENT_SCRIPT_JS_FILES[1]),
-            expectFilesCall(13, CONTENT_SCRIPT_JS_FILES[1]),
-        ]);
+        const executeScriptCallsByTab = new Map(
+            mockChromeTabs.state.executeScriptCalls.map((call) => [call.target.tabId, [] as string[]]),
+        );
+        for (const call of mockChromeTabs.state.executeScriptCalls) {
+            executeScriptCallsByTab.get(call.target.tabId)?.push(...(call.files ?? []));
+        }
+        expect(executeScriptCallsByTab).toEqual(new Map([
+            [11, [...CONTENT_SCRIPT_JS_FILES]],
+            [12, [...CONTENT_SCRIPT_JS_FILES]],
+            [13, [...CONTENT_SCRIPT_JS_FILES]],
+        ]));
     });
 
     it('runtime.onInstalled triggers probe without throwing', async () => {

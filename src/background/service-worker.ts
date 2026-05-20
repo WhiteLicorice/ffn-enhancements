@@ -182,7 +182,7 @@ async function openSettingsInTab(tabId: number): Promise<boolean> {
         return true;
     }
 
-    console.error('FFN-Enhancements: sendMessage failed after injection — listener missing.');
+    console.error('FFN-Enhancements: sendMessage failed after injection — listener missing or dispatch race.');
     return false;
 }
 
