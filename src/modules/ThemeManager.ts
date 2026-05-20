@@ -8,6 +8,8 @@ import { buildTokenCss } from '../styles/ThemeTokens';
 import { getThemeDefinition } from '../themes';
 import { FFNE_UI_EXCLUDE_SELECTOR } from '../utils/ffneUi';
 import { injectStyleOnce } from '../utils/injectStyleOnce';
+import { scopeCssText } from '../utils/scopeCssText';
+import { themeClass } from '../utils/themeClass';
 import { FFNLogger } from './FFNLogger';
 import { SettingsManager } from './SettingsManager';
 
@@ -18,7 +20,6 @@ const COMPONENT_STYLE_ID = 'ffne-component-styles';
 const SCANNED_FFN_OVERRIDES_STYLE_ID = 'ffne-theme-scanned-ffn-overrides';
 const IFRAME_OVERRIDE_STYLE_ID = 'ffne-theme-iframe-overrides';
 const IFRAME_STATIC_OVERRIDE_STYLE_ID = 'ffne-theme-iframe-native-overrides';
-const THEME_CLASS_PREFIX = 'ffne-theme-';
 const SYSTEM_QUERY = '(prefers-color-scheme: dark)';
 const FFN_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
 
@@ -29,10 +30,11 @@ let _iframeObserver: MutationObserver | null = null;
 export const ThemeManager: ISitewideModule & {
     setTheme(theme: Theme): void;
     getResolvedTheme(): Theme;
+    ensureComponentStyles(): void;
 } = {
     prime(): void {
         const definition = getThemeDefinition(this.getResolvedTheme());
-        _applyTheme(definition, false);
+        _reconcileThemeChrome(definition);
         FFNLogger.log(MODULE_NAME, 'prime', `Theme primed: ${SettingsManager.get('theme')} -> ${this.getResolvedTheme()}`);
     },
 
@@ -64,22 +66,25 @@ export const ThemeManager: ISitewideModule & {
         if (selected !== Theme.SYSTEM) return selected;
         return _prefersDark() ? Theme.DARK : Theme.LIGHT;
     },
+
+    ensureComponentStyles(): void {
+        _injectComponentStyles();
+    },
 };
 
 function _applyTheme(definition: IThemeDefinition, scanNativeCss: boolean): void {
+    _reconcileThemeChrome(definition);
     _injectTokenStyles(definition);
-    _injectStaticNativeOverrides(definition);
-    _injectComponentStyles();
+    ThemeManager.ensureComponentStyles();
 
     if (!_isFfnHost()) {
-        _clearPageThemeChrome(document);
+        document.getElementById(STATIC_NATIVE_STYLE_ID)?.remove();
         document.getElementById(SCANNED_FFN_OVERRIDES_STYLE_ID)?.remove();
         _clearTinyMceIframes();
         return;
     }
 
-    _applyThemeClass(definition.name);
-    _applyColorScheme(definition);
+    _injectStaticNativeOverrides(definition);
 
     if (scanNativeCss) {
         _injectScannedFfnOverrides(definition, document, SCANNED_FFN_OVERRIDES_STYLE_ID);
@@ -88,6 +93,11 @@ function _applyTheme(definition: IThemeDefinition, scanNativeCss: boolean): void
     }
 
     _themeTinyMceIframes(definition);
+}
+
+function _reconcileThemeChrome(definition: IThemeDefinition): void {
+    _applyThemeClass(definition.name);
+    _applyColorScheme(definition);
 }
 
 function _injectTokenStyles(definition: IThemeDefinition, rootDocument: Document = document, styleId: string = TOKEN_STYLE_ID): void {
@@ -161,7 +171,7 @@ ${s} #content_wrapper_inner {
 }
 
 function _buildScopedNativeOverrides(definition: IThemeDefinition): string {
-    return CssScanner.scopeCssText(
+    return scopeCssText(
         nativeOverrideStyles.replace(/__THEME_CLASS__/g, _themeClass(definition.name)),
         '',
         { excludeSelector: FFNE_UI_EXCLUDE_SELECTOR },
@@ -179,7 +189,7 @@ function _applyColorScheme(definition: IThemeDefinition): void {
 }
 
 function _themeClass(theme: Theme): string {
-    return `${THEME_CLASS_PREFIX}${theme}`;
+    return themeClass(theme);
 }
 
 function _subscribeToSettingChanges(): void {

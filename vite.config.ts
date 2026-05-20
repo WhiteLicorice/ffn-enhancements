@@ -1,32 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { defineConfig } from 'vite';
 import monkey, { util } from 'vite-plugin-monkey';
+import { buildCriticalThemeCss } from './src/build/criticalThemeCss';
+import { installCriticalThemePrelude } from './src/prelude/themePrelude';
 
 export default defineConfig(async () => {
-  const paintGatePrelude = await util.fn2dataUrl(() => {
-    try {
-      if (location.hostname !== 'www.fanfiction.net' && location.hostname !== 'fanfiction.net') return;
-      var root = document.documentElement;
-      if (!root) return;
-      root.classList.add('ffne-paint-gated');
-      root.style.backgroundColor = '#000';
-      var style = document.getElementById('ffne-paint-gate-style');
-      if (!style) {
-        style = document.createElement('style');
-        style.id = 'ffne-paint-gate-style';
-        root.appendChild(style);
-      }
-      style.textContent = 'html.ffne-paint-gated,html.ffne-paint-gated body{background:#000 !important;color-scheme:dark !important}html.ffne-paint-gated body{opacity:0 !important;pointer-events:none !important;transition:none !important}html.ffne-paint-gated::before{content:"";position:fixed;inset:0;z-index:2147483647;background:#000;pointer-events:none}';
-      var overlay = document.getElementById('ffne-paint-gate-overlay');
-      if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'ffne-paint-gate-overlay';
-        overlay.setAttribute('aria-hidden', 'true');
-        root.appendChild(overlay);
-      }
-      overlay.setAttribute('style', 'position:fixed !important;inset:0 !important;width:100vw !important;height:100vh !important;z-index:2147483647 !important;background:#000 !important;display:block !important;visibility:visible !important;opacity:1 !important;pointer-events:none !important;margin:0 !important;padding:0 !important;border:0 !important;box-shadow:none !important;contain:strict !important');
-    } catch (e) {
-    }
-  });
+  const nativeOverrideStyles = readFileSync(join(process.cwd(), 'src/styles/native-overrides.css'), 'utf8');
+  const criticalThemeCss = buildCriticalThemeCss(nativeOverrideStyles);
+  const criticalThemePrelude = await util.fn2dataUrl(installCriticalThemePrelude, criticalThemeCss);
 
   return {
     plugins: [
@@ -42,7 +24,7 @@ export default defineConfig(async () => {
           'run-at': 'document-start',
           noframes: true,
           require: [
-            paintGatePrelude,
+            criticalThemePrelude,
           ],
           grant: [
             'GM_xmlhttpRequest',

@@ -53,7 +53,8 @@
     float: right;
 }
 
-.ffne-dl-container > .btn {
+.ffne-dl-container > .btn,
+[data-ffne-ui].ffne-dl-container > .btn {
     background-color: var(--ffne-ui-card-bg) !important;
     background-image: none !important;
     border-color: var(--ffne-ui-border) !important;
@@ -63,14 +64,18 @@
 }
 
 .ffne-dl-container > .btn:hover,
-.ffne-dl-container > .btn:focus {
+.ffne-dl-container > .btn:focus,
+[data-ffne-ui].ffne-dl-container > .btn:hover,
+[data-ffne-ui].ffne-dl-container > .btn:focus {
     background-color: var(--ffne-brand-hover-bg) !important;
     border-color: var(--ffne-ui-border-chrome) !important;
     color: var(--ffne-brand-hover-text) !important;
 }
 
 .ffne-dl-container > .btn:active,
-.ffne-dl-container > .btn[aria-expanded="true"] {
+.ffne-dl-container > .btn[aria-expanded="true"],
+[data-ffne-ui].ffne-dl-container > .btn:active,
+[data-ffne-ui].ffne-dl-container > .btn[aria-expanded="true"] {
     background-color: var(--ffne-brand-bg) !important;
     border-color: var(--ffne-ui-border-chrome) !important;
     color: var(--ffne-brand-text) !important;
@@ -93,7 +98,8 @@
     text-align: left;
 }
 
-.ffne-dl-menu a {
+.ffne-dl-menu a,
+[data-ffne-ui].ffne-dl-container .ffne-dl-menu a {
     display: block;
     padding: 3px 20px;
     color: var(--ffne-ui-text-body) !important;
@@ -101,7 +107,9 @@
 }
 
 .ffne-dl-menu a:hover,
-.ffne-dl-menu a:focus {
+.ffne-dl-menu a:focus,
+[data-ffne-ui].ffne-dl-container .ffne-dl-menu a:hover,
+[data-ffne-ui].ffne-dl-container .ffne-dl-menu a:focus {
     background: var(--ffne-brand-hover-bg) !important;
     color: var(--ffne-brand-hover-text) !important;
 }
