@@ -41,7 +41,6 @@ export default defineConfig({
                 'content/main': resolve(__dirname, 'src/main.ts'),
                 'content/prelude': resolve(__dirname, 'src/prelude/themePrelude.ts'),
                 'background/service-worker': resolve(__dirname, 'src/background/service-worker.ts'),
-                'popup/popup': resolve(__dirname, 'src/popup/popup.ts'),
             },
             output: {
                 entryFileNames: '[name].js',

@@ -6,6 +6,17 @@ import type { BackgroundMessage, CrossOriginFetchMessage, CrossOriginFetchRespon
 
 console.log('FFN Enhancements service worker loaded.');
 
+// Clicking the extension icon opens the Settings modal on the active tab.
+chrome.action.onClicked.addListener(async (tab) => {
+    try {
+        await chrome.tabs.sendMessage(tab.id!, { type: MessageType.OPEN_SETTINGS });
+    } catch {
+        // Tab does not have the content script injected (not an FFN/AO3 page).
+        // Open FFN in a new tab instead.
+        chrome.tabs.create({ url: 'https://www.fanfiction.net/' });
+    }
+});
+
 chrome.runtime.onMessage.addListener(
     (message: BackgroundMessage, sender, sendResponse: (response: unknown) => void) => {
         switch (message.type) {
