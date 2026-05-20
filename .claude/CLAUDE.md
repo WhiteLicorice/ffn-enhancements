@@ -61,6 +61,17 @@ npm test        # vitest run -v
 
 ### 2.1 Extension Icon Click → Settings Modal Flow
 
+**Prerequisite: host permissions.** On Firefox MV3, `host_permissions` are
+user-opt-in — manifest `content_scripts` do NOT auto-execute until granted via
+about:addons OR via `chrome.permissions.request` from a user gesture. The
+service worker's `action.onClicked` handler calls `ensureHostPermissions()`
+before dispatching `OPEN_SETTINGS`. On grant, the service worker
+programmatically injects the full content-script bundle
+(`CONTENT_SCRIPT_CSS_FILES` + `CONTENT_SCRIPT_JS_FILES`) into all currently
+open FFN/AO3 tabs via `injectIntoMatchingTabs()` (also fired from
+`chrome.permissions.onAdded`). Chrome auto-grants at install so this is a
+no-op fast path.
+
 The extension icon click (`action.onClicked`) opens the settings modal on the
 active FFN/AO3 tab. The dispatch chain in
 `src/background/service-worker.ts` → `openSettingsInTab(tabId)` is:
@@ -71,12 +82,16 @@ active FFN/AO3 tab. The dispatch chain in
    acknowledges with `{ ok: true }`. This gives clean failure semantics: missing
    listener rejects with "Receiving end does not exist", so we can detect it.
 
-2. **Step 2 (inject):** If step 1 fails, inject `content/main.js` via
-   `chrome.scripting.executeScript({ files })`. This is required on Firefox MV3
-   where host_permissions are user-opt-in — manifest `content_scripts` do NOT
-   auto-execute until the user grants host access via about:addons. The
-   `activeTab` permission (granted by the toolbar click) lets the service
-   worker inject the bundle regardless of host-permission state. `main.ts` is
+2. **Step 2 (inject):** If step 1 fails, inject the full content-script bundle
+   via `injectFullContentScripts(tabId)`: first
+   `chrome.scripting.insertCSS({ files: CONTENT_SCRIPT_CSS_FILES })`, then
+   `chrome.scripting.executeScript({ files: ['content/prelude.js'] })`, then
+   `chrome.scripting.executeScript({ files: ['content/main.js'] })`. This is
+   required on Firefox MV3 where host_permissions are user-opt-in — manifest
+   `content_scripts` do NOT auto-execute until the user grants host access via
+   about:addons. The `activeTab` permission (granted by the toolbar click) lets
+   the service worker inject the bundle regardless of host-permission state.
+   `prelude.js` is guarded by `__ffnePreludeBootstrapped` and `main.ts` is
    guarded by `__ffneContentBootstrapped`, so re-injection on an already-loaded
    tab is a no-op.
 
@@ -228,6 +243,11 @@ call synchronous GM functions.
 
 **Phase 2 rules:** `init()` runs at `DOMContentLoaded`. All DOM operations are
 safe here.
+
+Programmatic reinjection re-runs `prelude.js` and `main.js`. Keep both guarded
+by bootstrap flags (`__ffnePreludeBootstrapped`,
+`__ffneContentBootstrapped`) so already-primed tabs do not accumulate duplicate
+style tags or listeners.
 
 ### 4.3 Delegate / Strategy Pattern (Page Objects)
 
@@ -790,14 +810,25 @@ tsconfig.json                    - Strict TypeScript config
     Section 2.1 for the full chain.
 
 17. **GOTCHA: Firefox MV3 host_permissions are user-opt-in.** Manifest
-    `host_permissions` are NOT auto-granted on install — the user must grant
-    them via about:addons (Manage > Permissions). Without grant, declared
-    `content_scripts` do not auto-execute on those origins. The toolbar icon
-    click still grants `activeTab` (temporary access for the current click), so
-    the service worker can fall back to `chrome.scripting.executeScript` with
-    `files: ['content/main.js']` to load the content script on demand. Any
-    interaction that depends on content scripts being pre-loaded must tolerate
-    them being absent on Firefox until the user grants host access.
+    declarations are NOT auto-granted on Firefox at install. Declared
+    `content_scripts` stay inert until the user grants host access via
+    `about:addons -> <ext> -> Permissions and data`, OR until the extension
+    calls `chrome.permissions.request({ origins: [...] })` from a user gesture
+    (for example `action.onClicked`).
+
+    The service worker uses `ensureHostPermissions()` before dispatching
+    `OPEN_SETTINGS`, so the first toolbar click both grants permission and
+    activates the extension. On grant, `chrome.permissions.onAdded` fires and
+    `injectIntoMatchingTabs()` injects the full bundle (CSS + prelude + main,
+    in order) into all open FFN/AO3 tabs. Future navigations auto-execute
+    manifest `content_scripts` as normal. Chrome auto-grants — no-op there.
+
+    Do NOT swap `host_permissions` for `optional_host_permissions` — Chrome
+    would then also prompt. Keep `host_permissions`.
+
+    Asset list lives in `src/background/contentScriptManifest.ts`. Keep it in
+    sync with `extension/manifest.json`
+    (`src/__tests__/contentScriptManifest.test.ts` enforces this).
 
 ---
 

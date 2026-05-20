@@ -12,10 +12,15 @@ type RuntimeMessageCallback = (
     sender: chrome.runtime.MessageSender,
     sendResponse: (response?: unknown) => void,
 ) => boolean | void;
+type RuntimeInstalledCallback = (details: chrome.runtime.InstalledDetails) => void;
 type ScriptInjectionDetails = {
     target: { tabId: number };
     files?: string[];
     func?: () => void;
+};
+type CssInjectionDetails = {
+    target: { tabId: number };
+    files?: string[];
 };
 
 class MockStorageArea {
@@ -89,10 +94,15 @@ const storageInstance = new MockStorageArea();
 const actionClickListeners: ActionClickCallback[] = [];
 const tabUpdatedListeners: TabUpdatedCallback[] = [];
 const runtimeMessageListeners: RuntimeMessageCallback[] = [];
+const runtimeInstalledListeners: RuntimeInstalledCallback[] = [];
+const permissionAddedListeners: Array<(permissions: chrome.permissions.Permissions) => void> = [];
+const permissionRemovedListeners: Array<(permissions: chrome.permissions.Permissions) => void> = [];
 
 const tabsState = {
     nextTabId: 100,
     activeTab: { id: 1, url: 'https://www.fanfiction.net/' } as chrome.tabs.Tab,
+    queryResponseTabs: null as chrome.tabs.Tab[] | null,
+    queryCalls: [] as chrome.tabs.QueryInfo[],
     sendMessageRejectTabIds: new Set<number>(),
     sendMessageCalls: [] as Array<{ tabId: number; message: unknown }>,
     createCalls: [] as chrome.tabs.CreateProperties[],
@@ -101,6 +111,16 @@ const tabsState = {
     executeScriptRejectTabIds: new Set<number>(),
     /** Reject the first N executeScript calls for a tab (per-call counter). */
     executeScriptRejectCount: new Map<number, number>(),
+};
+
+const permissionsState = {
+    grantedOrigins: new Set<string>(),
+    requestResult: true,
+    requestCalls: [] as chrome.permissions.Permissions[],
+};
+
+const scriptingState = {
+    insertCSSCalls: [] as CssInjectionDetails[],
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,6 +142,15 @@ const tabsState = {
     },
     runtime: {
         sendMessage: async (message: unknown) => ({ ok: true, message }),
+        onInstalled: {
+            addListener: (cb: RuntimeInstalledCallback) => {
+                runtimeInstalledListeners.push(cb);
+            },
+            removeListener: (cb: RuntimeInstalledCallback) => {
+                const idx = runtimeInstalledListeners.indexOf(cb);
+                if (idx !== -1) runtimeInstalledListeners.splice(idx, 1);
+            },
+        },
         onMessage: {
             addListener: (cb: RuntimeMessageCallback) => {
                 runtimeMessageListeners.push(cb);
@@ -132,8 +161,49 @@ const tabsState = {
             },
         },
     },
+    permissions: {
+        contains: async (permissions: chrome.permissions.Permissions) => {
+            const origins = permissions.origins ?? [];
+            return origins.every((origin) => permissionsState.grantedOrigins.has(origin));
+        },
+        request: async (permissions: chrome.permissions.Permissions) => {
+            permissionsState.requestCalls.push(permissions);
+            if (!permissionsState.requestResult) {
+                return false;
+            }
+
+            for (const origin of permissions.origins ?? []) {
+                permissionsState.grantedOrigins.add(origin);
+            }
+            return true;
+        },
+        onAdded: {
+            addListener: (cb: (permissions: chrome.permissions.Permissions) => void) => {
+                permissionAddedListeners.push(cb);
+            },
+            removeListener: (cb: (permissions: chrome.permissions.Permissions) => void) => {
+                const idx = permissionAddedListeners.indexOf(cb);
+                if (idx !== -1) permissionAddedListeners.splice(idx, 1);
+            },
+        },
+        onRemoved: {
+            addListener: (cb: (permissions: chrome.permissions.Permissions) => void) => {
+                permissionRemovedListeners.push(cb);
+            },
+            removeListener: (cb: (permissions: chrome.permissions.Permissions) => void) => {
+                const idx = permissionRemovedListeners.indexOf(cb);
+                if (idx !== -1) permissionRemovedListeners.splice(idx, 1);
+            },
+        },
+    },
     tabs: {
-        query: async () => [tabsState.activeTab],
+        query: async (queryInfo: chrome.tabs.QueryInfo) => {
+            tabsState.queryCalls.push(queryInfo);
+            if (queryInfo.active && queryInfo.currentWindow) {
+                return [tabsState.activeTab];
+            }
+            return tabsState.queryResponseTabs ?? [tabsState.activeTab];
+        },
         sendMessage: async (tabId: number, message: unknown) => {
             tabsState.sendMessageCalls.push({ tabId, message });
             if (tabsState.sendMessageRejectTabIds.has(tabId)) {
@@ -160,6 +230,9 @@ const tabsState = {
         },
     },
     scripting: {
+        insertCSS: async (details: CssInjectionDetails) => {
+            scriptingState.insertCSSCalls.push(details);
+        },
         executeScript: async (details: ScriptInjectionDetails) => {
             tabsState.executeScriptCalls.push(details);
             const tabId = details.target.tabId;
@@ -198,6 +271,53 @@ export const mockChromeAction = {
     },
 };
 
+export const mockChromePermissions = {
+    state: permissionsState,
+    grant(origins: string[]): void {
+        for (const origin of origins) {
+            permissionsState.grantedOrigins.add(origin);
+        }
+        for (const listener of [...permissionAddedListeners]) {
+            listener({ origins });
+        }
+    },
+    revoke(origins: string[]): void {
+        for (const origin of origins) {
+            permissionsState.grantedOrigins.delete(origin);
+        }
+        for (const listener of [...permissionRemovedListeners]) {
+            listener({ origins });
+        }
+    },
+    _reset(): void {
+        permissionsState.grantedOrigins.clear();
+        permissionsState.requestResult = true;
+        permissionsState.requestCalls.length = 0;
+        permissionAddedListeners.length = 0;
+        permissionRemovedListeners.length = 0;
+    },
+};
+
+export const mockChromeRuntimeOnInstalled = {
+    fire(details: chrome.runtime.InstalledDetails): void {
+        for (const listener of [...runtimeInstalledListeners]) {
+            listener(details);
+        }
+    },
+    _reset(): void {
+        runtimeInstalledListeners.length = 0;
+    },
+};
+
+export const mockChromeScripting = {
+    get insertCSSCalls(): CssInjectionDetails[] {
+        return scriptingState.insertCSSCalls;
+    },
+    _reset(): void {
+        scriptingState.insertCSSCalls.length = 0;
+    },
+};
+
 export const mockChromeTabs = {
     state: tabsState,
     triggerUpdated(tabId: number, changeInfo: { status?: string }): void {
@@ -210,12 +330,15 @@ export const mockChromeTabs = {
     _reset(): void {
         tabsState.nextTabId = 100;
         tabsState.activeTab = { id: 1, url: 'https://www.fanfiction.net/' } as chrome.tabs.Tab;
+        tabsState.queryResponseTabs = null;
+        tabsState.queryCalls.length = 0;
         tabsState.sendMessageRejectTabIds.clear();
         tabsState.sendMessageCalls.length = 0;
         tabsState.createCalls.length = 0;
         tabsState.executeScriptCalls.length = 0;
         tabsState.executeScriptRejectTabIds.clear();
         tabsState.executeScriptRejectCount.clear();
+        scriptingState.insertCSSCalls.length = 0;
         tabUpdatedListeners.length = 0;
         runtimeMessageListeners.length = 0;
     },

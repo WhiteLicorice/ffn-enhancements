@@ -3,6 +3,12 @@
 
 import { MessageType } from './message-types';
 import type { BackgroundMessage, CrossOriginFetchMessage, CrossOriginFetchResponse } from './message-types';
+import {
+    CONTENT_SCRIPT_CSS_FILES,
+    CONTENT_SCRIPT_JS_FILES,
+    CONTENT_SCRIPT_TAB_PATTERNS,
+    REQUESTED_HOST_PATTERNS,
+} from './contentScriptManifest';
 
 const FFN_HOME_URL = 'https://www.fanfiction.net/';
 const OPEN_SETTINGS_TIMEOUT_MS = 30_000;
@@ -18,7 +24,37 @@ console.log('FFN Enhancements service worker loaded.');
 const actionApi: typeof chrome.action =
     (globalThis as { browser?: { action?: typeof chrome.action } }).browser?.action
     ?? chrome.action;
+
+chrome.runtime.onInstalled.addListener((details) => {
+    if (details.reason !== 'install') return;
+    void ensureHostPermissionsThenInject().catch((err) => {
+        console.warn(
+            'FFN-Enhancements: onInstalled host-permission probe failed (expected on Firefox).',
+            err,
+        );
+    });
+});
+
+chrome.permissions.onAdded.addListener((permissions) => {
+    if (!permissions.origins?.length) return;
+    void injectIntoMatchingTabs().catch((err) => {
+        console.error('FFN-Enhancements: post-permission inject failed.', err);
+    });
+});
+
+chrome.permissions.onRemoved.addListener((permissions) => {
+    if (!permissions.origins?.length) return;
+    console.warn(
+        'FFN-Enhancements: host permissions revoked. Features unavailable on new tab loads until re-granted.',
+        permissions.origins,
+    );
+});
+
 actionApi.onClicked.addListener(async (tab) => {
+    const granted = await ensureHostPermissions();
+    if (!granted) {
+        console.warn('FFN-Enhancements: user declined host permissions; only the current click can inject (activeTab).');
+    }
     await openSettingsForTab(tab);
 });
 
@@ -132,11 +168,11 @@ async function openSettingsInTab(tabId: number): Promise<boolean> {
     //         manifest content_scripts do NOT auto-execute, so SettingsMenu's
     //         runtime listener was never registered. activeTab (granted by
     //         the click) lets us inject the content script ourselves.
-    if (!(await injectContentScript(tabId))) {
+    if (!(await injectFullContentScripts(tabId))) {
         console.error('FFN-Enhancements: cannot dispatch settings — injection failed (step 2).');
         return false;
     }
-    console.log('FFN-Enhancements: content script injected via activeTab (step 2).');
+    console.log('FFN-Enhancements: full content scripts injected via activeTab (step 2).');
 
     // Step 3: Retry sendMessage. main.js bootstrap is synchronous, so by the
     //         time scripting.executeScript({files}) resolves, the OPEN_SETTINGS
@@ -160,15 +196,44 @@ async function sendOpenSettings(tabId: number): Promise<boolean> {
     }
 }
 
-async function injectContentScript(tabId: number): Promise<boolean> {
+async function ensureHostPermissions(): Promise<boolean> {
+    if (await permissionsContains({ origins: [...REQUESTED_HOST_PATTERNS] })) return true;
+    return permissionsRequest({ origins: [...REQUESTED_HOST_PATTERNS] });
+}
+
+async function ensureHostPermissionsThenInject(): Promise<boolean> {
+    const granted = await ensureHostPermissions();
+    if (granted) {
+        await injectIntoMatchingTabs();
+    }
+    return granted;
+}
+
+async function injectIntoMatchingTabs(): Promise<void> {
+    const tabs = await tabsQuery({ url: [...CONTENT_SCRIPT_TAB_PATTERNS] });
+    await Promise.all(
+        tabs
+            .filter((tab): tab is chrome.tabs.Tab & { id: number } => tab.id !== undefined)
+            .map((tab) => injectFullContentScripts(tab.id)),
+    );
+}
+
+async function injectFullContentScripts(tabId: number): Promise<boolean> {
     try {
-        await scriptingExecuteScript({
+        await scriptingInsertCSS({
             target: { tabId },
-            files: ['content/main.js'],
+            files: [...CONTENT_SCRIPT_CSS_FILES],
         });
+        for (const file of CONTENT_SCRIPT_JS_FILES) {
+            await scriptingExecuteScript({
+                target: { tabId },
+                files: [file],
+            });
+        }
+        console.log(`FFN-Enhancements: full content scripts injected into tab ${tabId}.`);
         return true;
     } catch (err) {
-        console.error('FFN-Enhancements: content script injection for Settings failed.', err);
+        console.error('FFN-Enhancements: full content-script injection failed.', err);
         return false;
     }
 }
@@ -229,11 +294,29 @@ function tabsSendMessage(tabId: number, message: unknown): Promise<unknown> {
     ));
 }
 
+function permissionsContains(permissions: chrome.permissions.Permissions): Promise<boolean> {
+    return chromeAsync<boolean>((callback) => (
+        chrome.permissions.contains(permissions, callback) as unknown as Promise<boolean> | void
+    ));
+}
+
+function permissionsRequest(permissions: chrome.permissions.Permissions): Promise<boolean> {
+    return chromeAsync<boolean>((callback) => (
+        chrome.permissions.request(permissions, callback) as unknown as Promise<boolean> | void
+    ));
+}
+
 function scriptingExecuteScript(
     injection: chrome.scripting.ScriptInjection<unknown[], unknown>,
 ): Promise<chrome.scripting.InjectionResult[]> {
     return chromeAsync<chrome.scripting.InjectionResult[]>((callback) => (
         chrome.scripting.executeScript(injection, callback) as unknown as Promise<chrome.scripting.InjectionResult[]> | void
+    ));
+}
+
+function scriptingInsertCSS(injection: chrome.scripting.CSSInjection): Promise<void> {
+    return chromeAsync<void>((callback) => (
+        chrome.scripting.insertCSS(injection, callback) as unknown as Promise<void> | void
     ));
 }
 
