@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
 function copyDirRecursive(src: string, dest: string): void {
     if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
