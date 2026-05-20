@@ -1,8 +1,8 @@
 import type { IAo3Chapter } from './IAo3Migration';
 
-export const AO3_BRIDGE_REQUEST_KEY = 'ffne_ao3_bridge_request';
-export const AO3_BRIDGE_RESULT_KEY = 'ffne_ao3_bridge_result';
-export const AO3_BRIDGE_HEARTBEAT_KEY = 'ffne_ao3_bridge_heartbeat';
+export const AO3_BRIDGE_REQUEST_KEY = 'ao3_bridge_request';
+export const AO3_BRIDGE_RESULT_KEY = 'ao3_bridge_result';
+export const AO3_BRIDGE_HEARTBEAT_KEY = 'ao3_bridge_heartbeat';
 
 export const AO3_BRIDGE_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 export const AO3_BRIDGE_POLL_INTERVAL_MS = 250;

@@ -15,9 +15,11 @@ Adhere to best software-engineering and UX/UI conventions. Favor modular, scalab
 
 ## 1. What This Project Is
 
-A **Tampermonkey userscript** that enhances FanFiction.net's interface for both readers and authors. It is compiled from TypeScript by Vite + `vite-plugin-monkey` into a single self-contained `.user.js` file that runs on `https://www.fanfiction.net/*`.
+A **Manifest V3 browser extension** (Chrome + Firefox) that enhances FanFiction.net's interface for both readers and authors. It was migrated from a Tampermonkey userscript to achieve zero-FOUC theme injection via native `manifest.json` `content_scripts.css`.
 
-The output artifact lives at `dist/ffn-enhancements.user.js` and is distributed via GitHub Releases (see `vite.config.ts` for `updateURL`/`downloadURL`).
+The extension runs on `https://www.fanfiction.net/*` and `https://archiveofourown.org/*`.
+
+Extension store distribution: Chrome Web Store + Firefox Add-ons (AMO). Load unpacked from `dist/` for development.
 
 **In-scope pages:**
 
@@ -34,55 +36,91 @@ The output artifact lives at `dist/ffn-enhancements.user.js` and is distributed 
 
 ```bash
 npm run build   # tsc && vite build  (TypeScript check + bundle)
-npm run dev     # vite               (dev server, hot reload for quick iteration)
+npm run dev     # vite build --watch  (rebuild on file changes)
+npm test        # vitest run -v
 ```
 
 - TypeScript is strict (`strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`).
-  Fix all type errors before considering a build clean.
-- `tsconfig.json` targets `ESNext` modules. `tsconfig.node.json` is for Vite config only.
-- Vite bundles everything into one file. There are no lazy chunks.
-- Keep `build.minify: 'esbuild'` in `vite.config.ts` for production builds.
-  `vite-plugin-monkey` otherwise defaults to unminified output, which makes the
-  userscript much larger and delays document-start execution while the browser
-  parses the bundle.
-- Keep `build.cssMinify: true` and `build.target: 'es2020'` aligned with the
-  production userscript build. This is the supported output shape for current
-  Tampermonkey Chrome/Firefox targets.
-- Keep `userscript.noframes: true`. TinyMCE iframes are themed from the parent
-  document via `ThemeManager._watchTinyMceIframes()` / `_themeIframe()`, so no
-  module should rely on the userscript executing inside editor iframes.
-- Avoid adding extra CDN `@require` entries. Each `@require` adds work and can
-  delay Tampermonkey injection; if a paint-gate or other injection-critical
-  prelude is needed, keep it tiny and make it the only `@require`.
-
-### 2.1 Userscript injection timing
-
-- Chrome-family Tampermonkey installs should enable Dashboard -> Settings ->
-  Experimental -> **Inject Mode = Instant**. MV3 adds a small content-script
-  injection delay; Instant is the only user-side lever that consistently gets
-  document-start styling on screen before the first paint.
-- Document this Chrome/Tampermonkey requirement in user-facing install docs
-  whenever a change depends on early paint gating or other first-paint behavior.
+- Vite multi-entry build produces 4 entry points + shared chunks:
+  - `content/main.js` — main content script (all modules)
+  - `content/prelude.js` — document-start theme prelude (minimal, <1 KB)
+  - `background/service-worker.js` — service worker (fetch proxy, tab management)
+  - `popup/popup.js` — extension popup
+- `build.minify: 'esbuild'` and `build.target: 'es2020'` for production.
+- `emptyOutDir: true` — dist/ is fully regenerated each build.
+- Static assets (manifest.json, CSS, icons, popup.html) live in `extension/` and
+  are copied to `dist/` by the `copy-extension-assets` Vite plugin after bundling.
+- Shared chunks land in `dist/chunks/` (e.g., `message-types-*.js`, `themeClass-*.js`).
+- `modulePreload: false` — extension content scripts don't support module preload.
 
 ---
 
-## 3. Importing GM Functions
+## 3. Platform Abstraction Layer
 
-CRITICAL. All `GM_*` functions must be imported from the virtual module `'$'`
-(provided by `vite-plugin-monkey`), not from `@types/tampermonkey` globals or
-any other package:
+All browser-extension APIs are accessed through thin wrappers in `src/platform/`:
+
+### 3.1 Storage (`src/platform/storage.ts`)
 
 ```typescript
-import { GM_getValue, GM_setValue } from '$';
-import { GM_registerMenuCommand, GM_unregisterMenuCommand } from '$';
-import { GM_xmlhttpRequest } from '$';
+import { platformStorage } from '../platform/storage';
+
+// Sync read from localStorage (document-start safe).
+const theme = platformStorage.get('theme');
+
+// Async write to localStorage + chrome.storage.local.
+await platformStorage.set('theme', 'dark');
+
+// Async remove from both stores.
+await platformStorage.remove('someKey');
+
+// Cross-tab sync listener. Returns unsubscribe function.
+const unsub = platformStorage.onChanged((key, newValue, oldValue) => {
+    // fires for remote changes only (local writes are guarded).
+});
 ```
 
-Any new GM grant also needs to be added to the `grant` array in `vite.config.ts`.
+- All keys use `ffne_` prefix (added internally by platformStorage).
+- `get()` reads from localStorage (sync, available at document-start).
+- `set()` writes to localStorage (sync) + `chrome.storage.local` (async persistence).
+- `onChanged()` wraps `chrome.storage.onChanged` with local-write guard
+  (200ms timestamp window) to prevent double subscriber notification.
+- Bridge keys (`ao3_bridge_*`) use the same prefix — do NOT include `ffne_` in
+  key constants.
 
-Current grants: `GM_xmlhttpRequest`, `GM_getValue`, `GM_setValue`,
-`GM_registerMenuCommand`, `GM_unregisterMenuCommand`, `GM_openInTab`,
-`GM_addValueChangeListener`.
+### 3.2 Messaging (`src/platform/messaging.ts`)
+
+```typescript
+import { backgroundFetch } from '../platform/messaging';
+
+// Cross-origin fetch via service worker (bypasses CORS/CSP).
+const response = await backgroundFetch({
+    url: 'https://fichub.net/api/...',
+    method: 'GET',
+    responseType: 'text',  // or 'blob' for binary
+    timeout: 60000,
+});
+// response: { ok, status, data: string|Blob|null, finalUrl, error? }
+```
+
+- `backgroundFetch()` never throws — errors returned in `response.error`.
+- Service worker handles `CrossOriginFetchMessage` by executing `fetch()` with
+  full `host_permissions` (no CORS restrictions).
+- Blob responses are converted `number[]` → `Uint8Array` → `Blob` (JSON-safe messaging).
+
+### 3.3 Tabs (`src/platform/tabs.ts`)
+
+```typescript
+import { openTab } from '../platform/tabs';
+await openTab('https://archiveofourown.org/', true);
+```
+
+- Delegates to service worker via `OPEN_TAB` message.
+- Falls back to `window.open()` if messaging fails.
+
+### 3.4 Message Types (`src/background/message-types.ts`)
+
+Shared type definitions for content-script <-> service-worker communication.
+Used by platform layer and service worker. Keep in sync with `service-worker.ts` handler.
 
 ---
 
@@ -205,21 +243,22 @@ Both services import `Core` for `getElement`/`getLogger` - no circular deps.
 
 ### 5.1 SettingsManager (`src/modules/SettingsManager.ts`)
 
-Central key-value store backed by Tampermonkey's `GM_getValue`/`GM_setValue`.
+Central key-value store backed by `chrome.storage.local` + `localStorage` mirror
+(via `platformStorage`).
 
 - `FFNSettings` interface defines the full schema with types.
 - `DEFAULTS` object provides fallbacks for first-time users.
-- Storage prefix: `ffne_` (prevents collisions with other userscripts).
+- Storage prefix: `ffne_` (added by `platformStorage` internally).
 - In-memory cache (`_cache`) is populated in `prime()` and used for all reads.
-  Reads are synchronous and cheap.
+  Reads are synchronous and cheap (from `localStorage` via `platformStorage.get()`).
 - `_loadAll()` validates enum values on load to guard against stale storage.
 
 **API:**
 ```typescript
-SettingsManager.get('docDownloadFormat')      // -> DocDownloadFormat
-SettingsManager.get('fluidMode')              // -> boolean
-SettingsManager.set('docDownloadFormat', DocDownloadFormat.HTML)
-SettingsManager.set('fluidMode', false)
+SettingsManager.get('docDownloadFormat')      // -> DocDownloadFormat (sync)
+SettingsManager.get('fluidMode')              // -> boolean (sync)
+await SettingsManager.set('docDownloadFormat', DocDownloadFormat.HTML)  // async!
+await SettingsManager.set('fluidMode', false)
 
 // Subscribe to changes (returns unsubscribe fn)
 const unsub = SettingsManager.subscribe('fluidMode', (newVal, oldVal) => { ... });
@@ -227,32 +266,26 @@ unsub(); // remove listener
 ```
 
 **`subscribe()` pub-sub API:**
-- `subscribe(key, cb)` returns an unsubscribe function. Store and call it to clean up.
+- `subscribe(key, cb)` returns an unsubscribe function.
 - Fires for both local changes (`set()`) and remote changes (cross-tab via
-  `GM_addValueChangeListener`).
-- Internal storage uses `Map<string, Set<(unknown, unknown)=>void>>`. Type safety is
-  enforced at the public API layer; internals use `unknown`.
-- Subscriber errors are caught individually - one bad subscriber cannot block others.
+  `chrome.storage.onChanged`).
+- Internal storage uses `Map<string, Set<(unknown, unknown)=>void>>`.
+- Subscriber errors are caught individually.
 
-**Cross-tab sync (`GM_addValueChangeListener`):**
-- Registered in `prime()` for every setting key.
-- Fires when another browser tab writes a new value to GM storage.
-- The listener calls `_parseStoredValue()` then notifies all `subscribe()` callbacks.
-- GOTCHA: Some TM builds fire the listener for same-tab changes too (`remote=false`).
-  The `!remote` guard prevents double-applying updates already handled by `set()`.
-- Wrapped in `try/catch` so it degrades gracefully in non-TM environments.
+**Cross-tab sync (`chrome.storage.onChanged`):**
+- Single listener registered in `prime()` via `platformStorage.onChanged()`.
+- `platformStorage` handles local-write guard (200ms timestamp window) so
+  same-tab changes don't double-fire subscribers.
+- `_mirrorThemeCache()` writes theme to `localStorage['ffne_theme_cache']` for
+  the prelude to read synchronously at `document_start`.
 
 **To add a new setting:**
 1. Add field + type to `FFNSettings` interface.
 2. Add default to `DEFAULTS`.
-3. Add one-liner in `_loadAll()` using generic helper: `_loadBool(key)` for booleans, `_loadEnum(key, EnumObj)` for string enums, `_loadPositiveNumber(key)` for numbers.
-4. Add `GM_addValueChangeListener` entry in `_registerValueListeners()` - or it's
-   automatic since `_registerValueListeners` iterates `Object.keys(DEFAULTS)`.
+3. Add one-liner in `_loadAll()`: `_loadBool(key)`, `_loadEnum(key, EnumObj)`, or `_loadPositiveNumber(key)`.
+4. Automatic: `_registerOnChangedListener()` handles all keys via a single
+   `chrome.storage.onChanged` listener.
 5. Add a control row in `SettingsPage.ts` (see checklist Section 11).
-
-**GOTCHA:** `GM_getValue`/`GM_setValue` are synchronous in Tampermonkey but
-asynchronous in some MV3 extension runners. If you ever need to support those,
-the entire load/save path needs to become async.
 
 ### 5.2 SettingsMenu (`src/modules/SettingsMenu.ts`)
 
@@ -510,6 +543,7 @@ request; normal `fetch()` would be blocked by CORS.
 ```
 src/
   main.ts                        - Entry point / router; EarlyBoot registration
+  bootstrap.ts                   - Sitewide module registration + routing
   enums/
     Elements.ts                  - All DOM selector keys (add new keys here first)
     DocDownloadFormat.ts         - MARKDOWN = 'md' / HTML = 'html' / DOCX = 'docx'
@@ -533,23 +567,35 @@ src/
     LayoutManagerDelegate.ts     - Fluid mode DOM targets
   modules/
     EarlyBoot.ts                 - Two-phase boot sequencer
-    SettingsManager.ts           - Persistent settings (GM storage + in-memory cache + pub-sub)
-    SettingsMenu.ts              - Single Tampermonkey menu command -> opens SettingsPage
+    SettingsManager.ts           - Persistent settings (platformStorage + in-memory cache + pub-sub)
+    SettingsMenu.ts              - Message listener for popup -> settings modal
     SettingsPage.ts              - Settings modal UI
     ThemeManager.ts              - Theme switching engine (CSS custom properties + CssScanner)
     LayoutManager.ts             - Fluid layout / viewport meta injection
     Core.ts                      - Delegate broker, logging, DOM readiness
-    FFNLogger.ts                 - Shared logger (used to avoid circular deps with Core)
+    FFNLogger.ts                 - Shared logger
     DocManager.ts                - /docs/docs.php: bulk export, export column injection
     DocEditor.ts                 - /docs/edit.php: single-doc export button in TinyMCE toolbar
     DocIframeHandler.ts          - Shared: Markdown paste listener for TinyMCE iframes
     StoryReader.ts               - /s/*: text selection unlock, keyboard nav, cover modal fix
     StoryDownloader.ts           - /s/*: FicHub/Native download button injection
-    FicHubDownloader.ts          - FicHub API integration (EPUB/MOBI via GM_xmlhttpRequest)
-    NativeDownloader.ts          - FFN-native download fallback
+    FicHubDownloader.ts          - FicHub API integration (via backgroundFetch)
+    NativeDownloader.ts          - FFN-native download fallback (via fetchRequest)
     EpubBuilder.ts               - Low-level EPUB ZIP builder
     DocxBuilder.ts               - Low-level DOCX (OOXML) ZIP builder
     SimpleMarkdownParser.ts       - Lightweight Markdown -> HTML for paste listener
+  platform/
+    storage.ts                   - chrome.storage.local + localStorage mirror
+    messaging.ts                 - Content-script <-> service-worker messaging
+    tabs.ts                      - Tab management (open, etc.)
+  background/
+    service-worker.ts            - Service worker: fetch proxy, tab creation, settings forwarding
+    message-types.ts             - Shared message type definitions
+  popup/
+    popup.html                   - Extension popup HTML
+    popup.ts                     - Extension popup logic
+  prelude/
+    themePrelude.ts              - Document-start theme prelude (autonomous IIFE)
   serializers/
     LocalMetadataSerializer.ts    - Scrapes FFN story page for EPUB metadata
     FicHubMetadataSerializer.ts   - Parses FicHub API response for EPUB metadata
@@ -559,6 +605,8 @@ src/
     ContentParser.ts             - Turndown setup, HTML/Markdown parsing from doc pages
     DocFetchService.ts           - Doc page fetch, content extraction, hidden-iframe refresh
     CssScanner.ts                - Runtime CSS scanner for FFN native element theming
+    Ao3Service.ts                - AO3 API service (uses fetchRequest)
+    Ao3BridgeClient.ts           - FFN-side AO3 bridge client (uses platformStorage + tabs)
   styles/
     ThemeTokens.ts               - CSS custom property defaults + buildTokenCss()
     fluid-mode.css               - Fluid layout overrides (injected via LayoutManager)
@@ -575,7 +623,13 @@ src/
     HighContrastTheme.ts         - WCAG-focused high contrast theme
   utils/
     fetchWithBackoff.ts          - Generic HTTP retry/backoff utility for 429 handling
-vite.config.ts                   - Build config; userscript header; minification; iframe policy
+    fetchRequest.ts              - Cross-origin fetch via service worker (replaces gmRequestText)
+extension/
+  manifest.json                  - MV3 manifest
+  popup/popup.html               - Popup HTML (copied to dist/ at build)
+  styles/                        - Static CSS for manifest injection (copied to dist/ at build)
+  icons/                         - Extension icons (copied to dist/ at build)
+vite.config.ts                   - Multi-entry Vite build config
 tsconfig.json                    - Strict TypeScript config
 ```
 

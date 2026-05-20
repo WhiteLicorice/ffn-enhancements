@@ -1,14 +1,13 @@
 {
   "name": "ffn-enhancements",
   "private": true,
-  "version": "0.16.0",
+  "version": "0.17.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite build --watch",
     "build": "tsc && vite build",
-    "check:critical-theme-require": "node ./scripts/checkCriticalThemeRequire.mjs",
-    "preview": "vite preview",
-    "test": "vitest run -v"
+    "test": "vitest run -v",
+    "package": "npm run build && node scripts/package-extension.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.42",
@@ -20,7 +19,6 @@
     "jsdom": "^29.1.0",
     "typescript": "^5.9.3",
     "vite": "^6.4.1",
-    "vite-plugin-monkey": "^5.0.9",
     "vitest": "^4.1.5"
   },
   "dependencies": {
@@ -30,14 +28,13 @@
     "marked": "^17.0.1",
     "turndown": "^7.2.2"
   },
-  "description": "A suite of modern enhancements to FFN's old-school interface, for both readers and writers. Inspired by ao3-enhancements.",
-  "main": "index.js",
+  "description": "A browser extension that enhances FanFiction.net's interface for readers and authors.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WhiteLicorice/ffn-enhancements.git"
   },
   "keywords": [],
-  "author": "",
+  "author": "WhiteLicorice",
   "license": "GPL-3.0-or-later",
   "bugs": {
     "url": "https://github.com/WhiteLicorice/ffn-enhancements/issues"

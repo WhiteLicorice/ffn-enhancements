@@ -6,7 +6,7 @@ import { EpubBuilder } from './EpubBuilder';
 import { ChapterData } from '../interfaces/ChapterData';
 import { Elements } from '../enums/Elements';
 import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
-import { gmRequestText, type GmTextResponse } from '../utils/gmRequestText';
+import { fetchRequestText, type FetchTextResponse } from '../utils/fetchRequest';
 
 const MODULE_NAME = 'NativeDownloader';
 const CHAPTER_FETCH_MAX_RETRIES = 5;
@@ -74,7 +74,7 @@ export async function _fetchChapter(
     const log = Core.getLogger(MODULE_NAME, 'fetchChapter');
 
     for (let attempt = 1; attempt <= CHAPTER_FETCH_MAX_RETRIES + 1; attempt++) {
-        const response = await gmRequestText({
+        const response = await fetchRequestText({
             method: 'GET',
             url,
             headers: {
@@ -113,11 +113,11 @@ export function _resolveChapterUrl(storyId: string, chapterRef: string | number)
     return new URL(`/s/${storyId}/${ref || '1'}/`, window.location.origin).href;
 }
 
-function _isRetryableChapterResponse(response: GmTextResponse): boolean {
+function _isRetryableChapterResponse(response: FetchTextResponse): boolean {
     return response.status === 0 || response.status === 403 || response.status === 429 || response.status >= 500;
 }
 
-function _chapterRetryMessage(chapterNum: number, response: GmTextResponse, delay: number): string {
+function _chapterRetryMessage(chapterNum: number, response: FetchTextResponse, delay: number): string {
     if (response.status === 403) {
         return `Chapter ${chapterNum} returned 403. Cooling down for ${delay / 1000}s...`;
     }
@@ -128,7 +128,7 @@ function _chapterRetryMessage(chapterNum: number, response: GmTextResponse, dela
     return `Chapter ${chapterNum} request failed (${reason}). Retrying in ${delay / 1000}s...`;
 }
 
-function _chapterFailureMessage(chapterNum: number, response: GmTextResponse): string {
+function _chapterFailureMessage(chapterNum: number, response: FetchTextResponse): string {
     if (response.isCfChallenge) {
         return `Download aborted while fetching chapter ${chapterNum}: FFN returned a browser challenge. Open the chapter normally once, then retry.`;
     }

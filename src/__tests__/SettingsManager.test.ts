@@ -1,10 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GM_addValueChangeListener, GM_getValue, GM_setValue } from '$';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { _parseStoredValue, SettingsManager } from '../modules/SettingsManager';
 import type { FFNSettings } from '../modules/SettingsManager';
 import { Theme } from '../enums/Theme';
+import { mockChromeStorage } from './__mocks__/chrome';
+import { platformStorage } from '../platform/storage';
 
-// ─── boolean values ──────────────────────────────────────────────────────
+function populateStorage(entries: Record<string, string | number | boolean>): void {
+    for (const [key, value] of Object.entries(entries)) {
+        localStorage.setItem(`ffne_${key}`, typeof value === 'string' ? value : JSON.stringify(value));
+    }
+}
 
 describe('_parseStoredValue — boolean', () => {
     const key = 'fluidMode' as keyof FFNSettings;
@@ -31,8 +36,6 @@ describe('_parseStoredValue — boolean', () => {
         expect(_parseStoredValue(key, undefined)).toBeUndefined();
     });
 });
-
-// ─── number values ───────────────────────────────────────────────────────
 
 describe('_parseStoredValue — number', () => {
     const key = 'scrollStep' as keyof FFNSettings;
@@ -82,8 +85,6 @@ describe('_parseStoredValue — number', () => {
     });
 });
 
-// ─── string enum values ──────────────────────────────────────────────────
-
 describe('_parseStoredValue — string enum', () => {
     const key = 'docDownloadFormat' as keyof FFNSettings;
 
@@ -132,19 +133,12 @@ describe('_parseStoredValue — theme enum', () => {
     });
 });
 
-// ─── edge cases ──────────────────────────────────────────────────────────
-
 describe('_parseStoredValue — edge cases', () => {
     it('handles all known boolean keys', () => {
         const boolKeys: (keyof FFNSettings)[] = [
-            'fluidMode',
-            'pasteConvertMarkdown',
-            'pasteConvertHtml',
-            'pasteForceIntercept',
-            'ao3HtmlCompatibility',
-            'normalizeHtmlParagraphs',
-            'appendSeparator',
-            'bulkReplaceAutofill',
+            'fluidMode', 'pasteConvertMarkdown', 'pasteConvertHtml',
+            'pasteForceIntercept', 'ao3HtmlCompatibility', 'normalizeHtmlParagraphs',
+            'appendSeparator', 'bulkReplaceAutofill',
         ];
         for (const k of boolKeys) {
             expect(_parseStoredValue(k, true)).toBe(true);
@@ -167,52 +161,45 @@ describe('_parseStoredValue — edge cases', () => {
 
 describe('SettingsManager prime', () => {
     beforeEach(() => {
-        vi.restoreAllMocks();
-        vi.mocked(GM_getValue).mockImplementation(() => undefined);
-        vi.mocked(GM_setValue).mockImplementation(() => {});
-        vi.mocked(GM_addValueChangeListener).mockImplementation(() => 1);
-        window.localStorage.clear();
+        mockChromeStorage._reset();
+        localStorage.clear();
+        platformStorage._resetForTesting();
     });
 
     it('resets the cache to defaults before each reload', () => {
-        vi.mocked(GM_getValue).mockImplementation((key: string) => (
-            key === 'ffne_pasteForceIntercept' ? true : undefined
-        ));
-
+        populateStorage({ pasteForceIntercept: true });
         SettingsManager.prime();
         expect(SettingsManager.get('pasteForceIntercept')).toBe(true);
 
-        vi.mocked(GM_getValue).mockImplementation(() => undefined);
+        localStorage.clear();
+        // Re-prime after clearing — should fall back to defaults.
         SettingsManager.prime();
-
         expect(SettingsManager.get('pasteForceIntercept')).toBe(false);
     });
 
-    it('mirrors the validated theme into localStorage during prime and local set', () => {
-        vi.mocked(GM_getValue).mockImplementation((key: string) => (
-            key === 'ffne_theme' ? Theme.SEPIA : undefined
-        ));
-
+    it('mirrors the validated theme into localStorage during prime', () => {
+        populateStorage({ theme: Theme.SEPIA });
         SettingsManager.prime();
         expect(window.localStorage.getItem('ffne_theme_cache')).toBe(Theme.SEPIA);
-
-        SettingsManager.set('theme', Theme.HIGH_CONTRAST);
-
-        expect(window.localStorage.getItem('ffne_theme_cache')).toBe(Theme.HIGH_CONTRAST);
     });
 
-    it('mirrors remote theme changes into localStorage', () => {
-        let themeListener: ((name: string, oldValue: unknown, newValue: unknown, remote?: boolean) => void) | undefined;
-        vi.mocked(GM_addValueChangeListener).mockImplementation((name, listener) => {
-            if (name === 'ffne_theme') {
-                themeListener = listener;
-            }
-            return 1;
-        });
-
+    it('persists local set to localStorage', async () => {
         SettingsManager.prime();
-        themeListener?.('ffne_theme', Theme.SYSTEM, Theme.DARK, true);
+        await SettingsManager.set('theme', Theme.HIGH_CONTRAST);
+        // platformStorage mirrors theme to localStorage — but SettingsManager
+        // no longer has a separate _mirrorThemeCache. The theme value IS the
+        // localStorage entry used by the prelude.
+        expect(platformStorage.get('theme')).toBe(Theme.HIGH_CONTRAST);
+    });
 
-        expect(window.localStorage.getItem('ffne_theme_cache')).toBe(Theme.DARK);
+    it('updates cache on remote storage change', () => {
+        SettingsManager.prime();
+
+        // Simulate a remote tab changing the theme via chrome.storage.onChanged.
+        // The local-write guard in platformStorage skips self-triggered events,
+        // so direct mockChromeStorage.set() fires as a "remote" change.
+        void mockChromeStorage.set({ ffne_theme: Theme.DARK });
+
+        expect(SettingsManager.get('theme')).toBe(Theme.DARK);
     });
 });

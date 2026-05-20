@@ -1,52 +1,14 @@
+// Extension theme prelude — runs at document_start via manifest content_scripts.
+// CSS for all themes is already injected by the browser via manifest css[].
+// This script only reads localStorage and applies the correct theme class.
+
 import { Theme } from '../enums/Theme';
+import { themeClass } from '../utils/themeClass';
 
-export const CRITICAL_THEME_STYLE_ID = 'ffne-theme-critical';
-export const THEME_CACHE_KEY = 'ffne_theme_cache';
-export const THEME_STORAGE_KEY = 'ffne_theme';
-export const PRELUDE_ATTRIBUTE = 'data-ffne-prelude';
-export const VALID_PRELUDE_THEMES = [Theme.SYSTEM, Theme.LIGHT, Theme.DARK, Theme.SEPIA, Theme.HIGH_CONTRAST] as const;
-type ValidPreludeTheme = (typeof VALID_PRELUDE_THEMES)[number];
+const CACHE_KEY = 'ffne_theme_cache';
+const VALID_THEMES: readonly string[] = Object.values(Theme);
 
-interface CriticalThemePreludeConfig {
-    styleId: string;
-    storageKey: string;
-    cacheKey: string;
-    preludeAttribute: string;
-    validThemes: readonly string[];
-}
-
-const DEFAULT_CONFIG: CriticalThemePreludeConfig = {
-    styleId: CRITICAL_THEME_STYLE_ID,
-    storageKey: THEME_STORAGE_KEY,
-    cacheKey: THEME_CACHE_KEY,
-    preludeAttribute: PRELUDE_ATTRIBUTE,
-    validThemes: VALID_PRELUDE_THEMES,
-};
-
-/**
- * Resolves a stored theme preference to a concrete renderable theme.
- * @param selection The stored user preference.
- * @param prefersDark Whether the system prefers a dark color scheme.
- * @returns The resolved theme to apply.
- */
-export function resolvePreludeTheme(selection: string | null | undefined, prefersDark: boolean): Theme {
-    if (isValidPreludeTheme(selection) && selection !== Theme.SYSTEM) {
-        return selection;
-    }
-
-    return prefersDark ? Theme.DARK : Theme.LIGHT;
-}
-
-/**
- * Applies the critical theme class and CSS as early as possible at document-start.
- * @param criticalCss The prebuilt critical CSS payload to inject.
- * @param config Metadata keys used by the sandboxed prelude environment.
- * @returns Nothing; this is designed to run in the isolated userscript prelude context.
- */
-export function installCriticalThemePrelude(
-    criticalCss: string,
-    config: CriticalThemePreludeConfig = DEFAULT_CONFIG,
-): void {
+(function applyThemePrelude(): void {
     try {
         const FFN_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
         if (!FFN_HOSTS.has(location.hostname)) return;
@@ -54,72 +16,25 @@ export function installCriticalThemePrelude(
         const root = document.documentElement;
         if (!root) return;
 
-        const themeClassPrefix = 'ffne-theme-';
-        const themeClasses = [
-            `${themeClassPrefix}light`,
-            `${themeClassPrefix}dark`,
-            `${themeClassPrefix}sepia`,
-            `${themeClassPrefix}high-contrast`,
-        ];
         const prefersDark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
-        const validThemes = config.validThemes;
-        const isKnownTheme = (value: unknown): value is string => typeof value === 'string' && validThemes.includes(value);
-        const normalizeThemeSelection = (value: unknown): string | undefined => isKnownTheme(value) ? value : undefined;
 
-        let selectedTheme: string | undefined;
-        try {
-            const gmGetValue = Reflect.get(globalThis, 'GM_getValue');
-            if (typeof gmGetValue === 'function') {
-                selectedTheme = normalizeThemeSelection(gmGetValue(config.storageKey));
-            }
-        } catch {
+        let selected: string | null = null;
+        try { selected = localStorage.getItem(CACHE_KEY); } catch { /* ignore */ }
+
+        const isValid = typeof selected === 'string' && (VALID_THEMES as readonly string[]).includes(selected);
+        const resolved = (isValid && selected !== Theme.SYSTEM)
+            ? selected
+            : (prefersDark ? Theme.DARK : Theme.LIGHT);
+
+        // Remove all theme classes, then add the resolved one.
+        for (const t of VALID_THEMES) {
+            root.classList.remove(themeClass(t as Theme));
         }
+        root.classList.add(themeClass(resolved as Theme));
 
-        if (!selectedTheme) {
-            try {
-                selectedTheme = normalizeThemeSelection(localStorage.getItem(config.cacheKey));
-            } catch {
-            }
-        }
-
-        const resolvedTheme = selectedTheme && selectedTheme !== 'system'
-            ? selectedTheme
-            : (prefersDark ? 'dark' : 'light');
-        const resolvedClass = `${themeClassPrefix}${resolvedTheme}`;
-
-        themeClasses.forEach(themeClassName => root.classList.remove(themeClassName));
-        root.classList.add(resolvedClass);
-        root.style.colorScheme = (resolvedTheme === 'dark' || resolvedTheme === 'high-contrast') ? 'dark' : 'light';
-
-        let style = document.getElementById(config.styleId) as HTMLStyleElement | null;
-        if (!style) {
-            style = document.createElement('style');
-            style.id = config.styleId;
-        }
-
-        style.textContent = criticalCss;
-        style.setAttribute(config.preludeAttribute, '');
-
-        const target = document.head || root;
-        if (style.parentNode !== target) {
-            target.appendChild(style);
-        }
-
-        if (!document.head) {
-            const observer = new MutationObserver(() => {
-                if (!document.head) return;
-                const currentStyle = document.getElementById(config.styleId);
-                if (currentStyle && currentStyle.parentNode !== document.head) {
-                    document.head.appendChild(currentStyle);
-                }
-                observer.disconnect();
-            });
-            observer.observe(root, { childList: true });
-        }
+        // Set color-scheme for browser chrome (scrollbars, etc.).
+        root.style.colorScheme = (resolved === Theme.DARK || resolved === Theme.HIGH_CONTRAST) ? 'dark' : 'light';
     } catch {
+        // Silently degrade — page renders with FFN defaults.
     }
-}
-
-function isValidPreludeTheme(value: unknown): value is ValidPreludeTheme {
-    return typeof value === 'string' && (VALID_PRELUDE_THEMES as readonly string[]).includes(value);
-}
+})();

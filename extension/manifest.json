@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "FFN Enhancements",
+  "version": "0.17.0",
+  "description": "Modern enhancements for FanFiction.net",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "*://www.fanfiction.net/*",
+    "*://fanfiction.net/*",
+    "*://archiveofourown.org/*",
+    "*://fichub.net/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://www.fanfiction.net/*", "*://archiveofourown.org/*"],
+      "css": [
+        "styles/theme-tokens-light.css",
+        "styles/theme-tokens-dark.css",
+        "styles/theme-tokens-sepia.css",
+        "styles/theme-tokens-hc.css",
+        "styles/critical-theme.css",
+        "styles/fluid-mode.css"
+      ],
+      "js": ["content/prelude.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["*://www.fanfiction.net/*", "*://archiveofourown.org/*"],
+      "js": ["content/main.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "FFN Enhancements"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ffn-enhancements@whitelicorice",
+      "strict_min_version": "109.0"
+    }
+  }
+}

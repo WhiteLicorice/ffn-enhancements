@@ -1,4 +1,3 @@
-import { GM_setClipboard } from '$';
 import { sanitizeEditorHtml } from './htmlSanitizer';
 
 /**
@@ -80,17 +79,7 @@ export async function writeToClipboard(
 ): Promise<boolean> {
     if (isHtml) {
         const sanitizedHtml = sanitizeEditorHtml(content);
-        // 1. GM_setClipboard — Tampermonkey native, synchronous, works in sandbox.
-        if (typeof GM_setClipboard !== 'undefined') {
-            try {
-                GM_setClipboard(sanitizedHtml, 'html');
-                return true;
-            } catch {
-                // GM_setClipboard failed — fall through.
-            }
-        }
-
-        // 2. ClipboardItem API — writes both text/html and text/plain.
+        // 1. ClipboardItem API — writes both text/html and text/plain.
         try {
             const plainText = stripHtmlBasic(sanitizedHtml);
             await navigator.clipboard.write([
