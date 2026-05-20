@@ -27,11 +27,35 @@ describe('service worker action click', () => {
         await import('../background/service-worker');
     });
 
-    it('registers the action.onClicked listener on module load', () => {
+    it('registers via chrome.action.onClicked when only chrome is available', () => {
         // Regression: Firefox event pages with type:'module' lose listener
         // persistence. The built service-worker.js must not require ES-module
         // loading — listeners must register synchronously at top level.
         expect(mockChromeAction.listenerCount).toBe(1);
+    });
+
+    it('registers via browser.action.onClicked when browser global is present', async () => {
+        const browserActionListeners: Array<(tab: chrome.tabs.Tab) => void> = [];
+        const browserGlobal = globalThis as typeof globalThis & { browser?: unknown };
+        browserGlobal.browser = {
+            action: {
+                onClicked: {
+                    addListener: (cb: (tab: chrome.tabs.Tab) => void) => browserActionListeners.push(cb),
+                    removeListener: () => undefined,
+                },
+            },
+        };
+
+        try {
+            vi.resetModules();
+            mockChromeAction._reset();
+            await import('../background/service-worker');
+
+            expect(browserActionListeners).toHaveLength(1);
+            expect(mockChromeAction.listenerCount).toBe(0);
+        } finally {
+            delete browserGlobal.browser;
+        }
     });
 
     it('dispatches open-settings via executeScript func (postMessage) on supported tabs', async () => {
