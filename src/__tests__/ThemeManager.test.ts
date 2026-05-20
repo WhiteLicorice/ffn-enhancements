@@ -55,6 +55,9 @@ describe('ThemeManager', () => {
             if (key === 'theme') return Theme.DARK;
             return undefined as never;
         });
+        const criticalStyle = document.createElement('style');
+        criticalStyle.id = 'ffne-theme-critical';
+        document.head.appendChild(criticalStyle);
 
         ThemeManager.prime();
         ThemeManager.init();
@@ -70,6 +73,7 @@ describe('ThemeManager', () => {
         expect(document.getElementById('ffne-component-styles')).not.toBeNull();
         expect(document.getElementById('ffne-theme-tokens')).not.toBeNull();
         expect(document.getElementById('ffne-theme-native-overrides')).not.toBeNull();
+        expect(document.getElementById('ffne-theme-critical')).toBeNull();
         expect(componentStyles).toContain('.ffne-dl-container');
         expect(componentStyles).toContain('[data-ffne-ui].ffne-dl-container > .btn');
         expect(componentStyles).toContain('background-image: none !important');

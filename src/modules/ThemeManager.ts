@@ -15,6 +15,7 @@ import { SettingsManager } from './SettingsManager';
 
 const MODULE_NAME = 'ThemeManager';
 const TOKEN_STYLE_ID = 'ffne-theme-tokens';
+const CRITICAL_THEME_STYLE_ID = 'ffne-theme-critical';
 const STATIC_NATIVE_STYLE_ID = 'ffne-theme-native-overrides';
 const COMPONENT_STYLE_ID = 'ffne-component-styles';
 const SCANNED_FFN_OVERRIDES_STYLE_ID = 'ffne-theme-scanned-ffn-overrides';
@@ -94,6 +95,7 @@ function _applyTheme(definition: IThemeDefinition, scanNativeCss: boolean): void
     }
 
     _themeTinyMceIframes(definition);
+    _removeCriticalPreludeStyle();
 }
 
 function _reconcileThemeChrome(definition: IThemeDefinition): void {
@@ -183,6 +185,10 @@ function _buildScopedNativeOverrides(definition: IThemeDefinition): string {
         '',
         { excludeSelector: FFNE_UI_EXCLUDE_SELECTOR },
     );
+}
+
+function _removeCriticalPreludeStyle(): void {
+    document.getElementById(CRITICAL_THEME_STYLE_ID)?.remove();
 }
 
 function _applyThemeClass(theme: Theme): void {

@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { defineConfig } from 'vite';
 import monkey, { util } from 'vite-plugin-monkey';
 import { buildCriticalThemeCss } from './src/build/criticalThemeCss';
@@ -13,8 +11,7 @@ import {
 } from './src/prelude/themePrelude';
 
 export default defineConfig(async () => {
-  const nativeOverrideStyles = readFileSync(join(process.cwd(), 'src/styles/native-overrides.css'), 'utf8');
-  const criticalThemeCss = buildCriticalThemeCss(nativeOverrideStyles);
+  const criticalThemeCss = buildCriticalThemeCss();
   const criticalThemePrelude = await util.fn2dataUrl(installCriticalThemePrelude, criticalThemeCss, {
     styleId: CRITICAL_THEME_STYLE_ID,
     storageKey: THEME_STORAGE_KEY,

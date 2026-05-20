@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Theme } from '../enums/Theme';
 import { buildCriticalThemeCss } from '../build/criticalThemeCss';
@@ -7,8 +5,7 @@ import { installCriticalThemePrelude, resolvePreludeTheme } from '../prelude/the
 
 declare const jsdom: { reconfigure(options: { url: string }): void };
 
-const nativeOverrideStyles = readFileSync(join(process.cwd(), 'src/styles/native-overrides.css'), 'utf8');
-const criticalCss = buildCriticalThemeCss(nativeOverrideStyles);
+const criticalCss = buildCriticalThemeCss();
 
 function resetDom(html: string = '<head></head><body></body>'): void {
     document.documentElement.innerHTML = html;
@@ -87,15 +84,17 @@ describe('theme prelude', () => {
         expect(document.documentElement.className).toBe('ffne-theme-high-contrast');
     });
 
-    it('builds critical CSS with native FFN selectors but without FFNE component selectors', () => {
+    it('builds compact critical CSS with first-paint native FFN selectors but without component selectors', () => {
         expect(resolvePreludeTheme(Theme.SYSTEM, true)).toBe(Theme.DARK);
         expect(resolvePreludeTheme(Theme.SYSTEM, false)).toBe(Theme.LIGHT);
+        expect(criticalCss.length).toBeLessThan(25_000);
         expect(criticalCss).toContain('.panel_success');
         expect(criticalCss).toContain('#profile_top a[href*="/r/"]');
         expect(criticalCss).toContain('html.ffne-theme-dark body');
         expect(criticalCss).toContain('input:not([type="checkbox"])');
         expect(criticalCss).toContain('html.ffne-theme-dark button');
         expect(criticalCss).toContain('#content_parent');
+        expect(criticalCss).not.toContain('.mce-window');
         expect(criticalCss).not.toContain('.ffne-dl-container');
         expect(criticalCss).not.toContain('[data-ffne-ui].ffne-dl-container');
     });
