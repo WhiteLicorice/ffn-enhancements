@@ -2,15 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MessageType } from '../background/message-types';
 import { mockChromeAction, mockChromeTabs } from './__mocks__/chrome';
 
-/**
- * ExecuteScript call shape used in expectations.
- * `func` must be a Function (not specifically triggerSettingsModalViaPostMessage
- * since the bundled reference differs from the source reference).
- */
-function expectFuncCall(tabId: number) {
-    return { target: { tabId }, func: expect.any(Function) as unknown as () => void };
-}
-
 function expectFilesCall(tabId: number) {
     return { target: { tabId }, files: ['content/main.js'] };
 }
@@ -58,67 +49,61 @@ describe('service worker action click', () => {
         }
     });
 
-    it('dispatches open-settings via executeScript func (postMessage) on supported tabs', async () => {
+    it('dispatches open-settings via chrome.tabs.sendMessage as primary path', async () => {
         await mockChromeAction.click({ id: 7, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab);
 
-        // Primary path: scripting.executeScript with func that calls window.postMessage.
-        // This bypasses chrome.tabs.sendMessage and works in both Chrome SW and Firefox event pages.
-        expect(mockChromeTabs.state.executeScriptCalls).toEqual([
-            expectFuncCall(7),
+        // Primary path: chrome.tabs.sendMessage. When a content script with the
+        // OPEN_SETTINGS listener is loaded (Chrome default; Firefox with host
+        // permission granted), this resolves and we skip the inject + retry
+        // fallback entirely.
+        expect(mockChromeTabs.state.sendMessageCalls).toEqual([
+            expectSendMessageCall(7),
         ]);
-        expect(mockChromeTabs.state.sendMessageCalls).toHaveLength(0);
+        expect(mockChromeTabs.state.executeScriptCalls).toHaveLength(0);
         expect(mockChromeTabs.state.createCalls).toHaveLength(0);
     });
 
-    it('injects content/main.js and retries postMessage when the first executeScript fails', async () => {
-        // Reject the first executeScript call (func-based postMessage),
-        // then allow subsequent calls (files-based injection + func retry).
+    it('injects content script then retries sendMessage when first sendMessage fails', async () => {
+        // Pre-arm: reject sendMessage calls for tab 7 (no content script loaded).
+        // The mock removes the reject entry on successful executeScript, so the
+        // retry sendMessage after injection succeeds. This mirrors real Firefox
+        // MV3 host-permission-not-granted: manifest content_scripts do not run,
+        // sendMessage fails with "Receiving end does not exist",
+        // scripting.executeScript via activeTab loads main.js, sendMessage retry
+        // hits the now-registered OPEN_SETTINGS listener.
+        mockChromeTabs.state.sendMessageRejectTabIds.add(7);
+
+        await mockChromeAction.click({ id: 7, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab);
+
+        expect(mockChromeTabs.state.sendMessageCalls).toEqual([
+            expectSendMessageCall(7), // step 1: primary, rejected
+            expectSendMessageCall(7), // step 3: retry after inject, succeeds
+        ]);
+        expect(mockChromeTabs.state.executeScriptCalls).toEqual([
+            expectFilesCall(7), // step 2: inject content/main.js via activeTab
+        ]);
+        expect(mockChromeTabs.state.createCalls).toHaveLength(0);
+    });
+
+    it('returns early when injection fails after sendMessage failure', async () => {
+        // No listener AND injection fails (e.g., page not injectable, no activeTab grant).
+        mockChromeTabs.state.sendMessageRejectTabIds.add(7);
         mockChromeTabs.state.executeScriptRejectTabIds.add(7);
 
         await mockChromeAction.click({ id: 7, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab);
 
-        // Step 1: func-based executeScript rejects (tab in reject set).
-        // Step 2: files-based injection (injectContentScript) also rejects
-        //         because mock shares the same reject set.
-        // Step 3: sendMessage fallback is attempted.
+        // Step 1: sendMessage attempted, rejected.
+        // Step 2: injectContentScript attempted, rejected. No step 3.
         expect(mockChromeTabs.state.sendMessageCalls).toEqual([
             expectSendMessageCall(7),
         ]);
-        expect(mockChromeTabs.state.createCalls).toHaveLength(0);
-    });
-
-    it('injects content script then retries postMessage when func-based dispatch fails', async () => {
-        // Reject only the FIRST executeScript call (func), allow the rest.
-        mockChromeTabs.state.executeScriptRejectCount.set(7, 1);
-
-        await mockChromeAction.click({ id: 7, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab);
-
-        // Step 1: func-based postMessage dispatch rejects (count 1 → 0).
-        // Step 2: files-based injection succeeds (count is 0).
-        // Step 3: func-based postMessage retry succeeds (count is 0).
         expect(mockChromeTabs.state.executeScriptCalls).toEqual([
-            expectFuncCall(7),       // step 1: primary dispatch (rejected)
-            expectFilesCall(7),      // step 2: inject content/main.js
-            expectFuncCall(7),       // step 3: retry dispatch (succeeds)
+            expectFilesCall(7),
         ]);
-        // sendMessage is only called if all executeScript attempts fail.
-        expect(mockChromeTabs.state.sendMessageCalls).toHaveLength(0);
         expect(mockChromeTabs.state.createCalls).toHaveLength(0);
     });
 
-    it('falls back to sendMessage when all executeScript attempts fail', async () => {
-        // Reject both func-based attempts (2 calls), leaving files injection to also fail.
-        mockChromeTabs.state.executeScriptRejectTabIds.add(7);
-
-        await mockChromeAction.click({ id: 7, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab);
-
-        // Step 1: func rejects. Step 2: files rejects. Step 4: sendMessage fallback.
-        expect(mockChromeTabs.state.sendMessageCalls).toEqual([
-            expectSendMessageCall(7),
-        ]);
-    });
-
-    it('opens FFN and dispatches postMessage when the current tab is unsupported', async () => {
+    it('opens FFN and dispatches via sendMessage when the current tab is unsupported', async () => {
         await mockChromeAction.click({ id: 7, url: 'https://example.com/' } as chrome.tabs.Tab);
 
         // Tab is unsupported → opens a new FFN tab.
@@ -130,10 +115,10 @@ describe('service worker action click', () => {
         mockChromeTabs.triggerUpdated(100, { status: 'complete' });
         await Promise.resolve();
 
-        // On the newly loaded tab, primary dispatch via executeScript func is used.
-        expect(mockChromeTabs.state.executeScriptCalls).toEqual([
-            expectFuncCall(100),
+        // On the newly loaded tab, sendMessage is the primary dispatch.
+        expect(mockChromeTabs.state.sendMessageCalls).toEqual([
+            expectSendMessageCall(100),
         ]);
-        expect(mockChromeTabs.state.sendMessageCalls).toHaveLength(0);
+        expect(mockChromeTabs.state.executeScriptCalls).toHaveLength(0);
     });
 });

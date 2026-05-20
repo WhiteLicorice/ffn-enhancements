@@ -115,38 +115,39 @@ async function openSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<voi
 }
 
 async function openSettingsInTab(tabId: number): Promise<boolean> {
-    // Primary: dispatch via scripting.executeScript with func, which posts a
-    // window message that the content script listens for. This bypasses the
-    // chrome.tabs.sendMessage API entirely and works reliably in both Chrome
-    // service workers and Firefox event pages.
-    if (await dispatchOpenSettingsViaPostMessage(tabId)) return true;
-
-    // Fallback 1: inject the content script bundle, then retry postMessage.
-    if (await injectContentScript(tabId)) {
-        return dispatchOpenSettingsViaPostMessage(tabId);
+    // Dispatch chain: chrome.tabs.sendMessage gives clean failure semantics
+    // ("Receiving end does not exist" on missing listener), so we can detect
+    // whether the content script's OPEN_SETTINGS handler is registered.
+    //
+    // Step 1: Try sendMessage. If the content script is already loaded
+    //         (Chrome default; Firefox with host permission granted), the
+    //         OPEN_SETTINGS handler fires and the modal opens immediately.
+    if (await sendOpenSettings(tabId)) {
+        console.log('FFN-Enhancements: settings dispatched via sendMessage (step 1).');
+        return true;
     }
 
-    // Fallback 2: try the legacy sendMessage path (kept for Chrome compat).
-    if (await sendOpenSettings(tabId)) return true;
-
-    return false;
-}
-
-function triggerSettingsModalViaPostMessage(): void {
-    window.postMessage(
-        { type: 'FFNE_OPEN_SETTINGS' },
-        window.location.origin,
-    );
-}
-
-async function dispatchOpenSettingsViaPostMessage(tabId: number): Promise<boolean> {
-    try {
-        await scriptingExecuteScriptFunc(tabId, triggerSettingsModalViaPostMessage);
-        return true;
-    } catch (err) {
-        console.error('FFN-Enhancements: open-settings dispatch via postMessage failed.', err);
+    // Step 2: sendMessage failed -> no listener. This happens on Firefox MV3
+    //         when host_permissions are user-opt-in and have not been granted:
+    //         manifest content_scripts do NOT auto-execute, so SettingsMenu's
+    //         runtime listener was never registered. activeTab (granted by
+    //         the click) lets us inject the content script ourselves.
+    if (!(await injectContentScript(tabId))) {
+        console.error('FFN-Enhancements: cannot dispatch settings — injection failed (step 2).');
         return false;
     }
+    console.log('FFN-Enhancements: content script injected via activeTab (step 2).');
+
+    // Step 3: Retry sendMessage. main.js bootstrap is synchronous, so by the
+    //         time scripting.executeScript({files}) resolves, the OPEN_SETTINGS
+    //         listener is registered.
+    if (await sendOpenSettings(tabId)) {
+        console.log('FFN-Enhancements: settings dispatched via sendMessage after inject (step 3).');
+        return true;
+    }
+
+    console.error('FFN-Enhancements: sendMessage failed after injection — listener missing or dispatch race.');
+    return false;
 }
 
 async function sendOpenSettings(tabId: number): Promise<boolean> {
@@ -154,6 +155,7 @@ async function sendOpenSettings(tabId: number): Promise<boolean> {
         await tabsSendMessage(tabId, { type: MessageType.OPEN_SETTINGS });
         return true;
     } catch {
+        // Expected when no listener exists ("Receiving end does not exist").
         return false;
     }
 }
@@ -232,18 +234,6 @@ function scriptingExecuteScript(
 ): Promise<chrome.scripting.InjectionResult[]> {
     return chromeAsync<chrome.scripting.InjectionResult[]>((callback) => (
         chrome.scripting.executeScript(injection, callback) as unknown as Promise<chrome.scripting.InjectionResult[]> | void
-    ));
-}
-
-function scriptingExecuteScriptFunc(
-    tabId: number,
-    fn: () => void,
-): Promise<chrome.scripting.InjectionResult[]> {
-    return chromeAsync<chrome.scripting.InjectionResult[]>((callback) => (
-        chrome.scripting.executeScript(
-            { target: { tabId }, func: fn },
-            callback,
-        ) as unknown as Promise<chrome.scripting.InjectionResult[]> | void
     ));
 }
 

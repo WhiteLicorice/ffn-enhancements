@@ -28,7 +28,11 @@ export const SettingsMenu: ISitewideModule = {
      * Registers the message listener for opening the settings modal.
      */
     prime(): void {
-        // Legacy path: chrome.runtime.onMessage (used by Chrome sendMessage and as fallback).
+        // Sole dispatch path: chrome.runtime.onMessage with OPEN_SETTINGS.
+        // The service worker uses chrome.tabs.sendMessage; this gives clean
+        // failure semantics so the SW can fall back to scripting.executeScript
+        // (content-script injection) when no listener is registered yet —
+        // e.g., Firefox MV3 with host permissions not user-granted.
         onMessage((message) => {
             const msg = message as Record<string, unknown>;
             if (msg.type === 'OPEN_SETTINGS') {
@@ -37,22 +41,6 @@ export const SettingsMenu: ISitewideModule = {
                 return { ok: true };
             }
             return undefined;
-        });
-
-        // Primary path: window.postMessage. Dispatched by the service worker
-        // via scripting.executeScript({ func: triggerSettingsModalViaPostMessage }).
-        //
-        // GOTCHA: Do NOT compare event.source to window. In Firefox, messages
-        // posted from a scripting.executeScript({ func }) injection can arrive
-        // with event.source === null (the injected closure runs in the isolated
-        // content world's window proxy, which serializes to null when the
-        // message crosses the boundary). The event.data.type === 'FFNE_OPEN_SETTINGS'
-        // gate is the actual access check; the message type is a private
-        // contract between service worker and content script.
-        window.addEventListener('message', (event) => {
-            if (event.data?.type !== 'FFNE_OPEN_SETTINGS') return;
-            FFNLogger.log(MODULE_NAME, 'openSettings', 'Opening settings modal via postMessage.');
-            SettingsPage.openModal();
         });
     },
 

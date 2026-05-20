@@ -61,28 +61,44 @@ npm test        # vitest run -v
 
 ### 2.1 Extension Icon Click → Settings Modal Flow
 
-The extension icon click (`action.onClicked`) opens the settings modal on the active
-FFN/AO3 tab. The communication path is layered with fallbacks:
+The extension icon click (`action.onClicked`) opens the settings modal on the
+active FFN/AO3 tab. The dispatch chain in
+`src/background/service-worker.ts` → `openSettingsInTab(tabId)` is:
 
-1. **Primary:** Service worker calls `scripting.executeScript` with `func` that
-   calls `window.postMessage({ type: 'FFNE_OPEN_SETTINGS' }, origin)`. The content
-   script's `SettingsMenu.prime()` listens for this via `window.addEventListener('message')`.
-   This bypasses `chrome.tabs.sendMessage` entirely and works reliably in both
-   Chrome service workers and Firefox event pages.
+1. **Step 1 (primary):** `chrome.tabs.sendMessage(tabId, { type: OPEN_SETTINGS })`.
+   The content script's `SettingsMenu.prime()` registers a
+   `chrome.runtime.onMessage` handler that calls `SettingsPage.openModal()` and
+   acknowledges with `{ ok: true }`. This gives clean failure semantics: missing
+   listener rejects with "Receiving end does not exist", so we can detect it.
 
-2. **Fallback 1:** If (1) fails, inject `content/main.js` via `scripting.executeScript`
-   with `files`, then retry the `postMessage` dispatch.
+2. **Step 2 (inject):** If step 1 fails, inject `content/main.js` via
+   `chrome.scripting.executeScript({ files })`. This is required on Firefox MV3
+   where host_permissions are user-opt-in — manifest `content_scripts` do NOT
+   auto-execute until the user grants host access via about:addons. The
+   `activeTab` permission (granted by the toolbar click) lets the service
+   worker inject the bundle regardless of host-permission state. `main.ts` is
+   guarded by `__ffneContentBootstrapped`, so re-injection on an already-loaded
+   tab is a no-op.
 
-3. **Fallback 2:** If both above fail, use the legacy `chrome.tabs.sendMessage` with
-   `OPEN_SETTINGS` message type. This works in Chrome but may be unreliable in
-   Firefox event pages.
+3. **Step 3 (retry):** Repeat `sendMessage`. After step 2 completes, the
+   `OPEN_SETTINGS` listener is registered synchronously by `SettingsMenu.prime()`
+   (inside `EarlyBoot.prime()`), so the retry hits the listener and the modal
+   opens.
 
-4. **Tab routing:** If the active tab is not on a supported host (FFN/AO3), the
-   service worker opens `https://www.fanfiction.net/` in a new tab and waits for
-   it to load before dispatching.
+4. **Tab routing:** If the active tab is not on a supported host (FFN/AO3),
+   `openSettingsForTab` opens `https://www.fanfiction.net/` in a new tab and
+   queues `openSettingsInTab` on `tabs.onUpdated` (status `complete`).
 
-All steps happen in `src/background/service-worker.ts` → `openSettingsInTab()`.
-The content script listener is in `src/modules/SettingsMenu.ts` → `prime()`.
+Each step logs success or failure to the background console with the
+`FFN-Enhancements:` prefix so the chain is easy to grep in Firefox
+about:debugging.
+
+The dispatch flow does NOT use `window.postMessage` — that approach has a silent
+failure mode: `scripting.executeScript({ func })` returns true if the func
+*ran*, regardless of whether any `message` listener received the post. On
+Firefox MV3 without granted host_permissions, the content script never loads,
+so the listener never exists, but the executeScript call still succeeds. Using
+`sendMessage` as primary avoids the false positive.
 
 ---
 
@@ -751,14 +767,37 @@ tsconfig.json                    - Strict TypeScript config
     `patchManifest` helper in `vite.config.ts` handles the per-target split and
     is exported for unit testing in `src/__tests__/viteConfig.test.ts`.
 
-    Two related defensive practices:
-    - Register listeners against `(globalThis.browser?.action ?? chrome.action).onClicked`
-      so the binding works regardless of which namespace Firefox decides to
-      expose first during event-page wake-up.
-    - Do NOT filter inbound `window.postMessage` events by `event.source` ===
-      `window` — Firefox `scripting.executeScript({ func })` can deliver messages
-      with a null source. Gate on `event.data.type` only (the type field is a
-      private contract).
+    Register listeners against
+    `(globalThis.browser?.action ?? chrome.action).onClicked` so the binding
+    works regardless of which namespace Firefox exposes first during
+    event-page wake-up.
+
+16. **GOTCHA: `chrome.scripting.executeScript({ func })` does not confirm
+    receipt of `window.postMessage` from the injected closure.** The
+    `executeScript` promise resolves when the injected function *finishes
+    executing*, NOT when any `message` listener acknowledges the post. If the
+    content script is not loaded — for example, on Firefox MV3 where
+    host_permissions are user-opt-in and the user has not granted them —
+    `window.postMessage` posts to a window with no `'message'` listener for the
+    expected type, the executeScript still resolves successfully, and the
+    service worker falsely reports the open-settings dispatch as successful.
+
+    Use `chrome.tabs.sendMessage` for any dispatch where you need to know
+    whether the content script actually received the message. sendMessage
+    rejects with "Receiving end does not exist" when no listener is registered,
+    which is the failure signal the dispatch chain in
+    `openSettingsInTab` relies on to trigger the inject + retry fallback. See
+    Section 2.1 for the full chain.
+
+17. **GOTCHA: Firefox MV3 host_permissions are user-opt-in.** Manifest
+    `host_permissions` are NOT auto-granted on install — the user must grant
+    them via about:addons (Manage > Permissions). Without grant, declared
+    `content_scripts` do not auto-execute on those origins. The toolbar icon
+    click still grants `activeTab` (temporary access for the current click), so
+    the service worker can fall back to `chrome.scripting.executeScript` with
+    `files: ['content/main.js']` to load the content script on demand. Any
+    interaction that depends on content scripts being pre-loaded must tolerate
+    them being absent on Firefox until the user grants host access.
 
 ---
 
