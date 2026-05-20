@@ -221,6 +221,7 @@ export const SettingsManager: ISitewideModule & {
         _loadAll();
         _mirrorThemeCache(_cache.theme);
         _registerOnChangedListener();
+        void _hydrateFromPersistentStorage();
         FFNLogger.log(MODULE_NAME, 'prime', 'Settings loaded; cross-tab listener registered.');
     },
 
@@ -345,7 +346,7 @@ function _loadEnum(key: keyof FFNSettings, enumObj: Record<string, string>): voi
 
 /**
  * Registers a single chrome.storage.onChanged listener for cross-tab sync.
- * Replaces the old per-key GM_addValueChangeListener approach.
+ * Replaces the old per-key value-change listener approach.
  *
  * The local-write guard in platformStorage prevents double-firing for
  * changes made by this tab's own set() calls.
@@ -355,18 +356,39 @@ function _registerOnChangedListener(): void {
         platformStorage.onChanged((key, newRaw, _oldRaw) => {
             const parsed = _parseStoredValue(key as keyof FFNSettings, newRaw);
             if (parsed !== undefined) {
-                const old = _cache[key as keyof FFNSettings];
-                (_cache as unknown as Record<string, unknown>)[key] = parsed;
-                if (key === 'theme') {
-                    _mirrorThemeCache(parsed as Theme);
-                }
-                _notifySubscribers(key as keyof FFNSettings, parsed as FFNSettings[keyof FFNSettings], old);
+                _applyParsedSetting(key as keyof FFNSettings, parsed);
             }
         });
     } catch {
         FFNLogger.log(MODULE_NAME, '_registerOnChangedListener',
             'chrome.storage.onChanged unavailable. Cross-tab sync disabled.');
     }
+}
+
+async function _hydrateFromPersistentStorage(): Promise<void> {
+    try {
+        const hydrated = await platformStorage.hydrateFromPersistentStorage();
+        for (const [key, raw] of Object.entries(hydrated)) {
+            const parsed = _parseStoredValue(key as keyof FFNSettings, raw);
+            if (parsed !== undefined) {
+                _applyParsedSetting(key as keyof FFNSettings, parsed);
+            }
+        }
+    } catch {
+        FFNLogger.log(MODULE_NAME, '_hydrateFromPersistentStorage',
+            'chrome.storage.local hydration unavailable. Using local mirror only.');
+    }
+}
+
+function _applyParsedSetting<K extends keyof FFNSettings>(key: K, value: FFNSettings[K]): void {
+    const old = _cache[key];
+    if (old === value) return;
+
+    _cache[key] = value;
+    if (key === 'theme') {
+        _mirrorThemeCache(value as Theme);
+    }
+    _notifySubscribers(key, value, old);
 }
 
 /**

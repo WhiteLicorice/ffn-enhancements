@@ -53,7 +53,7 @@ let _unsubscribers: (() => void)[] = [];
 /**
  * SettingsPage
  * Renders the settings UI as a modal overlay on the current page.
- * Opened by SettingsMenu when the user clicks the Tampermonkey menu command.
+ * Opened by SettingsMenu when the user clicks the extension action.
  *
  * Because the modal runs in the same script context as all other modules,
  * it has direct access to GM storage via SettingsManager — no cross-tab
@@ -63,7 +63,7 @@ let _unsubscribers: (() => void)[] = [];
  * indicator ("✓") provides visual feedback per row.
  *
  * **Cross-tab sync:** `SettingsManager.subscribe()` fires via
- * `GM_addValueChangeListener` when another open FFN tab changes a value. The
+ * `chrome.storage.onChanged` when another open FFN tab changes a value. The
  * UI controls update reactively. Subscriptions are cleaned up on `closeModal()`
  * to prevent accumulation across multiple open/close cycles.
  *

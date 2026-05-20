@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 function copyDirRecursive(src: string, dest: string): void {
@@ -17,10 +17,29 @@ function copyDirRecursive(src: string, dest: string): void {
 }
 
 function patchManifest(manifestPath: string): void {
-    // Read and patch manifest version/name from env vars.
-    // For now, manifest.json is the source of truth; version bumps are manual.
-    // This hook is reserved for CI-driven version injection.
-    void manifestPath;
+    const requestedVersion = process.env.FFNE_VERSION;
+    if (!requestedVersion) return;
+
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+        version?: string;
+        version_name?: string;
+    };
+
+    manifest.version = toManifestVersion(requestedVersion);
+    manifest.version_name = requestedVersion;
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function toManifestVersion(version: string): string {
+    const core = version.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (!core) return '0.0.0';
+
+    const betaBuild = version.match(/beta\.(\d+)/);
+    if (!betaBuild) return `${core[1]}.${core[2]}.${core[3]}`;
+
+    const build = Number(betaBuild[1]);
+    const safeBuild = Number.isFinite(build) ? Math.max(0, Math.min(build, 65535)) : 0;
+    return `${core[1]}.${core[2]}.${core[3]}.${safeBuild}`;
 }
 
 export default defineConfig({

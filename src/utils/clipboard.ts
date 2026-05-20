@@ -63,9 +63,8 @@ function copyHtmlFallback(html: string): boolean {
  * Writes content to the system clipboard.
  *
  * Fallback chain (HTML):
- * 1. GM_setClipboard (Tampermonkey native — most reliable in userscript context)
- * 2. ClipboardItem API (modern browsers, writes both text/html + text/plain)
- * 3. contentEditable div + execCommand('copy') (legacy fallback)
+ * 1. ClipboardItem API (modern browsers, writes both text/html + text/plain)
+ * 2. contentEditable div + execCommand('copy') (legacy fallback)
  *
  * Fallback chain (plain text):
  * 1. navigator.clipboard.writeText()

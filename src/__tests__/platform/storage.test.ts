@@ -76,6 +76,23 @@ describe('platformStorage', () => {
         });
     });
 
+    describe('hydrateFromPersistentStorage', () => {
+        it('mirrors chrome.storage.local values into localStorage', async () => {
+            await mockChromeStorage.set({
+                ffne_theme: 'dark',
+                ffne_fluidMode: false,
+                unrelated_key: 'ignored',
+            });
+
+            const hydrated = await platformStorage.hydrateFromPersistentStorage();
+
+            expect(hydrated).toEqual({ theme: 'dark', fluidMode: false });
+            expect(localStorage.getItem('ffne_theme')).toBe('dark');
+            expect(localStorage.getItem('ffne_fluidMode')).toBe('false');
+            expect(localStorage.getItem('unrelated_key')).toBeNull();
+        });
+    });
+
     describe('onChanged', () => {
         it('fires callback for remote storage changes', async () => {
             const calls: Array<{ key: string; newVal: unknown; oldVal: unknown }> = [];

@@ -85,7 +85,7 @@ export async function backgroundFetch(options: FetchRequestOptions): Promise<Fet
 }
 
 /**
- * Sends a message from the service worker (or popup) to the active tab's content script.
+ * Sends a message from an extension page to the active tab's content script.
  * Used to trigger actions like opening the settings modal.
  */
 export async function sendToActiveTab(message: unknown): Promise<void> {
@@ -101,7 +101,7 @@ export async function sendToActiveTab(message: unknown): Promise<void> {
 }
 
 /**
- * Registers a listener for messages from the service worker or popup.
+ * Registers a listener for messages from the service worker.
  * Returns an unsubscribe function for cleanup.
  *
  * Use this in content scripts to handle incoming messages:

@@ -1789,7 +1789,7 @@ export const DocManager = {
     /**
      * Handles the export of a single document given a DocID.
      * The output format (Markdown or HTML) is read from SettingsManager at call time,
-     * so changes made via the Tampermonkey menu take effect on the next export.
+     * so settings changes take effect on the next export.
      * @param btnElement - The button clicked (for UI feedback).
      * @param docId - The FFN Document ID.
      * @param title - The title of the document.

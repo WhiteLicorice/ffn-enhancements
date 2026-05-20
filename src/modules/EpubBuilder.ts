@@ -92,7 +92,7 @@ export const EpubBuilder = {
 
         // 9. Generate Blob and Download
         // type: "arraybuffer" + manual Blob construction: JSZip ≥3.2.0
-        // bundled by Vite deadlocks on type: "blob" in the userscript sandbox.
+        // bundled by Vite has historically deadlocked on type: "blob" in browser-like runtimes.
         // All JSZip tests use arraybuffer + new Blob() successfully.
         // Level 1 is ~5x faster than the default (6) while keeping ~80 % of
         // the compression ratio.  Large multi-chapter stories complete in

@@ -21,7 +21,7 @@ export interface FetchTextResponse {
 
 /**
  * Performs a cross-origin fetch via the service worker.
- * Replaces `GM_xmlhttpRequest` from the old userscript version.
+ * Replaces the old cross-origin request helper with the service-worker fetch proxy.
  */
 export async function fetchRequestText(options: FetchRequestOptions): Promise<FetchTextResponse> {
     const response: FetchResponse = await backgroundFetch({

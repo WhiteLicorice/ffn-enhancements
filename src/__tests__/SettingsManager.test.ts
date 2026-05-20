@@ -202,4 +202,15 @@ describe('SettingsManager prime', () => {
 
         expect(SettingsManager.get('theme')).toBe(Theme.DARK);
     });
+
+    it('hydrates cache from chrome.storage.local when the local mirror is empty', async () => {
+        await mockChromeStorage.set({ ffne_theme: Theme.SEPIA });
+
+        SettingsManager.prime();
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(SettingsManager.get('theme')).toBe(Theme.SEPIA);
+        expect(localStorage.getItem('ffne_theme')).toBe(Theme.SEPIA);
+        expect(localStorage.getItem('ffne_theme_cache')).toBe(Theme.SEPIA);
+    });
 });

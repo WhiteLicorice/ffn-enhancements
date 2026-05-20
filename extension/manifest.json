@@ -16,7 +16,11 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://www.fanfiction.net/*", "*://archiveofourown.org/*"],
+      "matches": [
+        "*://www.fanfiction.net/*",
+        "*://fanfiction.net/*",
+        "*://archiveofourown.org/*"
+      ],
       "css": [
         "styles/theme-tokens-light.css",
         "styles/theme-tokens-dark.css",
@@ -30,14 +34,18 @@
       "all_frames": false
     },
     {
-      "matches": ["*://www.fanfiction.net/*", "*://archiveofourown.org/*"],
+      "matches": [
+        "*://www.fanfiction.net/*",
+        "*://fanfiction.net/*",
+        "*://archiveofourown.org/*"
+      ],
       "js": ["content/main.js"],
       "run_at": "document_start",
       "all_frames": false
     }
   ],
   "action": {
-    "default_title": "FFN Enhancements — Click to open Settings"
+    "default_title": "FFN Enhancements - Click to open Settings"
   },
   "icons": {
     "16": "icons/icon-16.png",

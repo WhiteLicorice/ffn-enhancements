@@ -9,11 +9,11 @@ const MODULE_NAME = 'SettingsMenu';
 
 /**
  * SettingsMenu
- * Registers a message listener for the extension popup to open the settings modal.
+ * Registers a message listener for the extension action to open the settings modal.
  *
  * **Execution model:**
  * - Phase 1 (`prime`): Registers `chrome.runtime.onMessage` listener for
- *   `OPEN_SETTINGS` messages from the extension popup or service worker.
+ *   `OPEN_SETTINGS` messages from the service worker.
  * - Phase 2 (`init`): No-op.
  *
  * **Adding a new setting to the settings page:**

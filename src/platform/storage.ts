@@ -33,6 +33,7 @@ export interface PlatformStorage {
     get(key: string): string | number | boolean | null;
     set(key: string, value: string | number | boolean): Promise<void>;
     remove(key: string): Promise<void>;
+    hydrateFromPersistentStorage(): Promise<Record<string, string | number | boolean>>;
     onChanged(callback: (key: string, newValue: unknown, oldValue: unknown) => void): () => void;
     _resetForTesting(): void;
 }
@@ -96,6 +97,26 @@ export const platformStorage: PlatformStorage = {
         }
         _pendingLocalWrites.set(fk, Date.now());
         await chrome.storage.local.remove(fk);
+    },
+
+    async hydrateFromPersistentStorage(): Promise<Record<string, string | number | boolean>> {
+        const stored = await chrome.storage.local.get(null);
+        const hydrated: Record<string, string | number | boolean> = {};
+
+        for (const [key, value] of Object.entries(stored)) {
+            if (!key.startsWith(STORAGE_PREFIX)) continue;
+            if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') continue;
+
+            try {
+                localStorage.setItem(key, serializeForLocal(value));
+            } catch {
+                // localStorage unavailable — non-fatal.
+            }
+
+            hydrated[key.slice(STORAGE_PREFIX.length)] = value;
+        }
+
+        return hydrated;
     },
 
     /** Clears pending write guard state. Exported for test isolation only. */

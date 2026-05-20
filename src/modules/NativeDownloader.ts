@@ -61,8 +61,8 @@ export const NativeDownloader: IFanficDownloader = {
 /**
  * Fetches and parses a single chapter.
  * Uses the Core Delegate to identify the content container within the fetched HTML.
- * Uses GM_xmlhttpRequest because FFN sometimes rejects browser fetch() chapter
- * requests with 403 while page-like extension requests still succeed.
+ * Uses the service-worker fetch proxy because FFN sometimes rejects plain
+ * page fetch() chapter requests with 403 while extension requests still succeed.
  */
 export async function _fetchChapter(
     storyId: string,

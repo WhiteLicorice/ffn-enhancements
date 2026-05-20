@@ -3,8 +3,7 @@
 import { MessageType } from '../background/message-types';
 
 /**
- * Opens a new tab. In a content script context, delegates to the service worker
- * via messaging. In service worker / popup contexts, uses chrome.tabs directly.
+ * Opens a new tab. Content scripts delegate to the service worker via messaging.
  */
 export async function openTab(url: string, active: boolean = true): Promise<void> {
     try {
@@ -14,7 +13,7 @@ export async function openTab(url: string, active: boolean = true): Promise<void
             active,
         });
     } catch {
-        // Fallback: try direct window.open (may be blocked by popup blockers).
+        // Fallback: try direct window.open (may be blocked by the browser).
         window.open(url, '_blank');
     }
 }

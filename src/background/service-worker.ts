@@ -4,17 +4,14 @@
 import { MessageType } from './message-types';
 import type { BackgroundMessage, CrossOriginFetchMessage, CrossOriginFetchResponse } from './message-types';
 
+const FFN_HOME_URL = 'https://www.fanfiction.net/';
+const OPEN_SETTINGS_TIMEOUT_MS = 30_000;
+
 console.log('FFN Enhancements service worker loaded.');
 
 // Clicking the extension icon opens the Settings modal on the active tab.
 chrome.action.onClicked.addListener(async (tab) => {
-    try {
-        await chrome.tabs.sendMessage(tab.id!, { type: MessageType.OPEN_SETTINGS });
-    } catch {
-        // Tab does not have the content script injected (not an FFN/AO3 page).
-        // Open FFN in a new tab instead.
-        chrome.tabs.create({ url: 'https://www.fanfiction.net/' });
-    }
+    await openSettingsForTab(tab);
 });
 
 chrome.runtime.onMessage.addListener(
@@ -31,11 +28,7 @@ chrome.runtime.onMessage.addListener(
 
             case MessageType.OPEN_SETTINGS:
                 // Forward to the active tab's content script.
-                queryActiveTab().then(tab => {
-                    if (tab?.id) {
-                        chrome.tabs.sendMessage(tab.id, { type: MessageType.OPEN_SETTINGS });
-                    }
-                });
+                openSettingsForActiveTab();
                 sendResponse({ ok: true });
                 return false;
 
@@ -58,6 +51,7 @@ async function handleCrossOriginFetch(
             method: msg.method,
             headers: msg.headers,
             body: msg.body,
+            credentials: 'include',
             signal: controller.signal,
         });
 
@@ -92,4 +86,50 @@ async function handleCrossOriginFetch(
 async function queryActiveTab(): Promise<chrome.tabs.Tab | undefined> {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     return tabs[0];
+}
+
+async function openSettingsForActiveTab(): Promise<void> {
+    const tab = await queryActiveTab();
+    await openSettingsForTab(tab);
+}
+
+async function openSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<void> {
+    if (tab?.id !== undefined && await sendOpenSettings(tab.id)) {
+        return;
+    }
+
+    const createdTab = await chrome.tabs.create({ url: FFN_HOME_URL, active: true });
+    if (createdTab.id !== undefined) {
+        queueOpenSettingsWhenTabLoads(createdTab.id);
+    }
+}
+
+async function sendOpenSettings(tabId: number): Promise<boolean> {
+    try {
+        await chrome.tabs.sendMessage(tabId, { type: MessageType.OPEN_SETTINGS });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function queueOpenSettingsWhenTabLoads(tabId: number): void {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = () => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        if (timeoutId !== null) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+    };
+
+    const listener = (updatedTabId: number, changeInfo: { status?: string }) => {
+        if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
+        cleanup();
+        void sendOpenSettings(tabId);
+    };
+
+    chrome.tabs.onUpdated.addListener(listener);
+    timeoutId = setTimeout(cleanup, OPEN_SETTINGS_TIMEOUT_MS);
 }
