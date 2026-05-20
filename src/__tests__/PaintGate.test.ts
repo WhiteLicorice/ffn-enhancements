@@ -66,6 +66,19 @@ describe('PaintGate', () => {
         expect(document.documentElement.style.backgroundColor).toBe('red');
     });
 
+    it('release clears inline background when prelude pre-set it to black', () => {
+        // Simulates production order: the vite.config.ts @require prelude sets
+        // root background to '#000' before PaintGate.prime() runs. Release must
+        // not "restore" that black value as if it were a user-set background.
+        resetDom();
+        document.documentElement.style.backgroundColor = '#000';
+
+        PaintGate.prime();
+        PaintGate.release();
+
+        expect(document.documentElement.style.backgroundColor).toBe('');
+    });
+
     it('does not overwrite an inline root background changed while gated', () => {
         resetDom();
 

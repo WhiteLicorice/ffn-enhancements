@@ -70,7 +70,12 @@ export const PaintGate: ISitewideModule & {
         _ensureOverlay();
 
         if (!_isPrimed) {
-            _previousRootBackground = document.documentElement.style.backgroundColor;
+            // The vite.config.ts @require prelude runs before this module loads
+            // and sets the root background to BLACK. Treat that as "no prior
+            // state" so release() doesn't leave inline background-color:#000
+            // debris on <html> after the gate is gone.
+            const existing = document.documentElement.style.backgroundColor;
+            _previousRootBackground = (existing === BLACK || existing === 'rgb(0, 0, 0)') ? '' : existing;
         }
 
         document.documentElement.classList.add(ROOT_CLASS);
