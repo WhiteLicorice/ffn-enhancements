@@ -1,5 +1,45 @@
+import { transformSync } from 'esbuild';
 import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
+import { buildCriticalThemeCss } from './src/build/criticalThemeCss';
+import { installCriticalThemePrelude } from './src/prelude/themePrelude';
+
+export const CRITICAL_THEME_DECODED_SIZE_BUDGET = 15_000;
+export const CRITICAL_THEME_METADATA_LINE_BUDGET = 25_000;
+
+const CRITICAL_THEME_REQUIRE_PREFIX = 'data:application/javascript,';
+const CRITICAL_THEME_PRELUDE_CONFIG = {
+  styleId: 'ffne-theme-critical',
+  storageKey: 'ffne_theme',
+  cacheKey: 'ffne_theme_cache',
+  preludeAttribute: 'data-ffne-prelude',
+  validThemes: ['system', 'light', 'dark', 'sepia', 'high-contrast'],
+} as const;
+
+export function makeCriticalThemeRequire(): string {
+  const preludeIife = transformSync(
+    `(${installCriticalThemePrelude.toString()})(${JSON.stringify(buildCriticalThemeCss())},${JSON.stringify(CRITICAL_THEME_PRELUDE_CONFIG)});`,
+    {
+      loader: 'js',
+      minify: true,
+      legalComments: 'none',
+      target: 'es2020',
+    },
+  ).code.trim();
+
+  const decodedBytes = Buffer.byteLength(preludeIife, 'utf8');
+  if (decodedBytes >= CRITICAL_THEME_DECODED_SIZE_BUDGET) {
+    throw new Error(`Critical theme prelude decoded payload exceeds ${CRITICAL_THEME_DECODED_SIZE_BUDGET} bytes: ${decodedBytes}`);
+  }
+
+  const requireValue = `${CRITICAL_THEME_REQUIRE_PREFIX}${encodeURIComponent(preludeIife)}`;
+  const metadataLineLength = `// @require      ${requireValue}`.length;
+  if (metadataLineLength >= CRITICAL_THEME_METADATA_LINE_BUDGET) {
+    throw new Error(`Critical theme prelude metadata line exceeds ${CRITICAL_THEME_METADATA_LINE_BUDGET} characters: ${metadataLineLength}`);
+  }
+
+  return requireValue;
+}
 
 export default defineConfig({
   plugins: [
@@ -25,6 +65,7 @@ export default defineConfig({
           'GM_openInTab',
           'GM_setClipboard',
         ],
+        require: [makeCriticalThemeRequire()],
         license: 'GPL-3.0-or-later',
         updateURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',
         downloadURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',
