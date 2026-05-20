@@ -12,8 +12,13 @@ const Theme = {
 } as const;
 const VALID_THEMES: readonly string[] = Object.values(Theme);
 const THEME_CLASS_PREFIX = 'ffne-theme-';
+const PRELUDE_FLAG = '__ffnePreludeBootstrapped';
+const preludeGlobal = globalThis as typeof globalThis & Record<string, boolean | undefined>;
 
 (function applyThemePrelude(): void {
+    if (preludeGlobal[PRELUDE_FLAG]) return;
+    preludeGlobal[PRELUDE_FLAG] = true;
+
     try {
         const FFN_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
         if (!FFN_HOSTS.has(location.hostname)) return;

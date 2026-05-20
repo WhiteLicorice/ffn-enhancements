@@ -1,20 +1,46 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+    CONTENT_SCRIPT_CSS_FILES,
+    CONTENT_SCRIPT_JS_FILES,
+    CONTENT_SCRIPT_TAB_PATTERNS,
+    REQUESTED_HOST_PATTERNS,
+} from '../background/contentScriptManifest';
 import { MessageType } from '../background/message-types';
-import { mockChromeAction, mockChromeTabs } from './__mocks__/chrome';
+import {
+    mockChromeAction,
+    mockChromePermissions,
+    mockChromeRuntimeOnInstalled,
+    mockChromeScripting,
+    mockChromeTabs,
+} from './__mocks__/chrome';
 
-function expectFilesCall(tabId: number) {
-    return { target: { tabId }, files: ['content/main.js'] };
+function expectCssCall(tabId: number) {
+    return { target: { tabId }, files: [...CONTENT_SCRIPT_CSS_FILES] };
+}
+
+function expectFilesCall(tabId: number, file: string) {
+    return { target: { tabId }, files: [file] };
 }
 
 function expectSendMessageCall(tabId: number) {
     return { tabId, message: { type: MessageType.OPEN_SETTINGS } };
 }
 
+async function flushAsyncWork(iterations = 5): Promise<void> {
+    for (let i = 0; i < iterations; i += 1) {
+        await Promise.resolve();
+    }
+}
+
 describe('service worker action click', () => {
     beforeEach(async () => {
         vi.resetModules();
         mockChromeAction._reset();
+        mockChromePermissions._reset();
+        mockChromeRuntimeOnInstalled._reset();
+        mockChromeScripting._reset();
         mockChromeTabs._reset();
+        mockChromePermissions.grant([...REQUESTED_HOST_PATTERNS]);
         await import('../background/service-worker');
     });
 
@@ -59,18 +85,49 @@ describe('service worker action click', () => {
         expect(mockChromeTabs.state.sendMessageCalls).toEqual([
             expectSendMessageCall(7),
         ]);
+        expect(mockChromePermissions.state.requestCalls).toHaveLength(0);
+        expect(mockChromeScripting.insertCSSCalls).toHaveLength(0);
         expect(mockChromeTabs.state.executeScriptCalls).toHaveLength(0);
         expect(mockChromeTabs.state.createCalls).toHaveLength(0);
     });
 
-    it('injects content script then retries sendMessage when first sendMessage fails', async () => {
+    it('requests host permissions on action click when missing', async () => {
+        mockChromePermissions.state.grantedOrigins.clear();
+
+        await mockChromeAction.click({ id: 7, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab);
+
+        expect(mockChromePermissions.state.requestCalls).toEqual([
+            { origins: [...REQUESTED_HOST_PATTERNS] },
+        ]);
+    });
+
+    it('skips permission request when already granted', async () => {
+        await mockChromeAction.click({ id: 7, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab);
+
+        expect(mockChromePermissions.state.requestCalls).toHaveLength(0);
+    });
+
+    it('falls back to activeTab inject when user denies host permissions', async () => {
+        mockChromePermissions.state.grantedOrigins.clear();
+        mockChromePermissions.state.requestResult = false;
         // Pre-arm: reject sendMessage calls for tab 7 (no content script loaded).
-        // The mock removes the reject entry on successful executeScript, so the
-        // retry sendMessage after injection succeeds. This mirrors real Firefox
-        // MV3 host-permission-not-granted: manifest content_scripts do not run,
-        // sendMessage fails with "Receiving end does not exist",
-        // scripting.executeScript via activeTab loads main.js, sendMessage retry
-        // hits the now-registered OPEN_SETTINGS listener.
+        mockChromeTabs.state.sendMessageRejectTabIds.add(7);
+
+        await mockChromeAction.click({ id: 7, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab);
+
+        expect(mockChromePermissions.state.requestCalls).toEqual([
+            { origins: [...REQUESTED_HOST_PATTERNS] },
+        ]);
+        expect(mockChromeScripting.insertCSSCalls).toEqual([
+            expectCssCall(7),
+        ]);
+        expect(mockChromeTabs.state.executeScriptCalls).toEqual([
+            expectFilesCall(7, CONTENT_SCRIPT_JS_FILES[0]),
+            expectFilesCall(7, CONTENT_SCRIPT_JS_FILES[1]),
+        ]);
+    });
+
+    it('injects full content scripts then retries sendMessage when first sendMessage fails', async () => {
         mockChromeTabs.state.sendMessageRejectTabIds.add(7);
 
         await mockChromeAction.click({ id: 7, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab);
@@ -79,8 +136,12 @@ describe('service worker action click', () => {
             expectSendMessageCall(7), // step 1: primary, rejected
             expectSendMessageCall(7), // step 3: retry after inject, succeeds
         ]);
+        expect(mockChromeScripting.insertCSSCalls).toEqual([
+            expectCssCall(7),
+        ]);
         expect(mockChromeTabs.state.executeScriptCalls).toEqual([
-            expectFilesCall(7), // step 2: inject content/main.js via activeTab
+            expectFilesCall(7, CONTENT_SCRIPT_JS_FILES[0]),
+            expectFilesCall(7, CONTENT_SCRIPT_JS_FILES[1]),
         ]);
         expect(mockChromeTabs.state.createCalls).toHaveLength(0);
     });
@@ -97,10 +158,68 @@ describe('service worker action click', () => {
         expect(mockChromeTabs.state.sendMessageCalls).toEqual([
             expectSendMessageCall(7),
         ]);
+        expect(mockChromeScripting.insertCSSCalls).toEqual([
+            expectCssCall(7),
+        ]);
         expect(mockChromeTabs.state.executeScriptCalls).toEqual([
-            expectFilesCall(7),
+            expectFilesCall(7, CONTENT_SCRIPT_JS_FILES[0]),
         ]);
         expect(mockChromeTabs.state.createCalls).toHaveLength(0);
+    });
+
+    it('onPermissionsAdded injects into all matching tabs', async () => {
+        mockChromeTabs.state.queryResponseTabs = [
+            { id: 11, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab,
+            { id: 12, url: 'https://fanfiction.net/s/1/1/' } as chrome.tabs.Tab,
+            { id: 13, url: 'https://archiveofourown.org/works/1' } as chrome.tabs.Tab,
+        ];
+
+        mockChromePermissions.revoke([...REQUESTED_HOST_PATTERNS]);
+        mockChromePermissions.grant([...REQUESTED_HOST_PATTERNS]);
+        await flushAsyncWork();
+
+        expect(mockChromeTabs.state.queryCalls).toContainEqual({ url: [...CONTENT_SCRIPT_TAB_PATTERNS] });
+        expect(mockChromeScripting.insertCSSCalls).toHaveLength(3);
+        expect(mockChromeTabs.state.executeScriptCalls).toHaveLength(6);
+        expect(mockChromeTabs.state.executeScriptCalls).toEqual([
+            expectFilesCall(11, CONTENT_SCRIPT_JS_FILES[0]),
+            expectFilesCall(12, CONTENT_SCRIPT_JS_FILES[0]),
+            expectFilesCall(13, CONTENT_SCRIPT_JS_FILES[0]),
+            expectFilesCall(11, CONTENT_SCRIPT_JS_FILES[1]),
+            expectFilesCall(12, CONTENT_SCRIPT_JS_FILES[1]),
+            expectFilesCall(13, CONTENT_SCRIPT_JS_FILES[1]),
+        ]);
+    });
+
+    it('runtime.onInstalled triggers probe without throwing', async () => {
+        mockChromePermissions.state.grantedOrigins.clear();
+        mockChromePermissions.state.requestResult = false;
+
+        expect(() => {
+            mockChromeRuntimeOnInstalled.fire({ reason: 'install' } as chrome.runtime.InstalledDetails);
+        }).not.toThrow();
+        await flushAsyncWork();
+
+        expect(mockChromePermissions.state.requestCalls).toEqual([
+            { origins: [...REQUESTED_HOST_PATTERNS] },
+        ]);
+    });
+
+    it('onPermissionsRemoved logs warning without throwing', async () => {
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        try {
+            expect(() => {
+                mockChromePermissions.revoke([...REQUESTED_HOST_PATTERNS]);
+            }).not.toThrow();
+
+            expect(warnSpy).toHaveBeenCalledWith(
+                'FFN-Enhancements: host permissions revoked. Features unavailable on new tab loads until re-granted.',
+                [...REQUESTED_HOST_PATTERNS],
+            );
+        } finally {
+            warnSpy.mockRestore();
+        }
     });
 
     it('opens FFN and dispatches via sendMessage when the current tab is unsupported', async () => {
