@@ -10,6 +10,7 @@
 // 3. Consistent behavior across Chrome and Firefox.
 
 import type { CrossOriginFetchMessage, CrossOriginFetchResponse } from '../background/message-types';
+import { runtimeSendMessage, tabsQuery, tabsSendMessage } from './chromeApi';
 
 export interface FetchRequestOptions {
     url: string;
@@ -49,7 +50,7 @@ export async function backgroundFetch(options: FetchRequestOptions): Promise<Fet
     };
 
     try {
-        const response: CrossOriginFetchResponse = await chrome.runtime.sendMessage(message);
+        const response = await runtimeSendMessage<CrossOriginFetchResponse>(message);
 
         if (options.responseType === 'blob' && Array.isArray(response.data)) {
             const bytes = new Uint8Array(response.data);
@@ -89,10 +90,10 @@ export async function backgroundFetch(options: FetchRequestOptions): Promise<Fet
  */
 export async function sendToActiveTab(message: unknown): Promise<void> {
     try {
-        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabs = await tabsQuery({ active: true, currentWindow: true });
         const tabId = tabs[0]?.id;
         if (tabId !== undefined) {
-            await chrome.tabs.sendMessage(tabId, message);
+            await tabsSendMessage(tabId, message);
         }
     } catch {
         // Tab may not be ready to receive messages (e.g., no content script loaded).

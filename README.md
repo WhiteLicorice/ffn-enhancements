@@ -8,8 +8,10 @@ A suite of modern enhancements to FFN's old-school interface, for readers and wr
 
 | Channel | Install Link | Updates |
 |---|---|---|
-| **Stable** | [ffn-enhancements.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.zip) | Manual trigger, tested |
-| **Beta** | [ffn-enhancements-beta.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements-beta.zip) | Every push to `main`, bleeding-edge |
+| **Stable Chrome/Edge** | [ffn-enhancements-chrome.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements-chrome.zip) | Manual trigger, tested |
+| **Stable Firefox** | [ffn-enhancements-firefox.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements-firefox.zip) | Manual trigger, tested |
+| **Beta Chrome/Edge** | [ffn-enhancements-chrome-beta.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements-chrome-beta.zip) | Every push to `main`, bleeding-edge |
+| **Beta Firefox** | [ffn-enhancements-firefox-beta.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements-firefox-beta.zip) | Every push to `main`, bleeding-edge |
 
 FFN Enhancements is now distributed as a native browser extension. Stable is cut manually and gets extra testing; beta is built straight from `main` on every push.
 
@@ -137,14 +139,16 @@ Open **FFN Enhancements Settings** by clicking the extension icon on any FFN pag
 
 ### Chrome / Edge / Brave
 
-1. Download `ffn-enhancements.zip` from the latest release.
+1. Download `ffn-enhancements-chrome.zip` from the latest release.
 2. Extract the ZIP somewhere permanent.
 3. Open `chrome://extensions`, enable **Developer mode**, and choose **Load unpacked**.
 4. Select the extracted extension folder.
 
 ### Firefox
 
-1. Download `ffn-enhancements.zip` from the latest release.
+Requires Firefox 140 or newer.
+
+1. Download `ffn-enhancements-firefox.zip` from the latest release.
 2. Open `about:debugging#/runtime/this-firefox`.
 3. Choose **Load Temporary Add-on**.
 4. Select `manifest.json` from the extracted extension folder.
@@ -179,7 +183,7 @@ Tested on Edge and Firefox. Also runs on archiveofourown.org only for the AO3 mi
 
 ## Development
 
-TypeScript and Vite build the MV3 extension into `dist/`. Tests use [Vitest](https://vitest.dev/) with a `jsdom` environment.
+TypeScript and Vite build the MV3 extension into target-specific output folders. Tests use [Vitest](https://vitest.dev/) with a `jsdom` environment.
 
 ### Setup
 
@@ -192,12 +196,13 @@ npm install
 ### Build
 
 ```bash
-npm run build    # tsc type-check + vite bundle -> dist/
+npm run build:chrome
+npm run build:firefox
 npm run dev      # rebuild extension files in watch mode
-npm run package  # build and zip the extension
+npm run package  # build and zip both browser targets
 ```
 
-CI sets `FFNE_VERSION` and `FFNE_BETA` to produce release ZIPs with the right manifest version metadata.
+Chrome/Edge builds emit `dist-chrome/` with `background.service_worker`. Firefox builds emit `dist-firefox/` with `background.scripts`, because Firefox MV3 does not currently install service-worker backgrounds. CI sets `FFNE_VERSION` and `FFNE_BETA` to produce release ZIPs with the right manifest version metadata.
 
 ### Testing
 
@@ -241,8 +246,8 @@ Test files under `src/__tests__/`, matching `**/*.test.ts`:
 
 | Workflow | Trigger | Output |
 |---|---|---|
-| `beta-release.yml` | Push to `main` | `ffn-enhancements-beta.zip` attached to [beta release](https://github.com/WhiteLicorice/ffn-enhancements/releases/tag/beta) |
-| `stable-release.yml` | Manual (`workflow_dispatch`) | `ffn-enhancements.zip` attached to new versioned release |
+| `beta-release.yml` | Push to `main` | Chrome/Edge and Firefox beta ZIPs attached to [beta release](https://github.com/WhiteLicorice/ffn-enhancements/releases/tag/beta) |
+| `stable-release.yml` | Manual (`workflow_dispatch`) | Chrome/Edge and Firefox ZIPs attached to new versioned release |
 
 Both workflows auto-generate categorized patch notes from conventional commit messages.
 

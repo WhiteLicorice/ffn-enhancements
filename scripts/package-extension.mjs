@@ -4,10 +4,16 @@ import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const DIST_DIR = join(ROOT, 'dist');
+const TARGET = process.env.FFNE_TARGET === 'firefox' ? 'firefox' : 'chrome';
+const DIST_DIR = join(ROOT, `dist-${TARGET}`);
 const PACKAGE_NAME = process.env.FFNE_PACKAGE_NAME
-    || (process.env.FFNE_BETA === 'true' ? 'ffn-enhancements-beta.zip' : 'ffn-enhancements.zip');
+    || defaultPackageName();
 const OUTPUT_PATH = join(ROOT, PACKAGE_NAME);
+
+function defaultPackageName() {
+    const betaSuffix = process.env.FFNE_BETA === 'true' ? '-beta' : '';
+    return `ffn-enhancements-${TARGET}${betaSuffix}.zip`;
+}
 
 async function main() {
     const zip = new JSZip();

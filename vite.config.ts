@@ -17,17 +17,37 @@ function copyDirRecursive(src: string, dest: string): void {
 }
 
 function patchManifest(manifestPath: string): void {
+    const target = getBuildTarget();
     const requestedVersion = process.env.FFNE_VERSION;
-    if (!requestedVersion) return;
 
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
         version?: string;
         version_name?: string;
+        background?: Record<string, unknown>;
+        browser_specific_settings?: Record<string, unknown>;
     };
 
-    manifest.version = toManifestVersion(requestedVersion);
-    manifest.version_name = requestedVersion;
+    if (requestedVersion) {
+        manifest.version = toManifestVersion(requestedVersion);
+        manifest.version_name = requestedVersion;
+    }
+
+    if (target === 'firefox') {
+        // Firefox MV3 does not support background.service_worker yet.
+        // Use the same built file as a non-persistent background script.
+        manifest.background = {
+            scripts: ['background/service-worker.js'],
+            type: 'module',
+        };
+    } else {
+        delete manifest.browser_specific_settings;
+    }
+
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function getBuildTarget(): 'chrome' | 'firefox' {
+    return process.env.FFNE_TARGET === 'firefox' ? 'firefox' : 'chrome';
 }
 
 function toManifestVersion(version: string): string {
@@ -47,8 +67,8 @@ export default defineConfig({
         {
             name: 'copy-extension-assets',
             writeBundle() {
+                const distDir = resolve(__dirname, getBuildTarget() === 'firefox' ? 'dist-firefox' : 'dist-chrome');
                 const extensionDir = resolve(__dirname, 'extension');
-                const distDir = resolve(__dirname, 'dist');
                 copyDirRecursive(extensionDir, distDir);
                 patchManifest(join(distDir, 'manifest.json'));
             },
@@ -67,7 +87,7 @@ export default defineConfig({
                 assetFileNames: 'assets/[name]-[hash].[ext]',
             },
         },
-        outDir: 'dist',
+        outDir: getBuildTarget() === 'firefox' ? 'dist-firefox' : 'dist-chrome',
         emptyOutDir: true,
         minify: 'esbuild',
         cssMinify: true,

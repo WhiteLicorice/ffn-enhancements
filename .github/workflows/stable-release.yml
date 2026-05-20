@@ -83,7 +83,8 @@ jobs:
 
             echo ""
             echo "---"
-            echo "*Install: [ffn-enhancements.zip](https://github.com/${{ github.repository }}/releases/latest/download/ffn-enhancements.zip)*"
+            echo "*Install Chrome/Edge: [ffn-enhancements-chrome.zip](https://github.com/${{ github.repository }}/releases/latest/download/ffn-enhancements-chrome.zip)*"
+            echo "*Install Firefox: [ffn-enhancements-firefox.zip](https://github.com/${{ github.repository }}/releases/latest/download/ffn-enhancements-firefox.zip)*"
             echo CHANGELOG_EOF
           } >> $GITHUB_OUTPUT
 
@@ -99,4 +100,6 @@ jobs:
           name: v${{ inputs.version }}
           body: ${{ steps.changelog.outputs.content }}
           prerelease: ${{ inputs.prerelease }}
-          files: ffn-enhancements.zip
+          files: |
+            ffn-enhancements-chrome.zip
+            ffn-enhancements-firefox.zip

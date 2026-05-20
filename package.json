@@ -6,8 +6,13 @@
   "scripts": {
     "dev": "vite build --watch",
     "build": "tsc && vite build",
+    "build:chrome": "node scripts/build-target.mjs chrome",
+    "build:firefox": "node scripts/build-target.mjs firefox",
     "test": "vitest run -v",
-    "package": "npm run build && node scripts/package-extension.mjs"
+    "package": "npm run package:all",
+    "package:all": "npm run package:chrome && npm run package:firefox",
+    "package:chrome": "node scripts/build-package-target.mjs chrome",
+    "package:firefox": "node scripts/build-package-target.mjs firefox"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.42",

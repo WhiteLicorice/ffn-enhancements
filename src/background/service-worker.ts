@@ -23,9 +23,10 @@ chrome.runtime.onMessage.addListener(
                 return true; // keep channel open for async response
 
             case MessageType.OPEN_TAB:
-                chrome.tabs.create({ url: message.url, active: message.active ?? true });
-                sendResponse({ ok: true });
-                return false;
+                tabsCreate({ url: message.url, active: message.active ?? true })
+                    .then(() => sendResponse({ ok: true }))
+                    .catch(err => sendResponse({ ok: false, error: getErrorMessage(err) }));
+                return true;
 
             case MessageType.OPEN_SETTINGS:
                 // Forward to the active tab's content script.
@@ -85,7 +86,7 @@ async function handleCrossOriginFetch(
 }
 
 async function queryActiveTab(): Promise<chrome.tabs.Tab | undefined> {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabs = await tabsQuery({ active: true, currentWindow: true });
     return tabs[0];
 }
 
@@ -100,7 +101,7 @@ async function openSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<voi
         return;
     }
 
-    const createdTab = await chrome.tabs.create({ url: FFN_HOME_URL, active: true });
+    const createdTab = await tabsCreate({ url: FFN_HOME_URL, active: true });
     if (createdTab.id !== undefined) {
         queueOpenSettingsWhenTabLoads(createdTab.id);
     }
@@ -114,7 +115,7 @@ async function openSettingsInTab(tabId: number): Promise<boolean> {
 
 async function sendOpenSettings(tabId: number): Promise<boolean> {
     try {
-        await chrome.tabs.sendMessage(tabId, { type: MessageType.OPEN_SETTINGS });
+        await tabsSendMessage(tabId, { type: MessageType.OPEN_SETTINGS });
         return true;
     } catch {
         return false;
@@ -123,7 +124,7 @@ async function sendOpenSettings(tabId: number): Promise<boolean> {
 
 async function injectContentScript(tabId: number): Promise<boolean> {
     try {
-        await chrome.scripting.executeScript({
+        await scriptingExecuteScript({
             target: { tabId },
             files: ['content/main.js'],
         });
@@ -132,6 +133,70 @@ async function injectContentScript(tabId: number): Promise<boolean> {
         console.warn('FFN Enhancements could not inject content script for Settings.', err);
         return false;
     }
+}
+
+function getErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
+
+type ChromeAsyncStarter<T> = (callback: (value: T) => void) => Promise<T> | void;
+
+function chromeAsync<T>(start: ChromeAsyncStarter<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+
+        const settle = (err: unknown, value?: T) => {
+            if (settled) return;
+            settled = true;
+            if (err) {
+                reject(err);
+            } else {
+                resolve(value as T);
+            }
+        };
+
+        try {
+            const maybePromise = start((value: T) => {
+                const err = chrome.runtime.lastError;
+                settle(err ? new Error(err.message) : null, value);
+            });
+
+            if (maybePromise && typeof (maybePromise as Promise<T>).then === 'function') {
+                (maybePromise as Promise<T>).then(
+                    value => settle(null, value),
+                    err => settle(err),
+                );
+            }
+        } catch (err) {
+            settle(err);
+        }
+    });
+}
+
+function tabsQuery(queryInfo: chrome.tabs.QueryInfo): Promise<chrome.tabs.Tab[]> {
+    return chromeAsync<chrome.tabs.Tab[]>((callback) => (
+        chrome.tabs.query(queryInfo, callback) as unknown as Promise<chrome.tabs.Tab[]> | void
+    ));
+}
+
+function tabsCreate(createProperties: chrome.tabs.CreateProperties): Promise<chrome.tabs.Tab> {
+    return chromeAsync<chrome.tabs.Tab>((callback) => (
+        chrome.tabs.create(createProperties, callback) as unknown as Promise<chrome.tabs.Tab> | void
+    ));
+}
+
+function tabsSendMessage(tabId: number, message: unknown): Promise<unknown> {
+    return chromeAsync<unknown>((callback) => (
+        chrome.tabs.sendMessage(tabId, message, callback) as unknown as Promise<unknown> | void
+    ));
+}
+
+function scriptingExecuteScript(
+    injection: chrome.scripting.ScriptInjection<unknown[], unknown>,
+): Promise<chrome.scripting.InjectionResult[]> {
+    return chromeAsync<chrome.scripting.InjectionResult[]>((callback) => (
+        chrome.scripting.executeScript(injection, callback) as unknown as Promise<chrome.scripting.InjectionResult[]> | void
+    ));
 }
 
 function isSupportedTab(tab: chrome.tabs.Tab): boolean {

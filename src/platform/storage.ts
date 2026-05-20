@@ -12,6 +12,8 @@
 // is skipped — local subscribers are already notified by set() itself.
 // Remote changes (other tabs, service worker) pass through normally.
 
+import { storageGet, storageRemove, storageSet } from './chromeApi';
+
 const STORAGE_PREFIX = 'ffne_';
 
 /** Keys recently written locally, mapped to the write timestamp. */
@@ -85,7 +87,7 @@ export const platformStorage: PlatformStorage = {
         _pendingLocalWrites.set(fk, Date.now());
 
         // Async write for persistence + cross-tab sync.
-        await chrome.storage.local.set({ [fk]: value });
+        await storageSet({ [fk]: value });
     },
 
     async remove(key: string): Promise<void> {
@@ -96,11 +98,11 @@ export const platformStorage: PlatformStorage = {
             // non-fatal
         }
         _pendingLocalWrites.set(fk, Date.now());
-        await chrome.storage.local.remove(fk);
+        await storageRemove(fk);
     },
 
     async hydrateFromPersistentStorage(): Promise<Record<string, string | number | boolean>> {
-        const stored = await chrome.storage.local.get(null);
+        const stored = await storageGet(null);
         const hydrated: Record<string, string | number | boolean> = {};
 
         for (const [key, value] of Object.entries(stored)) {
