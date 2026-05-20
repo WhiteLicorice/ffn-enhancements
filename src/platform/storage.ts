@@ -6,14 +6,35 @@
 //   chrome.storage.local (async, for persistence + cross-tab sync).
 // - onChanged() wraps chrome.storage.onChanged for cross-tab sync.
 //   Returns unsubscribe function matching the SettingsManager.subscribe() pattern.
+//
+// Local-write guard: When set() writes a key, it stamps a pending entry so the
+// subsequent chrome.storage.onChanged event (which fires in the same context)
+// is skipped — local subscribers are already notified by set() itself.
+// Remote changes (other tabs, service worker) pass through normally.
 
 const STORAGE_PREFIX = 'ffne_';
+
+/** Keys recently written locally, mapped to the write timestamp. */
+const _pendingLocalWrites = new Map<string, number>();
+
+/** Window within which an onChanged event is considered a local echo (ms). */
+const LOCAL_WRITE_GUARD_MS = 200;
+
+function _cleanStalePendingWrites(): void {
+    const now = Date.now();
+    for (const [key, ts] of _pendingLocalWrites) {
+        if (now - ts >= LOCAL_WRITE_GUARD_MS) {
+            _pendingLocalWrites.delete(key);
+        }
+    }
+}
 
 export interface PlatformStorage {
     get(key: string): string | number | boolean | null;
     set(key: string, value: string | number | boolean): Promise<void>;
     remove(key: string): Promise<void>;
     onChanged(callback: (key: string, newValue: unknown, oldValue: unknown) => void): () => void;
+    _resetForTesting(): void;
 }
 
 function fullKey(key: string): string {
@@ -22,17 +43,18 @@ function fullKey(key: string): string {
 
 function parseStored(raw: string | null): string | number | boolean | null {
     if (raw === null) return null;
-    // Try JSON parse for numbers and booleans stored as strings.
+    // chrome.storage.local preserves JS types. localStorage stores strings.
+    // Try JSON.parse to recover numbers and booleans from localStorage strings.
     try {
         const parsed = JSON.parse(raw);
         if (typeof parsed === 'number' || typeof parsed === 'boolean') return parsed;
     } catch {
-        // Not JSON, return as string.
+        // Not JSON-encoded, return raw string.
     }
     return raw;
 }
 
-function serializeStored(value: string | number | boolean): string {
+function serializeForLocal(value: string | number | boolean): string {
     if (typeof value === 'string') return value;
     return JSON.stringify(value);
 }
@@ -49,16 +71,19 @@ export const platformStorage: PlatformStorage = {
 
     async set(key: string, value: string | number | boolean): Promise<void> {
         const fk = fullKey(key);
-        const serialized = serializeStored(value);
+        _cleanStalePendingWrites();
 
-        // Sync write for immediate reads.
+        // Sync write for immediate reads (document-start safe).
         try {
-            localStorage.setItem(fk, serialized);
+            localStorage.setItem(fk, serializeForLocal(value));
         } catch {
             // localStorage unavailable — non-fatal.
         }
 
-        // Async write for persistence.
+        // Stamp before the async call so the onChanged handler can check it.
+        _pendingLocalWrites.set(fk, Date.now());
+
+        // Async write for persistence + cross-tab sync.
         await chrome.storage.local.set({ [fk]: value });
     },
 
@@ -69,7 +94,13 @@ export const platformStorage: PlatformStorage = {
         } catch {
             // non-fatal
         }
+        _pendingLocalWrites.set(fk, Date.now());
         await chrome.storage.local.remove(fk);
+    },
+
+    /** Clears pending write guard state. Exported for test isolation only. */
+    _resetForTesting(): void {
+        _pendingLocalWrites.clear();
     },
 
     onChanged(callback: (key: string, newValue: unknown, oldValue: unknown) => void): () => void {
@@ -77,9 +108,30 @@ export const platformStorage: PlatformStorage = {
             changes: Record<string, chrome.storage.StorageChange>,
             _areaName: string,
         ) => {
+            _cleanStalePendingWrites();
             for (const [changedKey, change] of Object.entries(changes)) {
                 if (!changedKey.startsWith(STORAGE_PREFIX)) continue;
                 const shortKey = changedKey.slice(STORAGE_PREFIX.length);
+
+                // Skip local writes — subscribers already notified by set().
+                const localTs = _pendingLocalWrites.get(changedKey);
+                if (localTs !== undefined && Date.now() - localTs < LOCAL_WRITE_GUARD_MS) {
+                    _pendingLocalWrites.delete(changedKey);
+                    continue;
+                }
+
+                // Mirror remote change to localStorage for sync reads.
+                try {
+                    if (change.newValue !== undefined) {
+                        const raw = change.newValue as string | number | boolean;
+                        localStorage.setItem(changedKey, serializeForLocal(raw));
+                    } else {
+                        localStorage.removeItem(changedKey);
+                    }
+                } catch {
+                    // non-fatal
+                }
+
                 callback(shortKey, change.newValue, change.oldValue);
             }
         };
