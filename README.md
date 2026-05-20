@@ -131,8 +131,6 @@ Click **FFN Enhancements Settings** in your Tampermonkey/Violentmonkey menu on a
 
 If the link opens as code or downloads as a file, copy the text, open your extension manager dashboard, create a new script, and paste it in.
 
-> Tampermonkey on Chrome / Edge / Brave: open Dashboard -> Settings -> Experimental and set **Inject Mode** to **Instant**. Chrome's MV3 injection path can otherwise flash FFN's native page before FFN Enhancements applies its document-start styling.
-
 ### Step 3: Verify
 
 1. Go to any [FanFiction.net](https://www.fanfiction.net/j/0/2/0/) story.
