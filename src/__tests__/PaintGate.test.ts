@@ -91,6 +91,33 @@ describe('PaintGate', () => {
         expect(warnSpy).toHaveBeenCalledOnce();
     });
 
+    it('releaseAfterPaint waits for two animation frames before releasing', () => {
+        resetDom();
+        PaintGate.prime();
+
+        let nextFrameId = 1;
+        const frameCallbacks = new Map<number, FrameRequestCallback>();
+
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback): number => {
+            const frameId = nextFrameId++;
+            frameCallbacks.set(frameId, callback);
+            return frameId;
+        });
+        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((frameId: number): void => {
+            frameCallbacks.delete(frameId);
+        });
+
+        const releaseSpy = vi.spyOn(PaintGate, 'release');
+
+        PaintGate.releaseAfterPaint();
+
+        expect(releaseSpy).not.toHaveBeenCalled();
+        frameCallbacks.get(1)?.(16);
+        expect(releaseSpy).not.toHaveBeenCalled();
+        frameCallbacks.get(2)?.(32);
+        expect(releaseSpy).toHaveBeenCalledOnce();
+    });
+
     it('does not gate AO3 pages', () => {
         resetDom();
         jsdom.reconfigure({ url: 'https://archiveofourown.org/works/1' });

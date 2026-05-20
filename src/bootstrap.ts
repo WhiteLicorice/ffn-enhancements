@@ -17,7 +17,6 @@ const AO3_HOST = 'archiveofourown.org';
 
 export function registerSitewideModules(hostname: string = window.location.hostname): void {
     if (isFfnHost(hostname)) {
-        EarlyBoot.register(PaintGate);
         EarlyBoot.register(SettingsManager);
         EarlyBoot.register(SettingsMenu);
         EarlyBoot.register(ThemeManager);
