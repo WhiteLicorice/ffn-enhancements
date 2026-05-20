@@ -3,6 +3,7 @@
 /* 0. ROOT LEVEL FIXES
    FFN puts a min-width on body (approx 1000px).
    This kills text wrapping when zooming in (as viewport shrinks below 1000px). */
+html.__FLUID_CLASS__ body,
 body.__FLUID_CLASS__ {
     min-width: 0 !important;
     width: 100% !important;
@@ -11,6 +12,7 @@ body.__FLUID_CLASS__ {
 
 /* 1. Override the main wrapper width.
    FFN usually sets this to 1000px-1250px via inline style. */
+html.__FLUID_CLASS__ #content_wrapper,
 body.__FLUID_CLASS__ #content_wrapper {
     width: 100% !important;
     max-width: 100% !important;
@@ -22,6 +24,7 @@ body.__FLUID_CLASS__ #content_wrapper {
 }
 
 /* 2. Override the inner wrapper padding. */
+html.__FLUID_CLASS__ #content_wrapper_inner,
 body.__FLUID_CLASS__ #content_wrapper_inner {
     padding: 0 15px !important;
     box-sizing: border-box !important;
@@ -31,6 +34,9 @@ body.__FLUID_CLASS__ #content_wrapper_inner {
 /* 3. Override the Story Text container.
    FFN injects ".storytext { width: 75% ... }" via JS.
    We force this to fill the available space. */
+html.__FLUID_CLASS__ .storytext,
+html.__FLUID_CLASS__ #storytext,
+html.__FLUID_CLASS__ #storytextp,
 body.__FLUID_CLASS__ .storytext,
 body.__FLUID_CLASS__ #storytext,
 body.__FLUID_CLASS__ #storytextp {
@@ -48,6 +54,7 @@ body.__FLUID_CLASS__ #storytextp {
 }
 
 /* 4. Fix Top Navigation and Menu Bars. */
+html.__FLUID_CLASS__ .menulink,
 body.__FLUID_CLASS__ .menulink {
     width: 100% !important;
     max-width: 100% !important;
@@ -56,6 +63,7 @@ body.__FLUID_CLASS__ .menulink {
     box-sizing: border-box !important;
 }
 
+html.__FLUID_CLASS__ #zmenu,
 body.__FLUID_CLASS__ #zmenu {
     width: 100% !important;
     max-width: 100% !important;
@@ -64,18 +72,21 @@ body.__FLUID_CLASS__ #zmenu {
     box-sizing: border-box !important;
 }
 
+html.__FLUID_CLASS__ #zmenu table,
 body.__FLUID_CLASS__ #zmenu table {
     width: 100% !important;
     max-width: 100% !important;
 }
 
 /* 5. Generic .maxwidth override. */
+html.__FLUID_CLASS__ .maxwidth,
 body.__FLUID_CLASS__ .maxwidth {
     width: 100% !important;
     max-width: 100% !important;
 }
 
 /* 6. Ensure Top Navigation Container expands. */
+html.__FLUID_CLASS__ .z-top-container,
 body.__FLUID_CLASS__ .z-top-container {
     max-width: 100% !important;
     width: 100% !important;
@@ -86,17 +97,21 @@ body.__FLUID_CLASS__ .z-top-container {
    FFN uses a table layout with a huge left spacer (width=336)
    to position the review box. We remove this spacer and center
    the actual review container. */
+html.__FLUID_CLASS__ #review table td[width="336"],
+html.__FLUID_CLASS__ #review table td[width="10"],
 body.__FLUID_CLASS__ #review table td[width="336"],
 body.__FLUID_CLASS__ #review table td[width="10"] {
     display: none !important;
 }
 
+html.__FLUID_CLASS__ #review table td,
 body.__FLUID_CLASS__ #review table td {
     display: block !important;
     width: 100% !important;
     text-align: center !important;
 }
 
+html.__FLUID_CLASS__ #review table td > div,
 body.__FLUID_CLASS__ #review table td > div {
     margin: 0 auto !important;
     text-align: left !important;

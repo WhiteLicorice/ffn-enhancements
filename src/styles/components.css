@@ -53,34 +53,65 @@
     float: right;
 }
 
+.ffne-dl-container > .btn,
+[data-ffne-ui].ffne-dl-container > .btn {
+    background-color: var(--ffne-ui-card-bg) !important;
+    background-image: none !important;
+    border-color: var(--ffne-ui-border) !important;
+    color: var(--ffne-ui-text-body) !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+}
+
+.ffne-dl-container > .btn:hover,
+.ffne-dl-container > .btn:focus,
+[data-ffne-ui].ffne-dl-container > .btn:hover,
+[data-ffne-ui].ffne-dl-container > .btn:focus {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    border-color: var(--ffne-ui-border-chrome) !important;
+    color: var(--ffne-brand-hover-text) !important;
+}
+
+.ffne-dl-container > .btn:active,
+.ffne-dl-container > .btn[aria-expanded="true"],
+[data-ffne-ui].ffne-dl-container > .btn:active,
+[data-ffne-ui].ffne-dl-container > .btn[aria-expanded="true"] {
+    background-color: var(--ffne-brand-bg) !important;
+    border-color: var(--ffne-ui-border-chrome) !important;
+    color: var(--ffne-brand-text) !important;
+}
+
 .ffne-dl-menu {
     display: none;
-    position: absolute;
+    position: absolute !important;
     top: 100%;
     right: 0;
-    z-index: 1000;
+    z-index: 1000 !important;
     min-width: 100px;
     padding: 5px 0;
     margin: 2px 0 0;
-    background-color: var(--ffne-ui-white);
-    border: 1px solid var(--ffne-shadow-subtle);
+    background-color: var(--ffne-ui-white) !important;
+    border: 1px solid var(--ffne-shadow-subtle) !important;
     border-radius: 4px;
-    box-shadow: 0 6px 12px var(--ffne-shadow-dropdown);
+    box-shadow: 0 6px 12px var(--ffne-shadow-dropdown) !important;
     list-style: none;
     text-align: left;
 }
 
-.ffne-dl-menu a {
+.ffne-dl-menu a,
+[data-ffne-ui].ffne-dl-container .ffne-dl-menu a {
     display: block;
     padding: 3px 20px;
-    color: var(--ffne-ui-text-body);
-    text-decoration: none;
+    color: var(--ffne-ui-text-body) !important;
+    text-decoration: none !important;
 }
 
 .ffne-dl-menu a:hover,
-.ffne-dl-menu a:focus {
-    background: var(--ffne-brand-hover-bg);
-    color: var(--ffne-brand-hover-text);
+.ffne-dl-menu a:focus,
+[data-ffne-ui].ffne-dl-container .ffne-dl-menu a:hover,
+[data-ffne-ui].ffne-dl-container .ffne-dl-menu a:focus {
+    background: var(--ffne-brand-hover-bg) !important;
+    color: var(--ffne-brand-hover-text) !important;
 }
 
 .ffne-dl-modal-title {

@@ -120,17 +120,26 @@ Open **FFN Enhancements Settings** from your Tampermonkey/Violentmonkey menu on 
 
 ## Installation
 
-### Step 1: Install a userscript manager
+### Step 1: Install Tampermonkey Beta
 
-- **Chrome / Edge / Brave:** [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/)
+For the best first-paint behavior, use **Tampermonkey Beta**:
+
+- **Chrome / Brave:** [Tampermonkey Beta on the Chrome Web Store](https://chromewebstore.google.com/detail/tampermonkey-beta/gcalenpjmijncebpfijmoaglllgpjagf)
+- **Edge:** [Tampermonkey Beta on Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/tampermonkey-beta/fcmfnpggmnlmfebfghbfnillijihnkoh)
 - **Firefox:** [Tampermonkey](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/) or [Violentmonkey](https://addons.mozilla.org/en-US/firefox/addon/violentmonkey/)
 - **Safari:** [Userscripts](https://apps.apple.com/us/app/userscripts/id1463298887)
+
+After installing Tampermonkey Beta on Chrome / Edge / Brave, open **Dashboard -> Settings**, set **Config Mode** to **Advanced**, then under **Experimental** set **Inject Mode** to **Instant**.
 
 ### Step 2: Install FFN Enhancements
 
 [Click here to install](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js). Your userscript manager should prompt to confirm.
 
 If the link opens as code or downloads as a file, copy the text, open your userscript manager dashboard, create a new script, and paste it in.
+
+### Theme Flash Limitation
+
+FFN Enhancements injects a compact theme prelude at `document-start`, but userscripts still run through the userscript manager's injection backend. On Chromium browsers, standard injection can briefly show FFN's native light page before the theme prelude lands. Tampermonkey Beta's **Instant** inject mode minimizes this flash, but a tiny first-paint flash may still be possible. A native browser extension would have stronger first-paint primitives than a userscript.
 
 ### Step 3: Verify
 
@@ -156,9 +165,8 @@ If the link opens as code or downloads as a file, copy the text, open your users
 - [x] AO3 migration bridge (cross-tab, GM-storage IPC)
 - [x] Bulk Replace on Story Edit Content page
 - [x] Export transforms: AO3 HTML compat, paragraph normalization, end separator
-- [x] Theme system: Light, Dark, Sepia, High Contrast with live switching
-- [ ] FFN Skins: allow application of custom FFN Skins inspired by Ao3 Skins.
-- [ ] Custom font settings sitewide (needs a `FontManager` module hooked into `EarlyBoot`)
+- [x] Site theme support with Light, Dark, Sepia, High Contrast, and System modes
+- [ ] Custom font settings sitewide (needs a `FontManager` module hooked into the `EarlyBoot` system)
 
 ---
 

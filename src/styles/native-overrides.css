@@ -236,6 +236,13 @@ html.__THEME_CLASS__ a[href*="/u/"] {
     color: var(--ffne-semantic-warning-text-dark) !important;
 }
 
+html.__THEME_CLASS__ #profile_top a[href*="/r/"],
+html.__THEME_CLASS__ #profile_top a[href*="/r/"] span,
+html.__THEME_CLASS__ #profile_top a[href*="/reviews/"],
+html.__THEME_CLASS__ #profile_top a[href*="/reviews/"] span {
+    color: var(--ffne-semantic-warning-text-dark) !important;
+}
+
 html.__THEME_CLASS__ .xgray {
     color: var(--ffne-ui-text-secondary) !important;
 }
@@ -396,7 +403,7 @@ html.__THEME_CLASS__ .panel_normal {
 
 html.__THEME_CLASS__ .panel_success {
     background-color: var(--ffne-semantic-success-bg) !important;
-    border-color: var(--ffne-ui-border) !important;
+    border-color: var(--ffne-semantic-success-border) !important;
     color: var(--ffne-semantic-success-text) !important;
 }
 

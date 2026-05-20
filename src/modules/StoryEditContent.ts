@@ -12,6 +12,8 @@ import { Core } from './Core';
 import { DocFetchService } from '../services/DocFetchService';
 import { StoryReplaceService } from '../services/StoryReplaceService';
 import { runBulkOperation } from '../utils/runBulkOperation';
+import { markFfneUiRoot } from '../utils/ffneUi';
+import { injectStyleOnce } from '../utils/injectStyleOnce';
 import { SettingsManager } from './SettingsManager';
 import storyEditContentStyles from '../styles/story-edit-content.css?raw';
 
@@ -459,7 +461,7 @@ export const StoryEditContent = {
             mappings: _createMappingRows(chapters),
         };
 
-        const overlay = document.createElement('div');
+        const overlay = markFfneUiRoot(document.createElement('div'));
         overlay.id = BULK_REPLACE_MODAL_ID;
         overlay.className = 'ffne-story-bulk-overlay';
         overlay.innerHTML = `
@@ -546,12 +548,7 @@ export const StoryEditContent = {
     },
 
     _injectStyles: function () {
-        if (document.getElementById(BULK_REPLACE_STYLE_ID)) return;
-
-        const style = document.createElement('style');
-        style.id = BULK_REPLACE_STYLE_ID;
-        style.textContent = storyEditContentStyles;
-        document.head.appendChild(style);
+        injectStyleOnce(BULK_REPLACE_STYLE_ID, storyEditContentStyles);
     },
 
     _renderMappingRows: function (

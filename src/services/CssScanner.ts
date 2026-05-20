@@ -1,3 +1,5 @@
+import { ScopeCssOptions, scopeCssText as scopeCssTextValue, scopeSelector } from '../utils/scopeCssText';
+
 type ColorMap = Record<string, string>;
 
 const COLOR_VALUE_RE = /#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\b|rgba?\(\s*[^)]+\)|\b(?:black|white|gray|grey|red|green|blue|yellow|transparent)\b/gi;
@@ -33,6 +35,7 @@ export const CssScanner = {
         colorMap: ColorMap,
         themeClass: string = '',
         rootDocument: Document = document,
+        options: ScopeCssOptions = {},
     ): string {
         const normalizedMap = normalizeColorMap(colorMap);
         if (Object.keys(normalizedMap).length === 0) return '';
@@ -40,6 +43,7 @@ export const CssScanner = {
         const cacheKey = [
             rootDocument.location?.pathname || 'document',
             themeClass,
+            options.excludeSelector || '',
             JSON.stringify(normalizedMap),
         ].join('|');
         const cached = this._cache.get(cacheKey);
@@ -56,7 +60,7 @@ export const CssScanner = {
                 continue;
             }
 
-            output.push(...scanRules(rules, normalizedMap, themeClass));
+            output.push(...scanRules(rules, normalizedMap, themeClass, options));
         }
 
         const css = output.join('\n\n');
@@ -64,12 +68,28 @@ export const CssScanner = {
         return css;
     },
 
+    scopeCssText(
+        cssText: string,
+        themeClass: string = '',
+        options: ScopeCssOptions = {},
+    ): string {
+        if (!cssText.trim()) return '';
+
+        return scopeCssTextValue(cssText, themeClass, options);
+    },
+
     clearCache(): void {
         this._cache.clear();
     },
 };
 
-function scanRules(rules: CSSRuleList, colorMap: ColorMap, themeClass: string, wrappers: string[] = []): string[] {
+function scanRules(
+    rules: CSSRuleList,
+    colorMap: ColorMap,
+    themeClass: string,
+    options: ScopeCssOptions,
+    wrappers: string[] = [],
+): string[] {
     const output: string[] = [];
 
     for (const rule of Array.from(rules)) {
@@ -77,7 +97,7 @@ function scanRules(rules: CSSRuleList, colorMap: ColorMap, themeClass: string, w
             const declarations = getDeclarationOverrides(rule.style, colorMap);
             if (declarations.length === 0) continue;
 
-            const selector = scopeSelector(rule.selectorText, themeClass);
+            const selector = scopeSelector(rule.selectorText, themeClass, options.excludeSelector);
             const body = declarations
                 .map(({ property, value, priority }) => `    ${property}: ${value}${priority ? ` !${priority}` : ''};`)
                 .join('\n');
@@ -88,7 +108,7 @@ function scanRules(rules: CSSRuleList, colorMap: ColorMap, themeClass: string, w
 
         if (isGroupingRule(rule)) {
             const prelude = getGroupingPrelude(rule);
-            output.push(...scanRules(rule.cssRules, colorMap, themeClass, [...wrappers, prelude]));
+            output.push(...scanRules(rule.cssRules, colorMap, themeClass, options, [...wrappers, prelude]));
         }
     }
 
@@ -267,21 +287,6 @@ function getGroupingPrelude(rule: CSSRule): string {
         return `@supports ${rule.conditionText}`;
     }
     return rule.cssText.slice(0, rule.cssText.indexOf('{')).trim();
-}
-
-function scopeSelector(selectorText: string, themeClass: string): string {
-    if (!themeClass) return selectorText;
-
-    return selectorText
-        .split(',')
-        .map(selector => {
-            const trimmed = selector.trim();
-            if (trimmed === 'html') return `html.${themeClass}`;
-            if (trimmed.startsWith('html.')) return trimmed.replace(/^html/, `html.${themeClass}`);
-            if (trimmed.startsWith('html ')) return trimmed.replace(/^html/, `html.${themeClass}`);
-            return `html.${themeClass} ${trimmed}`;
-        })
-        .join(', ');
 }
 
 function wrapRule(cssRule: string, wrappers: string[]): string {

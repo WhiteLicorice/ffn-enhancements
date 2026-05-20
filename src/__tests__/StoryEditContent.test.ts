@@ -302,6 +302,33 @@ describe('StoryEditContent injection', () => {
         expect(button?.parentElement).toBe(visibleControls);
         expect(document.querySelector('#area_modchapter #ffne-story-bulk-replace-btn')).toBeNull();
     });
+
+    it('marks the Bulk Replace modal root as FFNE-owned UI', () => {
+        document.body.innerHTML = `
+            <div id="area_modchapter" style="display:block;">
+                <form id="replacechapter" action="/story/story_edit_content.php">
+                    <select name="storytextid">
+                        <option value="0">Select Chapter</option>
+                        <option value="101">Chapter 1 - One</option>
+                    </select>
+                    <select name="docid">
+                        <option value="0">Select Doc</option>
+                        <option value="201">1. StoryName001 (3,128)</option>
+                    </select>
+                    <input type="hidden" name="action" value="replace">
+                </form>
+            </div>
+            <table>
+                <tbody>
+                    <tr data-storytextid="101"><td>Chapter 1</td><td>Published</td></tr>
+                </tbody>
+            </table>
+        `;
+
+        StoryEditContent.openBulkReplaceModal();
+
+        expect(document.getElementById('ffne-story-bulk-replace-modal')?.getAttribute('data-ffne-ui')).toBe('');
+    });
 });
 
 describe('StoryEditContent bulk replace execution', () => {

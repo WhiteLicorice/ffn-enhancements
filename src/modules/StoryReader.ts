@@ -3,6 +3,7 @@
 import { Core } from './Core';
 import { Elements } from '../enums/Elements';
 import { SettingsManager } from './SettingsManager';
+import { markFfneUiRoot } from '../utils/ffneUi';
 
 /**
  * Module responsible for UX enhancements on Story pages (`/s/*`).
@@ -98,6 +99,7 @@ export const StoryReader = {
         if (modal.parentNode !== document.body) {
             document.body.appendChild(modal);
         }
+        markFfneUiRoot(modal);
 
         /**
          * Cleans the modal of all FFN transition classes and forces visibility.
@@ -148,7 +150,7 @@ export const StoryReader = {
             // 2. Handle Backdrop
             let backdrop = document.querySelector('.ffe-modal-backdrop') as HTMLElement;
             if (!backdrop) {
-                backdrop = document.createElement('div');
+                backdrop = markFfneUiRoot(document.createElement('div'));
                 backdrop.className = 'ffe-modal-backdrop ffne-cover-backdrop';
                 document.body.appendChild(backdrop);
             }

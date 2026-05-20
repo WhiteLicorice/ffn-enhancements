@@ -11,6 +11,7 @@ import { TinyMCEButtonFactory } from '../factories/TinyMCEButtonFactory';
 import { DocIframeHandler } from './DocIframeHandler';
 import { applyExportTransforms } from '../utils/exportTransform';
 import { writeToClipboard } from '../utils/clipboard';
+import { markFfneUiRoot } from '../utils/ffneUi';
 
 /**
  * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).
@@ -322,6 +323,7 @@ export const DocEditor = {
         toast.id = 'ffne-clipboard-toast';
         toast.className = `ffne-toast ${isError ? 'ffne-toast-error' : 'ffne-toast-success'}`;
         toast.textContent = message;
+        markFfneUiRoot(toast);
         document.body.appendChild(toast);
 
         setTimeout(() => {

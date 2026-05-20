@@ -16,6 +16,7 @@ export const DarkTheme: IThemeDefinition = {
 
         '--ffne-semantic-success-text': '#6bd69a',
         '--ffne-semantic-success-bg': '#0d2818',
+        '--ffne-semantic-success-border': '#3d8a63',
         '--ffne-semantic-error-text': '#ff8b8b',
         '--ffne-semantic-error-bg': '#2d1114',
         '--ffne-semantic-error-border': '#8f4c55',

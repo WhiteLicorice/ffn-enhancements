@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "check:critical-theme-require": "node ./scripts/checkCriticalThemeRequire.mjs",
     "preview": "vite preview",
     "test": "vitest run -v"
   },

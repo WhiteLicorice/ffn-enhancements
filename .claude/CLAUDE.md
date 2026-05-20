@@ -1,4 +1,4 @@
-﻿# FFN Enhancements - Agent Orientation Guide
+﻿﻿# FFN Enhancements - Agent Orientation Guide
 
 > This file is a jumpstart reference for AI agents working in this repository.
 > It captures architecture decisions, conventions, gotchas, and patterns that
@@ -41,13 +41,28 @@ npm run dev     # vite               (dev server, hot reload for quick iteration
   Fix all type errors before considering a build clean.
 - `tsconfig.json` targets `ESNext` modules. `tsconfig.node.json` is for Vite config only.
 - Vite bundles everything into one file. There are no lazy chunks.
-- The `require` array in `vite.config.ts` maps CDN scripts to module imports via
-  `externalGlobals`. These are not bundled; they are injected as `@require`
-  directives in the userscript header instead:
-  - `jszip` -> `JSZip`
-  - `file-saver` -> `saveAs`
-  - `turndown` -> `TurndownService`
-  - `marked` -> `marked`
+- Keep `build.minify: 'esbuild'` in `vite.config.ts` for production builds.
+  `vite-plugin-monkey` otherwise defaults to unminified output, which makes the
+  userscript much larger and delays document-start execution while the browser
+  parses the bundle.
+- Keep `build.cssMinify: true` and `build.target: 'es2020'` aligned with the
+  production userscript build. This is the supported output shape for current
+  Tampermonkey Chrome/Firefox targets.
+- Keep `userscript.noframes: true`. TinyMCE iframes are themed from the parent
+  document via `ThemeManager._watchTinyMceIframes()` / `_themeIframe()`, so no
+  module should rely on the userscript executing inside editor iframes.
+- Avoid adding extra CDN `@require` entries. Each `@require` adds work and can
+  delay Tampermonkey injection; if a paint-gate or other injection-critical
+  prelude is needed, keep it tiny and make it the only `@require`.
+
+### 2.1 Userscript injection timing
+
+- Chrome-family Tampermonkey installs should enable Dashboard -> Settings ->
+  Experimental -> **Inject Mode = Instant**. MV3 adds a small content-script
+  injection delay; Instant is the only user-side lever that consistently gets
+  document-start styling on screen before the first paint.
+- Document this Chrome/Tampermonkey requirement in user-facing install docs
+  whenever a change depends on early paint gating or other first-paint behavior.
 
 ---
 
@@ -560,7 +575,7 @@ src/
     HighContrastTheme.ts         - WCAG-focused high contrast theme
   utils/
     fetchWithBackoff.ts          - Generic HTTP retry/backoff utility for 429 handling
-vite.config.ts                   - Build config; GM grants; CDN requires; externalGlobals
+vite.config.ts                   - Build config; userscript header; minification; iframe policy
 tsconfig.json                    - Strict TypeScript config
 ```
 
@@ -579,9 +594,10 @@ tsconfig.json                    - Strict TypeScript config
 3. `file-saver` is a named export - import as `import { saveAs } from 'file-saver'`
    (not a default import).
 
-4. `externalGlobals` maps the npm package name to the CDN global - if you add
-   a new CDN dependency, you must add both a `require` entry (the CDN URL) and an
-   `externalGlobals` entry (the global variable name) in `vite.config.ts`.
+4. `vite-plugin-monkey` defaults to unminified output unless `build.minify` is
+   explicitly set in the returned Vite config. Keep `build.minify: 'esbuild'`
+   enabled for production builds or document-start logic loses parse-time races
+   against FFN's first paint.
 
 5. `DocFetchService.refreshPrivateDoc` exists and uses different logic
    (iframe form submission) than `_fetchDocPage`. They were deliberately
@@ -626,6 +642,10 @@ tsconfig.json                    - Strict TypeScript config
     wins because it comes LAST. If you swap the order, scanner's mechanically-
     remapped colors win and semantic tokens stop working. Native-overrides must
     always be the final word.
+
+14. `userscript.noframes` is intentional. TinyMCE editor iframes are themed from
+    the parent document via `iframe.contentDocument`, so do not build features
+    that depend on the userscript executing inside subframes.
 
 ---
 

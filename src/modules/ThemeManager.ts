@@ -6,15 +6,21 @@ import componentsStyles from '../styles/components.css?raw';
 import nativeOverrideStyles from '../styles/native-overrides.css?raw';
 import { buildTokenCss } from '../styles/ThemeTokens';
 import { getThemeDefinition } from '../themes';
+import { FFNE_UI_EXCLUDE_SELECTOR } from '../utils/ffneUi';
+import { injectStyleOnce } from '../utils/injectStyleOnce';
+import { scopeCssText } from '../utils/scopeCssText';
+import { themeClass } from '../utils/themeClass';
 import { FFNLogger } from './FFNLogger';
 import { SettingsManager } from './SettingsManager';
 
 const MODULE_NAME = 'ThemeManager';
 const TOKEN_STYLE_ID = 'ffne-theme-tokens';
+const CRITICAL_THEME_STYLE_ID = 'ffne-theme-critical';
+const STATIC_NATIVE_STYLE_ID = 'ffne-theme-native-overrides';
 const COMPONENT_STYLE_ID = 'ffne-component-styles';
-const FFN_OVERRIDES_STYLE_ID = 'ffne-theme-ffn-overrides';
+const SCANNED_FFN_OVERRIDES_STYLE_ID = 'ffne-theme-scanned-ffn-overrides';
 const IFRAME_OVERRIDE_STYLE_ID = 'ffne-theme-iframe-overrides';
-const THEME_CLASS_PREFIX = 'ffne-theme-';
+const IFRAME_STATIC_OVERRIDE_STYLE_ID = 'ffne-theme-iframe-native-overrides';
 const SYSTEM_QUERY = '(prefers-color-scheme: dark)';
 const FFN_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
 
@@ -25,13 +31,11 @@ let _iframeObserver: MutationObserver | null = null;
 export const ThemeManager: ISitewideModule & {
     setTheme(theme: Theme): void;
     getResolvedTheme(): Theme;
+    ensureComponentStyles(): void;
 } = {
     prime(): void {
         const definition = getThemeDefinition(this.getResolvedTheme());
-        _injectTokenStyles(definition);
-        _injectComponentStyles();
-        _applyThemeClass(this.getResolvedTheme());
-        _applyColorScheme(definition);
+        _reconcileThemeChrome(definition);
         FFNLogger.log(MODULE_NAME, 'prime', `Theme primed: ${SettingsManager.get('theme')} -> ${this.getResolvedTheme()}`);
     },
 
@@ -39,7 +43,12 @@ export const ThemeManager: ISitewideModule & {
         _applyTheme(getThemeDefinition(this.getResolvedTheme()), true);
         _subscribeToSettingChanges();
         _watchSystemPreference();
-        _watchTinyMceIframes();
+        if (_isFfnHost()) {
+            _watchTinyMceIframes();
+        } else {
+            _stopTinyMceIframeWatcher();
+            _clearTinyMceIframes();
+        }
     },
 
     setTheme(theme: Theme): void {
@@ -58,58 +67,97 @@ export const ThemeManager: ISitewideModule & {
         if (selected !== Theme.SYSTEM) return selected;
         return _prefersDark() ? Theme.DARK : Theme.LIGHT;
     },
+
+    /**
+     * Ensures FFNE component styles are present before custom UI is inserted.
+     * Safe to call repeatedly; injection is idempotent.
+     */
+    ensureComponentStyles(): void {
+        _injectComponentStyles();
+    },
 };
 
 function _applyTheme(definition: IThemeDefinition, scanNativeCss: boolean): void {
+    _reconcileThemeChrome(definition);
     _injectTokenStyles(definition);
-    _injectComponentStyles();
-    _applyThemeClass(definition.name);
-    _applyColorScheme(definition);
+    ThemeManager.ensureComponentStyles();
 
-    if (scanNativeCss && _isFfnHost()) {
-        _injectFfnOverrides(definition, document, FFN_OVERRIDES_STYLE_ID);
+    if (!_isFfnHost()) {
+        return;
+    }
+
+    _injectStaticNativeOverrides(definition);
+
+    if (scanNativeCss) {
+        _injectScannedFfnOverrides(definition, document, SCANNED_FFN_OVERRIDES_STYLE_ID);
     } else {
-        document.getElementById(FFN_OVERRIDES_STYLE_ID)?.remove();
+        document.getElementById(SCANNED_FFN_OVERRIDES_STYLE_ID)?.remove();
     }
 
     _themeTinyMceIframes(definition);
+    _removeCriticalPreludeStyle();
+}
+
+function _reconcileThemeChrome(definition: IThemeDefinition): void {
+    _applyThemeClass(definition.name);
+    _applyColorScheme(definition);
+
+    if (!_isFfnHost()) {
+        document.getElementById(STATIC_NATIVE_STYLE_ID)?.remove();
+        document.getElementById(SCANNED_FFN_OVERRIDES_STYLE_ID)?.remove();
+        _clearTinyMceIframes();
+    }
 }
 
 function _injectTokenStyles(definition: IThemeDefinition, rootDocument: Document = document, styleId: string = TOKEN_STYLE_ID): void {
-    const style = _upsertStyle(rootDocument, styleId);
-    style.textContent = [
+    injectStyleOnce(styleId, [
         buildTokenCss(definition.tokens as Record<string, string>),
         _buildBootstrapCss(definition),
-    ].join('\n\n');
+    ].join('\n\n'), rootDocument, [
+        STATIC_NATIVE_STYLE_ID,
+        COMPONENT_STYLE_ID,
+        'ffn-enhancements-layout-styles',
+        SCANNED_FFN_OVERRIDES_STYLE_ID,
+    ]);
 }
 
 function _injectComponentStyles(rootDocument: Document = document): void {
-    const style = _upsertStyle(rootDocument, COMPONENT_STYLE_ID);
-    style.textContent = componentsStyles;
+    injectStyleOnce(COMPONENT_STYLE_ID, componentsStyles, rootDocument, [
+        'ffn-enhancements-layout-styles',
+        SCANNED_FFN_OVERRIDES_STYLE_ID,
+    ]);
 }
 
-function _injectFfnOverrides(definition: IThemeDefinition, rootDocument: Document, styleId: string): void {
-    const style = _upsertStyle(rootDocument, styleId);
+function _injectStaticNativeOverrides(
+    definition: IThemeDefinition,
+    rootDocument: Document = document,
+    styleId: string = STATIC_NATIVE_STYLE_ID,
+): void {
+    if (definition.name === Theme.LIGHT || !_isFfnHost()) {
+        rootDocument.getElementById(styleId)?.remove();
+        return;
+    }
+
+    injectStyleOnce(styleId, _buildScopedNativeOverrides(definition), rootDocument, [
+        COMPONENT_STYLE_ID,
+        'ffn-enhancements-layout-styles',
+        SCANNED_FFN_OVERRIDES_STYLE_ID,
+    ]);
+}
+
+function _injectScannedFfnOverrides(definition: IThemeDefinition, rootDocument: Document, styleId: string): void {
     const scannerCss = CssScanner.scanAndOverride(
         definition.colorMap as Record<string, string>,
         _themeClass(definition.name),
         rootDocument,
+        { excludeSelector: FFNE_UI_EXCLUDE_SELECTOR },
     );
-    const elementCss = definition.name !== Theme.LIGHT
-        ? _buildScopedNativeOverrides(definition)
-        : '';
-    style.textContent = [scannerCss, elementCss].filter(Boolean).join('\n\n');
-}
-
-function _upsertStyle(rootDocument: Document, id: string): HTMLStyleElement {
-    let style = rootDocument.getElementById(id) as HTMLStyleElement | null;
-    if (!style) {
-        style = rootDocument.createElement('style');
-        style.id = id;
-        const target = rootDocument.head || rootDocument.documentElement;
-        target.appendChild(style);
+    if (!scannerCss) {
+        rootDocument.getElementById(styleId)?.remove();
+        return;
     }
-    return style;
+
+    injectStyleOnce(styleId, scannerCss, rootDocument);
 }
 
 function _buildBootstrapCss(definition: IThemeDefinition): string {
@@ -132,8 +180,15 @@ ${s} #content_wrapper_inner {
 }
 
 function _buildScopedNativeOverrides(definition: IThemeDefinition): string {
-    const themeClass = _themeClass(definition.name);
-    return nativeOverrideStyles.replace(/__THEME_CLASS__/g, themeClass);
+    return scopeCssText(
+        nativeOverrideStyles.replace(/__THEME_CLASS__/g, _themeClass(definition.name)),
+        '',
+        { excludeSelector: FFNE_UI_EXCLUDE_SELECTOR },
+    );
+}
+
+function _removeCriticalPreludeStyle(): void {
+    document.getElementById(CRITICAL_THEME_STYLE_ID)?.remove();
 }
 
 function _applyThemeClass(theme: Theme): void {
@@ -147,7 +202,7 @@ function _applyColorScheme(definition: IThemeDefinition): void {
 }
 
 function _themeClass(theme: Theme): string {
-    return `${THEME_CLASS_PREFIX}${theme}`;
+    return themeClass(theme);
 }
 
 function _subscribeToSettingChanges(): void {
@@ -176,6 +231,12 @@ function _watchSystemPreference(): void {
 }
 
 function _watchTinyMceIframes(): void {
+    if (!_isFfnHost()) {
+        _stopTinyMceIframeWatcher();
+        _clearTinyMceIframes();
+        return;
+    }
+
     if (_iframeObserver) return;
 
     _themeTinyMceIframes(getThemeDefinition(ThemeManager.getResolvedTheme()));
@@ -195,10 +256,20 @@ function _watchTinyMceIframes(): void {
 }
 
 function _themeTinyMceIframes(definition: IThemeDefinition): void {
+    if (!_isFfnHost()) {
+        _clearTinyMceIframes();
+        return;
+    }
+
     document.querySelectorAll<HTMLIFrameElement>('iframe[id$="_ifr"]').forEach(frame => _themeIframe(frame, definition));
 }
 
 function _themeIframe(frame: HTMLIFrameElement, definition: IThemeDefinition): void {
+    if (!_isFfnHost()) {
+        _clearIframeTheme(frame);
+        return;
+    }
+
     const apply = () => {
         try {
             const frameDocument = frame.contentDocument;
@@ -206,7 +277,8 @@ function _themeIframe(frame: HTMLIFrameElement, definition: IThemeDefinition): v
 
             _injectTokenStyles(definition, frameDocument, TOKEN_STYLE_ID);
             _applyFrameThemeClass(frameDocument, definition.name);
-            _injectFfnOverrides(definition, frameDocument, IFRAME_OVERRIDE_STYLE_ID);
+            _injectStaticNativeOverrides(definition, frameDocument, IFRAME_STATIC_OVERRIDE_STYLE_ID);
+            _injectScannedFfnOverrides(definition, frameDocument, IFRAME_OVERRIDE_STYLE_ID);
         } catch (e) {
             FFNLogger.log(MODULE_NAME, '_themeIframe', 'Could not theme TinyMCE iframe:', e as object);
         }
@@ -225,6 +297,45 @@ function _applyFrameThemeClass(rootDocument: Document, theme: Theme): void {
     Object.values(Theme).forEach(value => root.classList.remove(_themeClass(value)));
     root.classList.add(_themeClass(theme));
     root.style.colorScheme = getThemeDefinition(theme).isDark ? 'dark' : 'light';
+}
+
+function _clearPageThemeChrome(rootDocument: Document): void {
+    const root = rootDocument.documentElement;
+    Object.values(Theme).forEach(value => root.classList.remove(_themeClass(value)));
+    root.style.colorScheme = '';
+}
+
+function _clearTinyMceIframes(): void {
+    document.querySelectorAll<HTMLIFrameElement>('iframe[id$="_ifr"]').forEach(frame => _clearIframeTheme(frame));
+}
+
+function _clearIframeTheme(frame: HTMLIFrameElement): void {
+    const clear = () => {
+        try {
+            const frameDocument = frame.contentDocument;
+            if (!frameDocument) return;
+
+            _clearPageThemeChrome(frameDocument);
+            frameDocument.getElementById(TOKEN_STYLE_ID)?.remove();
+            frameDocument.getElementById(IFRAME_STATIC_OVERRIDE_STYLE_ID)?.remove();
+            frameDocument.getElementById(IFRAME_OVERRIDE_STYLE_ID)?.remove();
+        } catch (e) {
+            FFNLogger.log(MODULE_NAME, '_clearIframeTheme', 'Could not clear TinyMCE iframe theme:', e as object);
+        }
+    };
+
+    if (frame.contentDocument?.readyState === 'complete') {
+        clear();
+        return;
+    }
+
+    frame.addEventListener('load', clear, { once: true });
+}
+
+function _stopTinyMceIframeWatcher(): void {
+    if (!_iframeObserver) return;
+    _iframeObserver.disconnect();
+    _iframeObserver = null;
 }
 
 function _prefersDark(): boolean {

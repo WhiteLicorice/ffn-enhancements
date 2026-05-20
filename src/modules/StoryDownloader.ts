@@ -5,6 +5,8 @@ import { Elements } from '../enums/Elements';
 import { FicHubDownloader } from './FicHubDownloader';
 import { NativeDownloader } from './NativeDownloader';
 import { SupportedFormats } from '../enums/SupportedFormats';
+import { markFfneUiRoot } from '../utils/ffneUi';
+import { ThemeManager } from './ThemeManager';
 
 /**
  * Module handling the UI integration for story downloads.
@@ -37,6 +39,7 @@ export const StoryDownloader = {
      */
     init: function () {
         const log = Core.getLogger(this.MODULE_NAME, 'init');
+        ThemeManager.ensureComponentStyles();
         Core.onDomReady(() => {
             const header = Core.getElement(Elements.PROFILE_HEADER);
             if (header) {
@@ -56,6 +59,7 @@ export const StoryDownloader = {
     injectModal: function () {
         // Prevent duplicate injection
         if (document.getElementById('ffe-download-modal')) return;
+        ThemeManager.ensureComponentStyles();
 
         const modalHtml = `
             <div class="modal fade hide" id="ffe-download-modal" style="display: none;">
@@ -95,6 +99,9 @@ export const StoryDownloader = {
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.modal = document.getElementById('ffe-download-modal');
+        if (this.modal instanceof HTMLElement) {
+            markFfneUiRoot(this.modal);
+        }
 
         // Bind manual close handlers
         const closeX = document.getElementById('ffe-modal-close-x');
@@ -110,17 +117,21 @@ export const StoryDownloader = {
      */
     injectDropdown: function (parentGroup: HTMLElement) {
         const log = Core.getLogger(this.MODULE_NAME, 'injectDropdown');
+        ThemeManager.ensureComponentStyles();
 
         if (this.abortController) {
             this.abortController.abort();
         }
         this.abortController = new AbortController();
 
-        const container = document.createElement('div');
+        const container = markFfneUiRoot(document.createElement('div'));
         container.className = 'ffne-dl-container';
 
         this.mainBtn = document.createElement('button');
+        this.mainBtn.type = 'button';
         this.mainBtn.className = 'btn';
+        this.mainBtn.setAttribute('aria-haspopup', 'menu');
+        this.mainBtn.setAttribute('aria-expanded', 'false');
         this.mainBtn.innerHTML = "Download &#9662;";
         this.mainBtn.onclick = (e) => {
             e.preventDefault();
@@ -129,6 +140,7 @@ export const StoryDownloader = {
 
         const menu = document.createElement('ul');
         menu.className = 'ffne-dl-menu';
+        menu.setAttribute('role', 'menu');
         this.dropdown = menu;
 
         const formats = [
@@ -141,6 +153,7 @@ export const StoryDownloader = {
         formats.forEach(fmt => {
             const li = document.createElement('li');
             const a = document.createElement('a');
+            a.setAttribute('role', 'menuitem');
             a.innerText = fmt.label;
             a.href = "#";
             a.onclick = (e) => {
@@ -176,7 +189,17 @@ export const StoryDownloader = {
      * @param force - Optional boolean to force show (true) or hide (false).
      */
     toggleDropdown: function (force?: boolean) {
-        if (this.dropdown) this.dropdown.style.display = (force ?? this.dropdown.style.display === 'none') ? 'block' : 'none';
+        if (!this.dropdown) return;
+
+        const inlineDisplay = this.dropdown.style.display;
+        const computedDisplay = window.getComputedStyle(this.dropdown).display;
+        const isVisible = inlineDisplay
+            ? inlineDisplay !== 'none'
+            : computedDisplay !== 'none';
+        const shouldShow = force ?? !isVisible;
+
+        this.dropdown.style.display = shouldShow ? 'block' : 'none';
+        this.mainBtn?.setAttribute('aria-expanded', String(shouldShow));
     },
 
     /**
@@ -238,6 +261,7 @@ export const StoryDownloader = {
             const backdrop = document.createElement('div');
             backdrop.className = 'modal-backdrop fade';
             backdrop.id = 'ffe-modal-backdrop';
+            markFfneUiRoot(backdrop);
             document.body.appendChild(backdrop);
             void backdrop.offsetHeight;
             backdrop.classList.add('in');

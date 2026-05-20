@@ -15,6 +15,8 @@ import { writeToClipboard } from '../utils/clipboard';
 import { sanitizeEditorHtml } from '../utils/htmlSanitizer';
 import { SimpleMarkdownParser } from './SimpleMarkdownParser';
 import { runBulkOperation, AbortBulkOperation } from '../utils/runBulkOperation';
+import { markFfneUiRoot } from '../utils/ffneUi';
+import { injectStyleOnce } from '../utils/injectStyleOnce';
 import { Ao3BridgeClient } from '../services/Ao3BridgeClient';
 import {
     IAo3Chapter,
@@ -1006,7 +1008,7 @@ export const DocManager = {
 
         this._injectAdvancedStyles();
 
-        const drawer = document.createElement('div');
+        const drawer = markFfneUiRoot(document.createElement('div'));
         drawer.id = ADVANCED_DRAWER_ID;
         drawer.innerHTML = `
             <button
@@ -1028,12 +1030,7 @@ export const DocManager = {
     },
 
     _injectAdvancedStyles: function () {
-        if (document.getElementById(ADVANCED_STYLE_ID)) return;
-
-        const style = document.createElement('style');
-        style.id = ADVANCED_STYLE_ID;
-        style.textContent = docManagerStyles;
-        document.head.appendChild(style);
+        injectStyleOnce(ADVANCED_STYLE_ID, docManagerStyles);
     },
 
     openAdvancedRoutinesModal: function () {
@@ -1041,7 +1038,7 @@ export const DocManager = {
 
         this._injectAdvancedStyles();
 
-        const overlay = document.createElement('div');
+        const overlay = markFfneUiRoot(document.createElement('div'));
         overlay.id = ADVANCED_MODAL_ID;
         overlay.className = 'ffne-dm-overlay';
         overlay.innerHTML = `
@@ -1142,7 +1139,7 @@ export const DocManager = {
         this._injectAdvancedStyles();
         this._bulkImportPlan = null;
 
-        const overlay = document.createElement('div');
+        const overlay = markFfneUiRoot(document.createElement('div'));
         overlay.id = IMPORT_MODAL_ID;
         overlay.className = 'ffne-dm-overlay';
         overlay.innerHTML = `
@@ -1312,7 +1309,7 @@ export const DocManager = {
         this._injectAdvancedStyles();
         this._ao3MigrationState = null;
 
-        const overlay = document.createElement('div');
+        const overlay = markFfneUiRoot(document.createElement('div'));
         overlay.id = AO3_MODAL_ID;
         overlay.className = 'ffne-dm-overlay';
         overlay.innerHTML = `
