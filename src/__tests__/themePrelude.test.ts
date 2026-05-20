@@ -73,6 +73,18 @@ describe('theme prelude', () => {
         expect(document.documentElement.className).toBe(expectedClass);
     });
 
+    it('prefers GM_getValue over the localStorage cache when both are available', () => {
+        jsdom.reconfigure({ url: 'https://www.fanfiction.net/docs/docs.php' });
+        resetDom();
+        mockMatchMedia(false);
+        window.localStorage.setItem('ffne_theme_cache', Theme.SEPIA);
+        (globalThis as typeof globalThis & { GM_getValue?: (key: string) => string }).GM_getValue = vi.fn(() => Theme.DARK);
+
+        installCriticalThemePrelude(criticalCss);
+
+        expect(document.documentElement.className).toBe('ffne-theme-dark');
+    });
+
     it('falls back to the localStorage theme cache when GM_getValue is unavailable', () => {
         jsdom.reconfigure({ url: 'https://www.fanfiction.net/docs/docs.php' });
         resetDom();
@@ -84,18 +96,45 @@ describe('theme prelude', () => {
         expect(document.documentElement.className).toBe('ffne-theme-high-contrast');
     });
 
+    it('falls back to the localStorage theme cache when GM_getValue returns an invalid value', () => {
+        jsdom.reconfigure({ url: 'https://www.fanfiction.net/docs/docs.php' });
+        resetDom();
+        mockMatchMedia(false);
+        window.localStorage.setItem('ffne_theme_cache', Theme.SEPIA);
+        (globalThis as typeof globalThis & { GM_getValue?: (key: string) => string }).GM_getValue = vi.fn(() => 'invalid-theme');
+
+        installCriticalThemePrelude(criticalCss);
+
+        expect(document.documentElement.className).toBe('ffne-theme-sepia');
+    });
+
+    it('falls back to the resolved system theme when stored values are invalid', () => {
+        jsdom.reconfigure({ url: 'https://www.fanfiction.net/docs/docs.php' });
+        resetDom();
+        mockMatchMedia(true);
+        window.localStorage.setItem('ffne_theme_cache', 'invalid-theme');
+        (globalThis as typeof globalThis & { GM_getValue?: (key: string) => string }).GM_getValue = vi.fn(() => 'invalid-theme');
+
+        installCriticalThemePrelude(criticalCss);
+
+        expect(document.documentElement.className).toBe('ffne-theme-dark');
+        expect(document.documentElement.style.colorScheme).toBe('dark');
+    });
+
     it('builds compact critical CSS with first-paint native FFN selectors but without component selectors', () => {
         expect(resolvePreludeTheme(Theme.SYSTEM, true)).toBe(Theme.DARK);
         expect(resolvePreludeTheme(Theme.SYSTEM, false)).toBe(Theme.LIGHT);
         expect(criticalCss.length).toBeLessThan(25_000);
         expect(criticalCss).toContain('.panel_success');
         expect(criticalCss).toContain('#profile_top a[href*="/r/"]');
-        expect(criticalCss).toContain('html.ffne-theme-dark body');
+        expect(criticalCss).toContain('html:is(.ffne-theme-light,.ffne-theme-dark,.ffne-theme-sepia,.ffne-theme-high-contrast) body');
         expect(criticalCss).toContain('input:not([type="checkbox"])');
-        expect(criticalCss).toContain('html.ffne-theme-dark button');
+        expect(criticalCss).toContain(':is(input[type="submit"],input[type="button"],button,.btn)');
         expect(criticalCss).toContain('#content_parent');
         expect(criticalCss).not.toContain('.mce-window');
         expect(criticalCss).not.toContain('.ffne-dl-container');
         expect(criticalCss).not.toContain('[data-ffne-ui].ffne-dl-container');
+        expect(criticalCss).not.toContain('.table-bordered table');
+        expect(criticalCss).not.toContain('[data-ffne-ui]');
     });
 });

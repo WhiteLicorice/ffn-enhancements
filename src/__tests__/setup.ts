@@ -31,10 +31,12 @@ function createMemoryStorage(): Storage {
 function ensureLocalStorage(): void {
     const storage = createMemoryStorage();
 
-    Object.defineProperty(window, 'localStorage', {
-        configurable: true,
-        value: storage,
-    });
+    if (typeof window !== 'undefined') {
+        Object.defineProperty(window, 'localStorage', {
+            configurable: true,
+            value: storage,
+        });
+    }
 
     Object.defineProperty(globalThis, 'localStorage', {
         configurable: true,
