@@ -9,7 +9,6 @@
 // 2. Service worker has unrestricted fetch() for declared host_permissions.
 // 3. Consistent behavior across Chrome and Firefox.
 
-import { MessageType } from '../background/message-types';
 import type { CrossOriginFetchMessage, CrossOriginFetchResponse } from '../background/message-types';
 
 export interface FetchRequestOptions {
@@ -40,7 +39,7 @@ export interface FetchResponse {
  */
 export async function backgroundFetch(options: FetchRequestOptions): Promise<FetchResponse> {
     const message: CrossOriginFetchMessage = {
-        type: MessageType.CROSS_ORIGIN_FETCH,
+        type: 'CROSS_ORIGIN_FETCH',
         url: options.url,
         method: options.method || 'GET',
         headers: options.headers,
@@ -109,13 +108,17 @@ export async function sendToActiveTab(message: unknown): Promise<void> {
  *   // later: unsub();
  */
 export function onMessage(
-    callback: (message: Record<string, unknown>, sender: chrome.runtime.MessageSender) => void,
+    callback: (message: Record<string, unknown>, sender: chrome.runtime.MessageSender) => unknown,
 ): () => void {
     const listener = (
         message: Record<string, unknown>,
         sender: chrome.runtime.MessageSender,
+        sendResponse: (response?: unknown) => void,
     ) => {
-        callback(message, sender);
+        const response = callback(message, sender);
+        if (response !== undefined) {
+            sendResponse(response);
+        }
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);

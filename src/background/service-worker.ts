@@ -6,6 +6,7 @@ import type { BackgroundMessage, CrossOriginFetchMessage, CrossOriginFetchRespon
 
 const FFN_HOME_URL = 'https://www.fanfiction.net/';
 const OPEN_SETTINGS_TIMEOUT_MS = 30_000;
+const SUPPORTED_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net', 'archiveofourown.org']);
 
 console.log('FFN Enhancements service worker loaded.');
 
@@ -94,7 +95,8 @@ async function openSettingsForActiveTab(): Promise<void> {
 }
 
 async function openSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<void> {
-    if (tab?.id !== undefined && await sendOpenSettings(tab.id)) {
+    if (tab?.id !== undefined && isSupportedTab(tab)) {
+        await openSettingsInTab(tab.id);
         return;
     }
 
@@ -104,10 +106,39 @@ async function openSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<voi
     }
 }
 
+async function openSettingsInTab(tabId: number): Promise<boolean> {
+    if (await sendOpenSettings(tabId)) return true;
+    if (!await injectContentScript(tabId)) return false;
+    return sendOpenSettings(tabId);
+}
+
 async function sendOpenSettings(tabId: number): Promise<boolean> {
     try {
         await chrome.tabs.sendMessage(tabId, { type: MessageType.OPEN_SETTINGS });
         return true;
+    } catch {
+        return false;
+    }
+}
+
+async function injectContentScript(tabId: number): Promise<boolean> {
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            files: ['content/main.js'],
+        });
+        return true;
+    } catch (err) {
+        console.warn('FFN Enhancements could not inject content script for Settings.', err);
+        return false;
+    }
+}
+
+function isSupportedTab(tab: chrome.tabs.Tab): boolean {
+    if (!tab.url) return false;
+    try {
+        const url = new URL(tab.url);
+        return (url.protocol === 'http:' || url.protocol === 'https:') && SUPPORTED_HOSTS.has(url.hostname);
     } catch {
         return false;
     }
@@ -127,7 +158,7 @@ function queueOpenSettingsWhenTabLoads(tabId: number): void {
     const listener = (updatedTabId: number, changeInfo: { status?: string }) => {
         if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
         cleanup();
-        void sendOpenSettings(tabId);
+        void openSettingsInTab(tabId);
     };
 
     chrome.tabs.onUpdated.addListener(listener);

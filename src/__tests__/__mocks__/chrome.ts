@@ -12,6 +12,10 @@ type RuntimeMessageCallback = (
     sender: chrome.runtime.MessageSender,
     sendResponse: (response?: unknown) => void,
 ) => boolean | void;
+type ScriptInjectionDetails = {
+    target: { tabId: number };
+    files?: string[];
+};
 
 class MockStorageArea {
     private _store = new Map<string, unknown>();
@@ -91,6 +95,8 @@ const tabsState = {
     sendMessageRejectTabIds: new Set<number>(),
     sendMessageCalls: [] as Array<{ tabId: number; message: unknown }>,
     createCalls: [] as chrome.tabs.CreateProperties[],
+    executeScriptCalls: [] as ScriptInjectionDetails[],
+    executeScriptRejectTabIds: new Set<number>(),
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,6 +155,17 @@ const tabsState = {
             },
         },
     },
+    scripting: {
+        executeScript: async (details: ScriptInjectionDetails) => {
+            tabsState.executeScriptCalls.push(details);
+            const tabId = details.target.tabId;
+            if (tabsState.executeScriptRejectTabIds.has(tabId)) {
+                throw new Error('Cannot access contents of the page.');
+            }
+            tabsState.sendMessageRejectTabIds.delete(tabId);
+            return [];
+        },
+    },
 };
 
 export const mockChromeStorage = storageInstance;
@@ -179,6 +196,8 @@ export const mockChromeTabs = {
         tabsState.sendMessageRejectTabIds.clear();
         tabsState.sendMessageCalls.length = 0;
         tabsState.createCalls.length = 0;
+        tabsState.executeScriptCalls.length = 0;
+        tabsState.executeScriptRejectTabIds.clear();
         tabUpdatedListeners.length = 0;
         runtimeMessageListeners.length = 0;
     },

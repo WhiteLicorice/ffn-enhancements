@@ -17,11 +17,25 @@ describe('service worker action click', () => {
             { tabId: 7, message: { type: MessageType.OPEN_SETTINGS } },
         ]);
         expect(mockChromeTabs.state.createCalls).toHaveLength(0);
+        expect(mockChromeTabs.state.executeScriptCalls).toHaveLength(0);
     });
 
-    it('opens FFN and then opens settings when the current tab cannot receive messages', async () => {
+    it('injects the content script on supported tabs when the existing tab cannot receive messages', async () => {
         mockChromeTabs.state.sendMessageRejectTabIds.add(7);
 
+        await mockChromeAction.click({ id: 7, url: 'https://www.fanfiction.net/s/1/1/' } as chrome.tabs.Tab);
+
+        expect(mockChromeTabs.state.createCalls).toHaveLength(0);
+        expect(mockChromeTabs.state.executeScriptCalls).toEqual([
+            { target: { tabId: 7 }, files: ['content/main.js'] },
+        ]);
+        expect(mockChromeTabs.state.sendMessageCalls).toEqual([
+            { tabId: 7, message: { type: MessageType.OPEN_SETTINGS } },
+            { tabId: 7, message: { type: MessageType.OPEN_SETTINGS } },
+        ]);
+    });
+
+    it('opens FFN and then opens settings when the current tab is unsupported', async () => {
         await mockChromeAction.click({ id: 7, url: 'https://example.com/' } as chrome.tabs.Tab);
 
         expect(mockChromeTabs.state.createCalls).toEqual([
@@ -32,7 +46,6 @@ describe('service worker action click', () => {
         await Promise.resolve();
 
         expect(mockChromeTabs.state.sendMessageCalls).toEqual([
-            { tabId: 7, message: { type: MessageType.OPEN_SETTINGS } },
             { tabId: 100, message: { type: MessageType.OPEN_SETTINGS } },
         ]);
     });

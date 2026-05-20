@@ -33,7 +33,9 @@ export const SettingsMenu: ISitewideModule = {
             if (msg.type === 'OPEN_SETTINGS') {
                 FFNLogger.log(MODULE_NAME, 'openSettings', 'Opening settings modal.');
                 SettingsPage.openModal();
+                return { ok: true };
             }
+            return undefined;
         });
     },
 

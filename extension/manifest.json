@@ -3,7 +3,7 @@
   "name": "FFN Enhancements",
   "version": "0.17.0",
   "description": "Modern enhancements for FanFiction.net",
-  "permissions": ["storage"],
+  "permissions": ["storage", "scripting", "activeTab"],
   "host_permissions": [
     "*://www.fanfiction.net/*",
     "*://fanfiction.net/*",
