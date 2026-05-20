@@ -40,14 +40,20 @@ npm run dev     # vite               (dev server, hot reload for quick iteration
 - TypeScript is strict (`strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`).
   Fix all type errors before considering a build clean.
 - `tsconfig.json` targets `ESNext` modules. `tsconfig.node.json` is for Vite config only.
-- Vite bundles everything into one file. There are no lazy chunks.
+- Vite bundles the project into one userscript file, but several heavy libraries are
+  deliberately externalized to CDN `@require` entries so the main bundle stays small
+  enough to execute quickly at `document-start`. There are no lazy chunks.
 - The `require` array in `vite.config.ts` maps CDN scripts to module imports via
   `externalGlobals`. These are not bundled; they are injected as `@require`
-  directives in the userscript header instead:
+  directives in the userscript header instead. Keep the pinned `@require` URLs and
+  `externalGlobals` entries in sync:
   - `jszip` -> `JSZip`
   - `file-saver` -> `saveAs`
   - `turndown` -> `TurndownService`
   - `marked` -> `marked`
+- `vite.config.ts` also emits a tiny zero-dependency paint-gate banner via
+  `build.rollupOptions.output.banner`. It must stay tiny and self-contained because
+  it runs before the main bundle and before any CDN `@require` script becomes usable.
 
 ---
 
@@ -620,12 +626,18 @@ tsconfig.json                    - Strict TypeScript config
     trying to expand the scanner's reach.
 
 13. **GOTCHA: Scanner vs native-overrides injection order.** `_injectFfnOverrides`
-    concatenates `[scannerCss, elementCss]`. Scanner preserves `!important` from
-    original rules. When scanner and native-overrides produce identical selectors
-    with `!important` (e.g., `#gui_table1 tbody tr:hover td`), native-overrides
-    wins because it comes LAST. If you swap the order, scanner's mechanically-
-    remapped colors win and semantic tokens stop working. Native-overrides must
-    always be the final word.
+     concatenates `[scannerCss, elementCss]`. Scanner preserves `!important` from
+     original rules. When scanner and native-overrides produce identical selectors
+     with `!important` (e.g., `#gui_table1 tbody tr:hover td`), native-overrides
+     wins because it comes LAST. If you swap the order, scanner's mechanically-
+     remapped colors win and semantic tokens stop working. Native-overrides must
+     always be the final word.
+
+14. **GOTCHA: Paint-gate banner sync.** The tiny banner in `vite.config.ts` must
+    keep the same root class, style id, overlay id, CSS selectors, and overlay
+    inline styles as `src/modules/PaintGate.ts`. If they drift apart, the banner
+    can paint one gate while the module primes/releases another, causing flicker or
+    a stuck overlay.
 
 ---
 

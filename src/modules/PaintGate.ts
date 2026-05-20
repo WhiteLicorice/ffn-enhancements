@@ -7,7 +7,7 @@ const OVERLAY_ID = 'ffne-paint-gate-overlay';
 const ROOT_CLASS = 'ffne-paint-gated';
 const FFN_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
 const FAIL_SAFE_TIMEOUT_MS = 5000;
-const RELEASE_FALLBACK_TIMEOUT_MS = 100;
+const RELEASE_FALLBACK_TIMEOUT_MS = 250;
 const BLACK = '#000';
 
 let _headObserver: MutationObserver | null = null;
@@ -120,8 +120,10 @@ export const PaintGate: ISitewideModule & {
 
         if (typeof window.requestAnimationFrame === 'function') {
             _releaseFrame = window.requestAnimationFrame(() => {
-                _releaseFrame = null;
-                runRelease();
+                _releaseFrame = window.requestAnimationFrame(() => {
+                    _releaseFrame = null;
+                    runRelease();
+                });
             });
         }
 
