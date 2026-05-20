@@ -52,6 +52,37 @@ npm test        # vitest run -v
   are copied to `dist/` by the `copy-extension-assets` Vite plugin after bundling.
 - Shared chunks land in `dist/chunks/` (e.g., `message-types-*.js`, `themeClass-*.js`).
 - `modulePreload: false` — extension content scripts don't support module preload.
+- Target-specific output directories: `dist-chrome/` and `dist-firefox/`. The
+  `FFNE_TARGET` env var controls which target is built (`chrome` or `firefox`).
+- `patchManifest()` in `vite.config.ts` handles target-specific manifest tweaks:
+  - **Chrome:** Removes `browser_specific_settings` (CWS rejects it).
+  - **Firefox:** Uses cross-browser background format — both `scripts` (event page) and
+    `service_worker` keys. Does NOT set `type: "module"` (see Gotcha #15).
+
+### 2.1 Extension Icon Click → Settings Modal Flow
+
+The extension icon click (`action.onClicked`) opens the settings modal on the active
+FFN/AO3 tab. The communication path is layered with fallbacks:
+
+1. **Primary:** Service worker calls `scripting.executeScript` with `func` that
+   calls `window.postMessage({ type: 'FFNE_OPEN_SETTINGS' }, origin)`. The content
+   script's `SettingsMenu.prime()` listens for this via `window.addEventListener('message')`.
+   This bypasses `chrome.tabs.sendMessage` entirely and works reliably in both
+   Chrome service workers and Firefox event pages.
+
+2. **Fallback 1:** If (1) fails, inject `content/main.js` via `scripting.executeScript`
+   with `files`, then retry the `postMessage` dispatch.
+
+3. **Fallback 2:** If both above fail, use the legacy `chrome.tabs.sendMessage` with
+   `OPEN_SETTINGS` message type. This works in Chrome but may be unreliable in
+   Firefox event pages.
+
+4. **Tab routing:** If the active tab is not on a supported host (FFN/AO3), the
+   service worker opens `https://www.fanfiction.net/` in a new tab and waits for
+   it to load before dispatching.
+
+All steps happen in `src/background/service-worker.ts` → `openSettingsInTab()`.
+The content script listener is in `src/modules/SettingsMenu.ts` → `prime()`.
 
 ---
 
@@ -700,6 +731,19 @@ tsconfig.json                    - Strict TypeScript config
 14. `userscript.noframes` is intentional. TinyMCE editor iframes are themed from
     the parent document via `iframe.contentDocument`, so do not build features
     that depend on the userscript executing inside subframes.
+
+15. **GOTCHA: `type: "module"` on `background.scripts` breaks `action.onClicked` in
+    Firefox.** Firefox MV3 uses event pages (`background.scripts`), not service workers
+    (`background.service_worker`). Module scripts (`type: "module"`) execute deferred
+    (after page parse), but `action.onClicked` requires listeners registered synchronously
+    at the start of page execution. In event page wake-up cycles, deferred module execution
+    misses the event dispatch that triggered the wake-up — the icon click appears to do nothing.
+    Fix: use classic scripts (omit `type` or set `"classic"`) for background in Firefox.
+    The Vite-bundled `service-worker.js` has no imports/exports, so module type is unnecessary.
+    The `patchManifest` in `vite.config.ts` handles this per-target. Both `scripts` and
+    `service_worker` keys should be present in the Firefox manifest for cross-browser compat
+    (Firefox uses `scripts`, ignores `service_worker`; Chrome uses `service_worker`, ignores
+    `scripts` in MV3). See [MDN background manifest docs](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background).
 
 ---
 

@@ -108,9 +108,38 @@ async function openSettingsForTab(tab: chrome.tabs.Tab | undefined): Promise<voi
 }
 
 async function openSettingsInTab(tabId: number): Promise<boolean> {
+    // Primary: dispatch via scripting.executeScript with func, which posts a
+    // window message that the content script listens for. This bypasses the
+    // chrome.tabs.sendMessage API entirely and works reliably in both Chrome
+    // service workers and Firefox event pages.
+    if (await dispatchOpenSettingsViaPostMessage(tabId)) return true;
+
+    // Fallback 1: inject the content script bundle, then retry postMessage.
+    if (await injectContentScript(tabId)) {
+        return dispatchOpenSettingsViaPostMessage(tabId);
+    }
+
+    // Fallback 2: try the legacy sendMessage path (kept for Chrome compat).
     if (await sendOpenSettings(tabId)) return true;
-    if (!await injectContentScript(tabId)) return false;
-    return sendOpenSettings(tabId);
+
+    return false;
+}
+
+function triggerSettingsModalViaPostMessage(): void {
+    window.postMessage(
+        { type: 'FFNE_OPEN_SETTINGS' },
+        window.location.origin,
+    );
+}
+
+async function dispatchOpenSettingsViaPostMessage(tabId: number): Promise<boolean> {
+    try {
+        await scriptingExecuteScriptFunc(tabId, triggerSettingsModalViaPostMessage);
+        return true;
+    } catch (err) {
+        console.warn('FFN Enhancements could not dispatch open-settings via postMessage.', err);
+        return false;
+    }
 }
 
 async function sendOpenSettings(tabId: number): Promise<boolean> {
@@ -196,6 +225,18 @@ function scriptingExecuteScript(
 ): Promise<chrome.scripting.InjectionResult[]> {
     return chromeAsync<chrome.scripting.InjectionResult[]>((callback) => (
         chrome.scripting.executeScript(injection, callback) as unknown as Promise<chrome.scripting.InjectionResult[]> | void
+    ));
+}
+
+function scriptingExecuteScriptFunc(
+    tabId: number,
+    fn: () => void,
+): Promise<chrome.scripting.InjectionResult[]> {
+    return chromeAsync<chrome.scripting.InjectionResult[]>((callback) => (
+        chrome.scripting.executeScript(
+            { target: { tabId }, func: fn },
+            callback,
+        ) as unknown as Promise<chrome.scripting.InjectionResult[]> | void
     ));
 }
 

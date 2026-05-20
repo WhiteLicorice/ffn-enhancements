@@ -28,14 +28,25 @@ export const SettingsMenu: ISitewideModule = {
      * Registers the message listener for opening the settings modal.
      */
     prime(): void {
+        // Legacy path: chrome.runtime.onMessage (used by Chrome sendMessage and as fallback).
         onMessage((message) => {
             const msg = message as Record<string, unknown>;
             if (msg.type === 'OPEN_SETTINGS') {
-                FFNLogger.log(MODULE_NAME, 'openSettings', 'Opening settings modal.');
+                FFNLogger.log(MODULE_NAME, 'openSettings', 'Opening settings modal via runtime message.');
                 SettingsPage.openModal();
                 return { ok: true };
             }
             return undefined;
+        });
+
+        // Primary path: window.postMessage (used by Firefox event pages, which
+        // dispatch via scripting.executeScript with func). Also works in Chrome.
+        window.addEventListener('message', (event) => {
+            if (event.source !== window) return;
+            if (event.data?.type === 'FFNE_OPEN_SETTINGS') {
+                FFNLogger.log(MODULE_NAME, 'openSettings', 'Opening settings modal via postMessage.');
+                SettingsPage.openModal();
+            }
         });
     },
 

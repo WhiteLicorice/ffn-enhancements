@@ -15,6 +15,7 @@ type RuntimeMessageCallback = (
 type ScriptInjectionDetails = {
     target: { tabId: number };
     files?: string[];
+    func?: () => void;
 };
 
 class MockStorageArea {
@@ -96,7 +97,10 @@ const tabsState = {
     sendMessageCalls: [] as Array<{ tabId: number; message: unknown }>,
     createCalls: [] as chrome.tabs.CreateProperties[],
     executeScriptCalls: [] as ScriptInjectionDetails[],
+    /** Reject ALL executeScript calls for these tab IDs. */
     executeScriptRejectTabIds: new Set<number>(),
+    /** Reject the first N executeScript calls for a tab (per-call counter). */
+    executeScriptRejectCount: new Map<number, number>(),
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -159,9 +163,19 @@ const tabsState = {
         executeScript: async (details: ScriptInjectionDetails) => {
             tabsState.executeScriptCalls.push(details);
             const tabId = details.target.tabId;
+
+            // Per-call counter: reject the first N calls for this tab.
+            const remaining = tabsState.executeScriptRejectCount.get(tabId) ?? 0;
+            if (remaining > 0) {
+                tabsState.executeScriptRejectCount.set(tabId, remaining - 1);
+                throw new Error('Cannot access contents of the page.');
+            }
+
+            // Reject all calls for this tab.
             if (tabsState.executeScriptRejectTabIds.has(tabId)) {
                 throw new Error('Cannot access contents of the page.');
             }
+
             tabsState.sendMessageRejectTabIds.delete(tabId);
             return [];
         },
@@ -171,6 +185,9 @@ const tabsState = {
 export const mockChromeStorage = storageInstance;
 
 export const mockChromeAction = {
+    get listenerCount(): number {
+        return actionClickListeners.length;
+    },
     async click(tab: chrome.tabs.Tab = tabsState.activeTab): Promise<void> {
         for (const listener of [...actionClickListeners]) {
             await listener(tab);
@@ -198,6 +215,7 @@ export const mockChromeTabs = {
         tabsState.createCalls.length = 0;
         tabsState.executeScriptCalls.length = 0;
         tabsState.executeScriptRejectTabIds.clear();
+        tabsState.executeScriptRejectCount.clear();
         tabUpdatedListeners.length = 0;
         runtimeMessageListeners.length = 0;
     },

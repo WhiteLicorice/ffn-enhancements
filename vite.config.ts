@@ -33,11 +33,14 @@ function patchManifest(manifestPath: string): void {
     }
 
     if (target === 'firefox') {
-        // Firefox MV3 does not support background.service_worker yet.
-        // Use the same built file as a non-persistent background script.
+        // Firefox MV3 uses background.scripts (event pages), not service_worker.
+        // Include both keys for cross-browser compat: FF uses scripts, Chrome uses service_worker.
+        // GOTCHA: Do NOT set type: 'module' — the bundled script has no imports/exports,
+        // and module scripts are deferred, which breaks action.onClicked listener
+        // persistence in Firefox event page wake-up cycles.
         manifest.background = {
             scripts: ['background/service-worker.js'],
-            type: 'module',
+            service_worker: 'background/service-worker.js',
         };
     } else {
         delete manifest.browser_specific_settings;
