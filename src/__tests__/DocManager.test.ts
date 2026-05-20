@@ -420,6 +420,8 @@ describe('DocManager bulk import modal', () => {
         expect(folderInput?.type).toBe('file');
         expect(folderInput?.multiple).toBe(true);
         expect(folderInput?.hasAttribute('webkitdirectory')).toBe(true);
+        expect(folderInput?.hasAttribute('directory')).toBe(true);
+        expect(folderInput?.hasAttribute('mozdirectory')).toBe(true);
         expect(folderInput?.accept).toBe('.md,text/markdown');
         expect(filesInput?.type).toBe('file');
         expect(filesInput?.multiple).toBe(true);

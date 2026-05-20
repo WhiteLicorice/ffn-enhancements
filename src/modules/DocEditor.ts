@@ -222,7 +222,7 @@ export const DocEditor = {
     /**
      * Orchestrates the export of the currently open document.
      * The output format (Markdown or HTML) is read from SettingsManager at call time,
-     * so changes made via the Tampermonkey menu take effect on the next click.
+     * so settings changes take effect on the next click.
      * Uses FileSaver to trigger the browser download.
      */
     exportCurrentDoc: async function () {

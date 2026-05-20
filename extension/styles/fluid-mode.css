@@ -1,0 +1,101 @@
+/* FFN Enhancements: Fluid Mode Overrides */
+/* __FLUID_CLASS__ replaced with actual class for manifest injection. */
+
+html.ffn-enhancements-fluid-mode body,
+body.ffn-enhancements-fluid-mode {
+    min-width: 0 !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+}
+
+html.ffn-enhancements-fluid-mode #content_wrapper,
+body.ffn-enhancements-fluid-mode #content_wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+html.ffn-enhancements-fluid-mode #content_wrapper_inner,
+body.ffn-enhancements-fluid-mode #content_wrapper_inner {
+    padding: 0 15px !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+}
+
+html.ffn-enhancements-fluid-mode .storytext,
+html.ffn-enhancements-fluid-mode #storytext,
+html.ffn-enhancements-fluid-mode #storytextp,
+body.ffn-enhancements-fluid-mode .storytext,
+body.ffn-enhancements-fluid-mode #storytext,
+body.ffn-enhancements-fluid-mode #storytextp {
+    width: auto !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    float: none !important;
+    display: block !important;
+    text-align: left !important;
+    box-sizing: border-box !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+html.ffn-enhancements-fluid-mode .menulink,
+body.ffn-enhancements-fluid-mode .menulink {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: 15px !important;
+    padding-right: 15px !important;
+    box-sizing: border-box !important;
+}
+
+html.ffn-enhancements-fluid-mode #zmenu,
+body.ffn-enhancements-fluid-mode #zmenu {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: 15px !important;
+    padding-right: 15px !important;
+    box-sizing: border-box !important;
+}
+
+html.ffn-enhancements-fluid-mode #zmenu table,
+body.ffn-enhancements-fluid-mode #zmenu table {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+html.ffn-enhancements-fluid-mode .maxwidth,
+body.ffn-enhancements-fluid-mode .maxwidth {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+html.ffn-enhancements-fluid-mode .z-top-container,
+body.ffn-enhancements-fluid-mode .z-top-container {
+    max-width: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+}
+
+html.ffn-enhancements-fluid-mode #review table td[width="336"],
+html.ffn-enhancements-fluid-mode #review table td[width="10"],
+body.ffn-enhancements-fluid-mode #review table td[width="336"],
+body.ffn-enhancements-fluid-mode #review table td[width="10"] {
+    display: none !important;
+}
+
+html.ffn-enhancements-fluid-mode #review table td,
+body.ffn-enhancements-fluid-mode #review table td {
+    display: block !important;
+    width: 100% !important;
+    text-align: center !important;
+}
+
+html.ffn-enhancements-fluid-mode #review table td > div,
+body.ffn-enhancements-fluid-mode #review table td > div {
+    margin: 0 auto !important;
+    text-align: left !important;
+}

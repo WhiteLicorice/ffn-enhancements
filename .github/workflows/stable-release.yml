@@ -1,0 +1,105 @@
+name: Stable Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 0.16.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release?'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ inputs.version }}"
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'; then
+            echo "Invalid version format: $VERSION"
+            echo "Expected semver (e.g. 0.16.0 or 0.16.0-rc.1)"
+            exit 1
+          fi
+
+      - name: Package extension
+        env:
+          FFNE_BETA: 'false'
+          FFNE_VERSION: ${{ inputs.version }}
+        run: npm run package
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG="v${{ inputs.version }}"
+          PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
+
+          {
+            echo 'content<<CHANGELOG_EOF'
+            echo "## Release ${{ inputs.version }}"
+            echo ""
+
+            if [ -n "$PREV_TAG" ]; then
+              echo "### Changes since $PREV_TAG"
+              FEATS=$(git log --pretty=format:"- %s" ${PREV_TAG}..HEAD --grep="^feat[(:]" 2>/dev/null || echo "")
+              FIXES=$(git log --pretty=format:"- %s" ${PREV_TAG}..HEAD --grep="^fix[(:]" 2>/dev/null || echo "")
+              UX=$(git log --pretty=format:"- %s" ${PREV_TAG}..HEAD --grep="^ux[(:]" 2>/dev/null || echo "")
+              REFACTOR=$(git log --pretty=format:"- %s" ${PREV_TAG}..HEAD --grep="^refactor[(:]" 2>/dev/null || echo "")
+              PERF=$(git log --pretty=format:"- %s" ${PREV_TAG}..HEAD --grep="^perf[(:]" 2>/dev/null || echo "")
+              CHORE=$(git log --pretty=format:"- %s" ${PREV_TAG}..HEAD --grep="^chore[(:]\|^docs[(:]\|^style[(:]\|^meta[(:]\|^debug[(:]\|^test[(:]" 2>/dev/null || echo "")
+            else
+              echo "### Initial stable release"
+              FEATS=$(git log --pretty=format:"- %s" --grep="^feat[(:]" 2>/dev/null || echo "")
+              FIXES=$(git log --pretty=format:"- %s" --grep="^fix[(:]" 2>/dev/null || echo "")
+              UX=$(git log --pretty=format:"- %s" --grep="^ux[(:]" 2>/dev/null || echo "")
+              REFACTOR=$(git log --pretty=format:"- %s" --grep="^refactor[(:]\|^perf[(:]" 2>/dev/null || echo "")
+              CHORE=$(git log --pretty=format:"- %s" --grep="^chore[(:]\|^docs[(:]\|^style[(:]\|^meta[(:]\|^debug[(:]\|^test[(:]" 2>/dev/null || echo "")
+            fi
+
+            if [ -n "$FEATS" ]; then echo ""; echo "#### Features"; echo "$FEATS"; fi
+            if [ -n "$FIXES" ]; then echo ""; echo "#### Fixes"; echo "$FIXES"; fi
+            if [ -n "$UX" ]; then echo ""; echo "#### UI/UX"; echo "$UX"; fi
+            if [ -n "$REFACTOR" ]; then echo ""; echo "#### Refactor"; echo "$REFACTOR"; fi
+            if [ -n "$PERF" ]; then echo ""; echo "#### Performance"; echo "$PERF"; fi
+            if [ -n "$CHORE" ]; then echo ""; echo "#### Chores & Docs"; echo "$CHORE"; fi
+
+            echo ""
+            echo "---"
+            echo "*Install Chrome/Edge: [ffn-enhancements-chrome.zip](https://github.com/${{ github.repository }}/releases/latest/download/ffn-enhancements-chrome.zip)*"
+            echo "*Install Firefox: [ffn-enhancements-firefox.zip](https://github.com/${{ github.repository }}/releases/latest/download/ffn-enhancements-firefox.zip)*"
+            echo CHANGELOG_EOF
+          } >> $GITHUB_OUTPUT
+
+      - name: Create tag
+        run: |
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          body: ${{ steps.changelog.outputs.content }}
+          prerelease: ${{ inputs.prerelease }}
+          files: |
+            ffn-enhancements-chrome.zip
+            ffn-enhancements-firefox.zip

@@ -1,4 +1,5 @@
-import { GM_deleteValue, GM_getValue, GM_openInTab, GM_setValue } from '$';
+import { platformStorage } from '../platform/storage';
+import { openTab } from '../platform/tabs';
 import type { IAo3Chapter } from '../interfaces/IAo3Migration';
 import {
     AO3_BRIDGE_DEFAULT_TIMEOUT_MS,
@@ -110,8 +111,8 @@ export const Ao3BridgeClient = {
         const heartbeatAtStart = this._getHeartbeat();
         const hadLiveBridge = this._hasReusableHeartbeat(heartbeatAtStart);
 
-        GM_deleteValue(AO3_BRIDGE_RESULT_KEY);
-        GM_setValue(AO3_BRIDGE_REQUEST_KEY, serializeAo3BridgeRequest(request));
+        platformStorage.remove(AO3_BRIDGE_RESULT_KEY);
+        platformStorage.set(AO3_BRIDGE_REQUEST_KEY, serializeAo3BridgeRequest(request));
         this._ensureBridgeTab(openUrl, hadLiveBridge);
 
         try {
@@ -133,7 +134,7 @@ export const Ao3BridgeClient = {
 
         const log = Core.getLogger(this.MODULE_NAME, '_ensureBridgeTab');
         try {
-            GM_openInTab(openUrl, { active: true, insert: true });
+            openTab(openUrl, true);
             log('Opened AO3 bridge tab.', { openUrl });
         } catch (err) {
             log('Could not open AO3 bridge tab.', err);
@@ -141,7 +142,7 @@ export const Ao3BridgeClient = {
     },
 
     _getHeartbeat(): Ao3BridgeHeartbeat | null {
-        return parseAo3BridgeHeartbeat(GM_getValue(AO3_BRIDGE_HEARTBEAT_KEY));
+        return parseAo3BridgeHeartbeat(platformStorage.get(AO3_BRIDGE_HEARTBEAT_KEY));
     },
 
     _hasReusableHeartbeat(heartbeat?: Ao3BridgeHeartbeat | null): boolean {
@@ -184,7 +185,7 @@ export const Ao3BridgeClient = {
             };
 
             const inspect = () => {
-                const result = parseAo3BridgeResult(GM_getValue(AO3_BRIDGE_RESULT_KEY));
+                const result = parseAo3BridgeResult(platformStorage.get(AO3_BRIDGE_RESULT_KEY));
                 if (requestMatchesResult(request, result)) {
                     finish(result);
                     return;
@@ -231,14 +232,14 @@ export const Ao3BridgeClient = {
     },
 
     _cleanupRequest(request: Ao3BridgeRequest): void {
-        const storedRequest = parseAo3BridgeRequest(GM_getValue(AO3_BRIDGE_REQUEST_KEY));
+        const storedRequest = parseAo3BridgeRequest(platformStorage.get(AO3_BRIDGE_REQUEST_KEY));
         if (storedRequest?.id === request.id) {
-            GM_deleteValue(AO3_BRIDGE_REQUEST_KEY);
+            platformStorage.remove(AO3_BRIDGE_REQUEST_KEY);
         }
 
-        const storedResult = parseAo3BridgeResult(GM_getValue(AO3_BRIDGE_RESULT_KEY));
+        const storedResult = parseAo3BridgeResult(platformStorage.get(AO3_BRIDGE_RESULT_KEY));
         if (storedResult?.id === request.id) {
-            GM_deleteValue(AO3_BRIDGE_RESULT_KEY);
+            platformStorage.remove(AO3_BRIDGE_RESULT_KEY);
         }
     },
 };

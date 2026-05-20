@@ -1,0 +1,100 @@
+name: Beta Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.github/ISSUE_TEMPLATE/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Set version
+        id: version
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BETA_VERSION="0.17.0-beta.${{ github.run_number }}+${SHORT_SHA}"
+          echo "version=${BETA_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Package extension
+        env:
+          FFNE_BETA: 'true'
+          FFNE_VERSION: ${{ steps.version.outputs.version }}
+        run: npm run package
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          {
+            echo 'content<<CHANGELOG_EOF'
+            echo "## Beta Build \`${{ steps.version.outputs.version }}\`"
+            echo ""
+            echo "**Commit:** ${{ github.sha }}"
+            echo "**Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo ""
+
+            PREV_BETA=$(git rev-parse beta 2>/dev/null || echo "")
+            if [ -n "$PREV_BETA" ]; then
+              echo "### Changes since last beta ($(git log --pretty=format:'%h' -1 $PREV_BETA))"
+              FEATS=$(git log --pretty=format:"- %s" ${PREV_BETA}..HEAD --grep="^feat[(:]" 2>/dev/null || echo "")
+              FIXES=$(git log --pretty=format:"- %s" ${PREV_BETA}..HEAD --grep="^fix[(:]" 2>/dev/null || echo "")
+              UX=$(git log --pretty=format:"- %s" ${PREV_BETA}..HEAD --grep="^ux[(:]" 2>/dev/null || echo "")
+              REFACTOR=$(git log --pretty=format:"- %s" ${PREV_BETA}..HEAD --grep="^refactor[(:]" 2>/dev/null || echo "")
+              PERF=$(git log --pretty=format:"- %s" ${PREV_BETA}..HEAD --grep="^perf[(:]" 2>/dev/null || echo "")
+              CHORE=$(git log --pretty=format:"- %s" ${PREV_BETA}..HEAD --grep="^chore[(:]\|^docs[(:]\|^style[(:]\|^meta[(:]\|^debug[(:]\|^test[(:]" 2>/dev/null || echo "")
+            else
+              echo "### Initial beta build"
+              FEATS=$(git log --pretty=format:"- %s" --grep="^feat[(:]" 2>/dev/null || echo "")
+              FIXES=$(git log --pretty=format:"- %s" --grep="^fix[(:]" 2>/dev/null || echo "")
+              UX=$(git log --pretty=format:"- %s" --grep="^ux[(:]" 2>/dev/null || echo "")
+              REFACTOR=$(git log --pretty=format:"- %s" --grep="^refactor[(:]\|^perf[(:]" 2>/dev/null || echo "")
+              CHORE=$(git log --pretty=format:"- %s" --grep="^chore[(:]\|^docs[(:]\|^style[(:]\|^meta[(:]\|^debug[(:]\|^test[(:]" 2>/dev/null || echo "")
+            fi
+
+            if [ -n "$FEATS" ]; then echo ""; echo "#### Features"; echo "$FEATS"; fi
+            if [ -n "$FIXES" ]; then echo ""; echo "#### Fixes"; echo "$FIXES"; fi
+            if [ -n "$UX" ]; then echo ""; echo "#### UI/UX"; echo "$UX"; fi
+            if [ -n "$REFACTOR" ]; then echo ""; echo "#### Refactor"; echo "$REFACTOR"; fi
+            if [ -n "$PERF" ]; then echo ""; echo "#### Performance"; echo "$PERF"; fi
+            if [ -n "$CHORE" ]; then echo ""; echo "#### Chores & Docs"; echo "$CHORE"; fi
+
+            echo ""
+            echo "---"
+            echo "*Install Chrome/Edge: [ffn-enhancements-chrome-beta.zip](https://github.com/${{ github.repository }}/releases/download/beta/ffn-enhancements-chrome-beta.zip)*"
+            echo "*Install Firefox: [ffn-enhancements-firefox-beta.zip](https://github.com/${{ github.repository }}/releases/download/beta/ffn-enhancements-firefox-beta.zip)*"
+            echo CHANGELOG_EOF
+          } >> $GITHUB_OUTPUT
+
+      - name: Update beta tag
+        run: |
+          git tag -f beta
+          git push -f origin beta
+
+      - name: Create/Update beta release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: beta
+          name: 'Beta Build'
+          body: ${{ steps.changelog.outputs.content }}
+          prerelease: true
+          make_latest: false
+          files: |
+            ffn-enhancements-chrome-beta.zip
+            ffn-enhancements-firefox-beta.zip

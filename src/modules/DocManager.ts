@@ -198,6 +198,20 @@ function _getBulkImportConfirmedLabel(format: BulkImportFormat): string {
     return _getBulkImportFormatOption(format).fileLabel;
 }
 
+function _configureDirectoryInput(input: HTMLInputElement): void {
+    // Chromium and modern Firefox expose the historical webkitdirectory name.
+    // Older Firefox builds used directory/mozdirectory experiments, so keep
+    // those harmless attributes too while retaining the multi-file fallback.
+    input.setAttribute('webkitdirectory', '');
+    input.setAttribute('directory', '');
+    input.setAttribute('mozdirectory', '');
+    try {
+        (input as HTMLInputElement & { webkitdirectory?: boolean }).webkitdirectory = true;
+    } catch {
+        // Some engines expose this as readonly or not at all.
+    }
+}
+
 function _escapeHtml(value: string): string {
     return value
         .replace(/&/g, '&amp;')
@@ -1162,7 +1176,7 @@ export const DocManager = {
                             <button type="button" id="ffne-dm-browse-folder" class="ffne-dm-btn">Browse Folder</button>
                             <button type="button" id="ffne-dm-browse-files" class="ffne-dm-btn">Browse Files</button>
                             <span id="ffne-dm-import-selection" class="ffne-dm-selection-label">No Markdown files selected.</span>
-                            <input id="ffne-dm-import-folder-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" webkitdirectory multiple>
+                            <input id="ffne-dm-import-folder-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" webkitdirectory directory mozdirectory multiple>
                             <input id="ffne-dm-import-files-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" multiple>
                         </div>
                         <button type="button" id="ffne-dm-import-start" class="ffne-dm-btn" disabled>Import</button>
@@ -1189,6 +1203,10 @@ export const DocManager = {
         const results = overlay.querySelector<HTMLElement>('#ffne-dm-import-results');
         const title = overlay.querySelector<HTMLElement>('#ffne-dm-import-title');
         let selectedFormat = 'markdown' as BulkImportFormat;
+
+        if (folderInput) {
+            _configureDirectoryInput(folderInput);
+        }
 
         const resetSelectedFiles = (format: BulkImportFormat) => {
             const formatOption = _getBulkImportFormatOption(format);
@@ -1789,7 +1807,7 @@ export const DocManager = {
     /**
      * Handles the export of a single document given a DocID.
      * The output format (Markdown or HTML) is read from SettingsManager at call time,
-     * so changes made via the Tampermonkey menu take effect on the next export.
+     * so settings changes take effect on the next export.
      * @param btnElement - The button clicked (for UI feedback).
      * @param docId - The FFN Document ID.
      * @param title - The title of the document.

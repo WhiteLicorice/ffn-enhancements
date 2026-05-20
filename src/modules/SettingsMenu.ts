@@ -1,35 +1,19 @@
 // modules/SettingsMenu.ts
 
-import { GM_registerMenuCommand } from '$';
 import { FFNLogger } from './FFNLogger';
 import { ISitewideModule } from '../interfaces/ISiteWideModule';
 import { SettingsPage } from './SettingsPage';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
+import { onMessage } from '../platform/messaging';
 
 const MODULE_NAME = 'SettingsMenu';
 
-// ─── Public API ───────────────────────────────────────────────────────────────
-
 /**
  * SettingsMenu
- * Registers a single Tampermonkey menu command that opens the settings modal
- * on the current page via `SettingsPage.openModal()`.
- *
- * **Why a modal instead of per-setting menu commands?**
- * The old approach registered one cycling menu command per setting. Two problems:
- * 1. Tampermonkey closes the extension menu immediately on click, making any
- *    rapid-cycle UX feel janky.
- * 2. With `autoClose: false`, the menu options visually re-sort themselves after
- *    each label update, which is disorienting.
- *
- * **Why a modal instead of a new tab?**
- * Opening a new FFN tab just to host settings made an unnecessary server request.
- * A modal runs in the same script context as all other modules, needs no URL
- * interception, and has direct access to GM storage via SettingsManager.
+ * Registers a message listener for the extension action to open the settings modal.
  *
  * **Execution model:**
- * - Phase 1 (`prime`): Registers the single "Open Settings" menu command.
+ * - Phase 1 (`prime`): Registers `chrome.runtime.onMessage` listener for
+ *   `OPEN_SETTINGS` messages from the service worker.
  * - Phase 2 (`init`): No-op.
  *
  * **Adding a new setting to the settings page:**
@@ -41,11 +25,33 @@ export const SettingsMenu: ISitewideModule = {
 
     /**
      * ISitewideModule Phase 1 — document-start.
-     * Registers the "Open Settings" Tampermonkey menu command.
+     * Registers the message listener for opening the settings modal.
      */
     prime(): void {
-        GM_registerMenuCommand('FFN Enhancements', () => {
-            FFNLogger.log(MODULE_NAME, 'openSettings', 'Opening settings modal.');
+        // Legacy path: chrome.runtime.onMessage (used by Chrome sendMessage and as fallback).
+        onMessage((message) => {
+            const msg = message as Record<string, unknown>;
+            if (msg.type === 'OPEN_SETTINGS') {
+                FFNLogger.log(MODULE_NAME, 'openSettings', 'Opening settings modal via runtime message.');
+                SettingsPage.openModal();
+                return { ok: true };
+            }
+            return undefined;
+        });
+
+        // Primary path: window.postMessage. Dispatched by the service worker
+        // via scripting.executeScript({ func: triggerSettingsModalViaPostMessage }).
+        //
+        // GOTCHA: Do NOT compare event.source to window. In Firefox, messages
+        // posted from a scripting.executeScript({ func }) injection can arrive
+        // with event.source === null (the injected closure runs in the isolated
+        // content world's window proxy, which serializes to null when the
+        // message crosses the boundary). The event.data.type === 'FFNE_OPEN_SETTINGS'
+        // gate is the actual access check; the message type is a private
+        // contract between service worker and content script.
+        window.addEventListener('message', (event) => {
+            if (event.data?.type !== 'FFNE_OPEN_SETTINGS') return;
+            FFNLogger.log(MODULE_NAME, 'openSettings', 'Opening settings modal via postMessage.');
             SettingsPage.openModal();
         });
     },

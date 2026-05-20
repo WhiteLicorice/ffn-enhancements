@@ -6,7 +6,7 @@ import { EpubBuilder } from './EpubBuilder';
 import { ChapterData } from '../interfaces/ChapterData';
 import { Elements } from '../enums/Elements';
 import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
-import { gmRequestText, type GmTextResponse } from '../utils/gmRequestText';
+import { fetchRequestText, type FetchTextResponse } from '../utils/fetchRequest';
 
 const MODULE_NAME = 'NativeDownloader';
 const CHAPTER_FETCH_MAX_RETRIES = 5;
@@ -61,8 +61,8 @@ export const NativeDownloader: IFanficDownloader = {
 /**
  * Fetches and parses a single chapter.
  * Uses the Core Delegate to identify the content container within the fetched HTML.
- * Uses GM_xmlhttpRequest because FFN sometimes rejects browser fetch() chapter
- * requests with 403 while page-like extension requests still succeed.
+ * Uses the service-worker fetch proxy because FFN sometimes rejects plain
+ * page fetch() chapter requests with 403 while extension requests still succeed.
  */
 export async function _fetchChapter(
     storyId: string,
@@ -74,7 +74,7 @@ export async function _fetchChapter(
     const log = Core.getLogger(MODULE_NAME, 'fetchChapter');
 
     for (let attempt = 1; attempt <= CHAPTER_FETCH_MAX_RETRIES + 1; attempt++) {
-        const response = await gmRequestText({
+        const response = await fetchRequestText({
             method: 'GET',
             url,
             headers: {
@@ -113,11 +113,11 @@ export function _resolveChapterUrl(storyId: string, chapterRef: string | number)
     return new URL(`/s/${storyId}/${ref || '1'}/`, window.location.origin).href;
 }
 
-function _isRetryableChapterResponse(response: GmTextResponse): boolean {
+function _isRetryableChapterResponse(response: FetchTextResponse): boolean {
     return response.status === 0 || response.status === 403 || response.status === 429 || response.status >= 500;
 }
 
-function _chapterRetryMessage(chapterNum: number, response: GmTextResponse, delay: number): string {
+function _chapterRetryMessage(chapterNum: number, response: FetchTextResponse, delay: number): string {
     if (response.status === 403) {
         return `Chapter ${chapterNum} returned 403. Cooling down for ${delay / 1000}s...`;
     }
@@ -128,7 +128,7 @@ function _chapterRetryMessage(chapterNum: number, response: GmTextResponse, dela
     return `Chapter ${chapterNum} request failed (${reason}). Retrying in ${delay / 1000}s...`;
 }
 
-function _chapterFailureMessage(chapterNum: number, response: GmTextResponse): string {
+function _chapterFailureMessage(chapterNum: number, response: FetchTextResponse): string {
     if (response.isCfChallenge) {
         return `Download aborted while fetching chapter ${chapterNum}: FFN returned a browser challenge. Open the chapter normally once, then retry.`;
     }

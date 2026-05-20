@@ -1,83 +1,111 @@
-import { transformSync } from 'esbuild';
 import { defineConfig } from 'vite';
-import monkey from 'vite-plugin-monkey';
-import { buildCriticalThemeCss } from './src/build/criticalThemeCss';
-import { installCriticalThemePrelude } from './src/prelude/themePrelude';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { join, resolve } from 'path';
 
-export const CRITICAL_THEME_DECODED_SIZE_BUDGET = 15_000;
-export const CRITICAL_THEME_METADATA_LINE_BUDGET = 25_000;
+function copyDirRecursive(src: string, dest: string): void {
+    if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
+    for (const entry of readdirSync(src, { withFileTypes: true })) {
+        const srcPath = join(src, entry.name);
+        const destPath = join(dest, entry.name);
+        if (entry.isDirectory()) {
+            copyDirRecursive(srcPath, destPath);
+        } else {
+            copyFileSync(srcPath, destPath);
+        }
+    }
+}
 
-const CRITICAL_THEME_REQUIRE_PREFIX = 'data:application/javascript,';
-const CRITICAL_THEME_PRELUDE_CONFIG = {
-  styleId: 'ffne-theme-critical',
-  storageKey: 'ffne_theme',
-  cacheKey: 'ffne_theme_cache',
-  preludeAttribute: 'data-ffne-prelude',
-  validThemes: ['system', 'light', 'dark', 'sepia', 'high-contrast'],
-} as const;
+export function patchManifest(manifestPath: string): void {
+    const target = getBuildTarget();
+    const requestedVersion = process.env.FFNE_VERSION;
 
-export function makeCriticalThemeRequire(): string {
-  const preludeIife = transformSync(
-    `(${installCriticalThemePrelude.toString()})(${JSON.stringify(buildCriticalThemeCss())},${JSON.stringify(CRITICAL_THEME_PRELUDE_CONFIG)});`,
-    {
-      loader: 'js',
-      minify: true,
-      legalComments: 'none',
-      target: 'es2020',
-    },
-  ).code.trim();
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+        version?: string;
+        version_name?: string;
+        background?: Record<string, unknown>;
+        browser_specific_settings?: Record<string, unknown>;
+    };
 
-  const decodedBytes = Buffer.byteLength(preludeIife, 'utf8');
-  if (decodedBytes >= CRITICAL_THEME_DECODED_SIZE_BUDGET) {
-    throw new Error(`Critical theme prelude decoded payload exceeds ${CRITICAL_THEME_DECODED_SIZE_BUDGET} bytes: ${decodedBytes}`);
-  }
+    if (requestedVersion) {
+        manifest.version = toManifestVersion(requestedVersion);
+        manifest.version_name = requestedVersion;
+    }
 
-  const requireValue = `${CRITICAL_THEME_REQUIRE_PREFIX}${encodeURIComponent(preludeIife)}`;
-  const metadataLineLength = `// @require      ${requireValue}`.length;
-  if (metadataLineLength >= CRITICAL_THEME_METADATA_LINE_BUDGET) {
-    throw new Error(`Critical theme prelude metadata line exceeds ${CRITICAL_THEME_METADATA_LINE_BUDGET} characters: ${metadataLineLength}`);
-  }
+    if (target === 'firefox') {
+        // Firefox MV3 uses event pages (background.scripts), NOT service workers.
+        // CRITICAL: Emit ONLY `scripts`. Do NOT also include `service_worker`.
+        // Firefox 121+ has experimental SW support behind the
+        // `extensions.backgroundServiceWorker.enabled` pref. When BOTH keys are
+        // present, Firefox can prefer `service_worker`, attempt to load the
+        // bundle as a real ServiceWorker, fail silently (no `type: "module"`;
+        // uses chrome.action which isn't on the SW scope), and never fall back
+        // to the event-page `scripts` entry. Result: action.onClicked is never
+        // wired and clicking the toolbar icon does nothing. See CLAUDE.md
+        // Gotcha #15.
+        //
+        // We also do NOT set type:'module' — the bundled service-worker.js has
+        // no imports/exports, and module scripts defer execution past the event
+        // dispatch that wakes the event page.
+        manifest.background = {
+            scripts: ['background/service-worker.js'],
+        };
+        // Keep browser_specific_settings for AMO.
+    } else {
+        // Chrome MV3 uses service workers. The source manifest already declares
+        // { service_worker, type: 'module' } — leave it intact and just strip
+        // the Firefox-only block.
+        delete manifest.browser_specific_settings;
+    }
 
-  return requireValue;
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function getBuildTarget(): 'chrome' | 'firefox' {
+    return process.env.FFNE_TARGET === 'firefox' ? 'firefox' : 'chrome';
+}
+
+function toManifestVersion(version: string): string {
+    const core = version.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (!core) return '0.0.0';
+
+    const betaBuild = version.match(/beta\.(\d+)/);
+    if (!betaBuild) return `${core[1]}.${core[2]}.${core[3]}`;
+
+    const build = Number(betaBuild[1]);
+    const safeBuild = Number.isFinite(build) ? Math.max(0, Math.min(build, 65535)) : 0;
+    return `${core[1]}.${core[2]}.${core[3]}.${safeBuild}`;
 }
 
 export default defineConfig({
-  plugins: [
-    monkey({
-      entry: 'src/main.ts',
-      userscript: {
-        name: 'FFN Enhancements',
-        namespace: 'http://tampermonkey.net/',
-        version: '15.0',
-        author: 'WhiteLicorice',
-        connect: ['fichub.net', 'archiveofourown.org', 'www.fanfiction.net', 'fanfiction.net'],
-        match: ['https://www.fanfiction.net/*', 'https://archiveofourown.org/*'],
-        'run-at': 'document-start',
-        noframes: true,
-        grant: [
-          'GM_xmlhttpRequest',
-          'GM_getValue',
-          'GM_setValue',
-          'GM_registerMenuCommand',
-          'GM_unregisterMenuCommand',
-          'GM_addValueChangeListener',
-          'GM_deleteValue',
-          'GM_openInTab',
-          'GM_setClipboard',
-        ],
-        require: [makeCriticalThemeRequire()],
-        license: 'GPL-3.0-or-later',
-        updateURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',
-        downloadURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',
-      },
-      build: {
-        fileName: 'ffn-enhancements.user.js',
-      },
-    }),
-  ],
-  build: {
-    minify: 'esbuild',
-    cssMinify: true,
-    target: 'es2020',
-  },
+    plugins: [
+        {
+            name: 'copy-extension-assets',
+            writeBundle() {
+                const distDir = resolve(__dirname, getBuildTarget() === 'firefox' ? 'dist-firefox' : 'dist-chrome');
+                const extensionDir = resolve(__dirname, 'extension');
+                copyDirRecursive(extensionDir, distDir);
+                patchManifest(join(distDir, 'manifest.json'));
+            },
+        },
+    ],
+    build: {
+        rollupOptions: {
+            input: {
+                'content/main': resolve(__dirname, 'src/main.ts'),
+                'content/prelude': resolve(__dirname, 'src/prelude/themePrelude.ts'),
+                'background/service-worker': resolve(__dirname, 'src/background/service-worker.ts'),
+            },
+            output: {
+                entryFileNames: '[name].js',
+                chunkFileNames: 'chunks/[name]-[hash].js',
+                assetFileNames: 'assets/[name]-[hash].[ext]',
+            },
+        },
+        outDir: getBuildTarget() === 'firefox' ? 'dist-firefox' : 'dist-chrome',
+        emptyOutDir: true,
+        minify: 'esbuild',
+        cssMinify: true,
+        target: 'es2020',
+        modulePreload: false,
+    },
 });

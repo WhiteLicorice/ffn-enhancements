@@ -1,6 +1,6 @@
 // JSZip is pinned to exactly 3.1.5.  Do NOT upgrade it.
 //
-// JSZip >=3.2.0 bundled by Vite deadlocks in the Tampermonkey sandbox:
+// JSZip >=3.2.0 has historically deadlocked in browser-like bundled runtimes:
 // `generateAsync` never resolves.  Both `type: "blob"` and `type: "arraybuffer"`
 // are affected in newer versions.  The hang is silent — no error, no timeout —
 // so the EPUB download just spins forever.
@@ -21,7 +21,7 @@
 // (it works from CDN but not as a bundled ESM dependency).
 //
 // If you must change the JSZip version, run this test file in a real
-// Tampermonkey environment (not just Vitest/node) before merging.
+// extension environment (not just Vitest/node) before merging.
 
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
