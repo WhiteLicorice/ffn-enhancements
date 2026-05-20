@@ -82,9 +82,6 @@ function _applyTheme(definition: IThemeDefinition, scanNativeCss: boolean): void
     ThemeManager.ensureComponentStyles();
 
     if (!_isFfnHost()) {
-        document.getElementById(STATIC_NATIVE_STYLE_ID)?.remove();
-        document.getElementById(SCANNED_FFN_OVERRIDES_STYLE_ID)?.remove();
-        _clearTinyMceIframes();
         return;
     }
 
@@ -102,6 +99,12 @@ function _applyTheme(definition: IThemeDefinition, scanNativeCss: boolean): void
 function _reconcileThemeChrome(definition: IThemeDefinition): void {
     _applyThemeClass(definition.name);
     _applyColorScheme(definition);
+
+    if (!_isFfnHost()) {
+        document.getElementById(STATIC_NATIVE_STYLE_ID)?.remove();
+        document.getElementById(SCANNED_FFN_OVERRIDES_STYLE_ID)?.remove();
+        _clearTinyMceIframes();
+    }
 }
 
 function _injectTokenStyles(definition: IThemeDefinition, rootDocument: Document = document, styleId: string = TOKEN_STYLE_ID): void {

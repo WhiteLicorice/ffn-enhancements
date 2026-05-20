@@ -4,12 +4,15 @@ export const CRITICAL_THEME_STYLE_ID = 'ffne-theme-critical';
 export const THEME_CACHE_KEY = 'ffne_theme_cache';
 export const THEME_STORAGE_KEY = 'ffne_theme';
 export const PRELUDE_ATTRIBUTE = 'data-ffne-prelude';
+export const VALID_PRELUDE_THEMES = [Theme.SYSTEM, Theme.LIGHT, Theme.DARK, Theme.SEPIA, Theme.HIGH_CONTRAST] as const;
+type ValidPreludeTheme = (typeof VALID_PRELUDE_THEMES)[number];
 
 interface CriticalThemePreludeConfig {
     styleId: string;
     storageKey: string;
     cacheKey: string;
     preludeAttribute: string;
+    validThemes: readonly string[];
 }
 
 const DEFAULT_CONFIG: CriticalThemePreludeConfig = {
@@ -17,6 +20,7 @@ const DEFAULT_CONFIG: CriticalThemePreludeConfig = {
     storageKey: THEME_STORAGE_KEY,
     cacheKey: THEME_CACHE_KEY,
     preludeAttribute: PRELUDE_ATTRIBUTE,
+    validThemes: VALID_PRELUDE_THEMES,
 };
 
 /**
@@ -26,7 +30,7 @@ const DEFAULT_CONFIG: CriticalThemePreludeConfig = {
  * @returns The resolved theme to apply.
  */
 export function resolvePreludeTheme(selection: string | null | undefined, prefersDark: boolean): Theme {
-    if (selection === Theme.DARK || selection === Theme.SEPIA || selection === Theme.HIGH_CONTRAST || selection === Theme.LIGHT) {
+    if (isValidPreludeTheme(selection) && selection !== Theme.SYSTEM) {
         return selection;
     }
 
@@ -58,41 +62,27 @@ export function installCriticalThemePrelude(
             `${themeClassPrefix}high-contrast`,
         ];
         const prefersDark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
-
-        const isKnownTheme = (value: unknown): value is string => (
-            value === 'system'
-            || value === 'light'
-            || value === 'dark'
-            || value === 'sepia'
-            || value === 'high-contrast'
-        );
+        const validThemes = config.validThemes;
+        const isKnownTheme = (value: unknown): value is string => typeof value === 'string' && validThemes.includes(value);
+        const normalizeThemeSelection = (value: unknown): string | undefined => isKnownTheme(value) ? value : undefined;
 
         let selectedTheme: string | undefined;
         try {
             const gmGetValue = Reflect.get(globalThis, 'GM_getValue');
             if (typeof gmGetValue === 'function') {
-                const rawValue = gmGetValue(config.storageKey);
-                if (isKnownTheme(rawValue)) {
-                    selectedTheme = rawValue;
-                }
+                selectedTheme = normalizeThemeSelection(gmGetValue(config.storageKey));
             }
         } catch {
         }
 
         if (!selectedTheme) {
             try {
-                const cachedTheme = localStorage.getItem(config.cacheKey);
-                if (isKnownTheme(cachedTheme)) {
-                    selectedTheme = cachedTheme;
-                }
+                selectedTheme = normalizeThemeSelection(localStorage.getItem(config.cacheKey));
             } catch {
             }
         }
 
-        const resolvedTheme = selectedTheme === 'dark'
-            || selectedTheme === 'sepia'
-            || selectedTheme === 'high-contrast'
-            || selectedTheme === 'light'
+        const resolvedTheme = selectedTheme && selectedTheme !== 'system'
             ? selectedTheme
             : (prefersDark ? 'dark' : 'light');
         const resolvedClass = `${themeClassPrefix}${resolvedTheme}`;
@@ -128,4 +118,8 @@ export function installCriticalThemePrelude(
         }
     } catch {
     }
+}
+
+function isValidPreludeTheme(value: unknown): value is ValidPreludeTheme {
+    return typeof value === 'string' && (VALID_PRELUDE_THEMES as readonly string[]).includes(value);
 }

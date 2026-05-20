@@ -9,6 +9,7 @@ import {
   PRELUDE_ATTRIBUTE,
   THEME_CACHE_KEY,
   THEME_STORAGE_KEY,
+  VALID_PRELUDE_THEMES,
 } from './src/prelude/themePrelude';
 
 export default defineConfig(async () => {
@@ -19,6 +20,7 @@ export default defineConfig(async () => {
     storageKey: THEME_STORAGE_KEY,
     cacheKey: THEME_CACHE_KEY,
     preludeAttribute: PRELUDE_ATTRIBUTE,
+    validThemes: VALID_PRELUDE_THEMES,
   });
 
   return {
