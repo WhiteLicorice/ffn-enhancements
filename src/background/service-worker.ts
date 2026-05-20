@@ -198,7 +198,15 @@ async function sendOpenSettings(tabId: number): Promise<boolean> {
 
 async function ensureHostPermissions(): Promise<boolean> {
     if (await permissionsContains({ origins: [...REQUESTED_HOST_PATTERNS] })) return true;
-    return permissionsRequest({ origins: [...REQUESTED_HOST_PATTERNS] });
+    try {
+        return await permissionsRequest({ origins: [...REQUESTED_HOST_PATTERNS] });
+    } catch (err) {
+        console.error(
+            'FFN-Enhancements: permissions.request threw; falling through to activeTab inject.',
+            err,
+        );
+        return false;
+    }
 }
 
 async function ensureHostPermissionsThenInject(): Promise<boolean> {
