@@ -103,6 +103,7 @@ Click **FFN Enhancements Settings** in your Tampermonkey/Violentmonkey menu on a
 
 | Setting | Description |
 |---|---|
+| Theme | System, Light, Dark, Sepia, or High Contrast |
 | Fluid Layout | Toggle full-width reading layout |
 | Download Format | Markdown, HTML, or DOCX for doc exports |
 | Convert Markdown on Paste | Auto-render Markdown pasted into the Doc Editor |
@@ -119,11 +120,16 @@ Click **FFN Enhancements Settings** in your Tampermonkey/Violentmonkey menu on a
 
 ## Installation
 
-### Step 1: Install a Web Extension Manager
+### Step 1: Install Tampermonkey Beta
 
-- **Chrome / Edge / Brave:** [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/)
+For the best first-paint behavior, use **Tampermonkey Beta**:
+
+- **Chrome / Brave:** [Tampermonkey Beta on the Chrome Web Store](https://chromewebstore.google.com/detail/tampermonkey-beta/gcalenpjmijncebpfijmoaglllgpjagf)
+- **Edge:** [Tampermonkey Beta on Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/tampermonkey-beta/fcmfnpggmnlmfebfghbfnillijihnkoh)
 - **Firefox:** [Tampermonkey](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/) or [Violentmonkey](https://addons.mozilla.org/en-US/firefox/addon/violentmonkey/)
 - **Safari:** [Userscripts](https://apps.apple.com/us/app/userscripts/id1463298887)
+
+After installing Tampermonkey Beta on Chrome / Edge / Brave, open **Dashboard -> Settings**, set **Config Mode** to **Advanced**, then under **Experimental** set **Inject Mode** to **Instant**.
 
 ### Step 2: Install FFN Enhancements
 
@@ -131,7 +137,9 @@ Click **FFN Enhancements Settings** in your Tampermonkey/Violentmonkey menu on a
 
 If the link opens as code or downloads as a file, copy the text, open your extension manager dashboard, create a new script, and paste it in.
 
-> Tampermonkey Beta on Chrome / Edge / Brave: open Dashboard -> Settings -> Experimental and set **Inject Mode** to **Instant**. Chrome's MV3 injection path can otherwise flash FFN's native page before FFN Enhancements applies its document-start styling.
+### Theme Flash Limitation
+
+FFN Enhancements injects a compact theme prelude at `document-start`, but userscripts still run through the userscript manager's injection backend. On Chromium browsers, standard injection can briefly show FFN's native light page before the theme prelude lands. Tampermonkey Beta's **Instant** inject mode minimizes this flash, but a tiny first-paint flash may still be possible. A native browser extension would have stronger first-paint primitives than a userscript.
 
 ### Step 3: Verify
 
@@ -157,9 +165,8 @@ If the link opens as code or downloads as a file, copy the text, open your exten
 - [x] AO3 migration bridge (cross-tab, GM-storage IPC)
 - [x] Bulk Replace on Story Edit Content page
 - [x] Export transforms: AO3 HTML compat, paragraph normalization, end separator
+- [x] Site theme support with Light, Dark, Sepia, High Contrast, and System modes
 - [ ] Custom font settings sitewide (needs a `FontManager` module hooked into the `EarlyBoot` system)
-
-[Dark theme](https://github.com/WhiteLicorice/ffn-enhancements/pull/20) was attempted but abandoned. Try the mature [Dark Reader](https://darkreader.org/) extension instead.
 
 ---
 
