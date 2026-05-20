@@ -40,6 +40,7 @@ export default defineConfig(async () => {
           connect: ['fichub.net', 'archiveofourown.org', 'www.fanfiction.net', 'fanfiction.net'],
           match: ['https://www.fanfiction.net/*', 'https://archiveofourown.org/*'],
           'run-at': 'document-start',
+          noframes: true,
           require: [
             paintGatePrelude,
           ],
@@ -63,5 +64,10 @@ export default defineConfig(async () => {
         },
       }),
     ],
+    build: {
+      minify: 'esbuild',
+      cssMinify: true,
+      target: 'es2020',
+    },
   };
 });
