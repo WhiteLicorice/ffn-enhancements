@@ -1,14 +1,14 @@
 # ffn-enhancements
 
-A suite of modern enhancements to FFN's old-school interface, for both readers and writers. Inspired by [ao3-enhancements](https://github.com/jsmnbom/ao3-enhancements).
+A suite of modern enhancements to FFN's old-school interface, for readers and writers. Inspired by [ao3-enhancements](https://github.com/jsmnbom/ao3-enhancements).
 
 ---
 
-## For Readers
+## For readers
 
-### Download Stories in Any Format
+### Download stories in any format
 
-A **Download** button appears next to Follow/Favourite on every story page. Pick your format:
+A **Download** button shows up next to Follow/Favourite on every story page. Pick your format:
 
 | Format | Native | FicHub |
 |---|---|---|
@@ -17,21 +17,21 @@ A **Download** button appears next to Follow/Favourite on every story page. Pick
 | PDF | -- | Yes |
 | HTML | -- | Yes |
 
-**Native** scrapes the story fresh from FFN. Always up to date, takes longer. **FicHub** pulls from their archive -- near instant, occasionally behind. If FicHub is down, the extension offers to fall back to Native.
+**Native** scrapes the story fresh from FFN. Always current, slower. **FicHub** pulls from their archive. Near instant, sometimes behind. If FicHub is down, the extension offers Native as fallback.
 
-EPUB downloads (both Native and FicHub) include the story's cover art as the thumbnail inside the file.
+EPUB downloads (both sources) embed the story's cover art as the thumbnail.
 
-### Fluid Reading Mode
+### Fluid reading mode
 
-FFN boxes content into a narrow column with wide letterboxed margins. This stretches the page edge-to-edge, same as AO3 and most modern sites. Works at any zoom level and screen width.
+FFN boxes content into a narrow column with wide margins. This stretches the page edge to edge, same as AO3. Works at any zoom level and screen width.
 
-### Unlock Text Selection
+### Unlock text selection
 
-FFN disables text selection and copy on story pages. This removes that restriction. Select and copy freely.
+FFN blocks text selection and copy on story pages. This removes the block.
 
-### Keyboard Navigation
+### Keyboard navigation
 
-Arrow keys or WASD to navigate:
+Arrow keys or WASD to move around:
 
 | Key | Action |
 |---|---|
@@ -40,66 +40,66 @@ Arrow keys or WASD to navigate:
 | Down / S | Scroll down |
 | Up / W | Scroll up |
 
-Hotkeys stay out of the way when you're typing in a text field or review box.
+Hotkeys don't fire when you're typing in a text field or review box.
 
-### Fixed Cover Art Modal
+### Fixed cover art modal
 
-Clicking a story's cover image on FFN is supposed to open it full-size. FFN's jQuery plugin is broken and just darkens the screen. This replaces it with a working lightbox -- click the cover, see it full-size, click anywhere to close.
+Clicking a story's cover image should open it full size. FFN's jQuery plugin is broken. It just darkens the screen. The extension replaces it with a working lightbox. Click the cover, see the image, click anywhere to close.
 
-### Proper Mobile Viewport
+### Themes
 
-FFN is missing a `<meta name="viewport">` tag, so browsers assume a fixed ~980px desktop layout. The extension injects the missing tag so pages behave on tablets, phones, and when zooming.
+Five themes: **System** (follows your OS), **Light**, **Dark**, **Sepia**, and **High Contrast**. Picking one restyles both the extension's own UI panels and FFN's native page elements. Switch in Settings. Changes apply instantly across all open FFN tabs.
 
 ---
 
-## For Writers
+## For writers
 
-### Export Documents in Multiple Formats
+### Export documents in multiple formats
 
-In both the **Doc Manager** and **Doc Editor**, an Export button downloads any document as **Markdown** (`.md`), **HTML** (`.html`), or **DOCX** (`.docx`). The format is controlled from Settings and applies everywhere: single exports, bulk export, and the Editor toolbar button.
+In the **Doc Manager** and **Doc Editor**, an Export button downloads any document as **Markdown** (`.md`), **HTML** (`.html`), or **DOCX** (`.docx`). The format is set in Settings and applies everywhere: single exports, bulk export, and the Editor toolbar.
 
-Markdown does not preserve HTML-exclusive formatting like text alignment. Use HTML or DOCX if you need those.
+Markdown doesn't preserve HTML-specific formatting like text alignment. Use HTML or DOCX if you need those.
 
-### Copy to Clipboard
+### Copy to clipboard
 
-In the Doc Editor toolbar, a **Copy** button (the one with two overlapping pages) copies the current document to the clipboard in the active format. Markdown and HTML modes copy plain text. DOCX mode copies rich HTML so you can paste it straight into another editor and keep the formatting. A toast notification confirms the copy.
+In the Doc Editor toolbar, a **Copy** button (two overlapping pages icon) copies the current document in the active format. Markdown and HTML modes copy plain text. DOCX mode copies rich HTML so you can paste it into another editor with formatting intact. A toast confirms the copy.
 
-### Bulk Export All Documents
+### Bulk export all documents
 
-In the Doc Manager, **Download All** downloads every document in your library as a timestamped `.zip`. The extension respects rate limits: two-pass system with automatic cool-down and retry for documents that fail on the first pass. Failed items get placeholder files in the ZIP so nothing is silently lost.
+In the Doc Manager, **Download All** exports every document as a timestamped `.zip`. Two-pass system with automatic cooldown and retry for documents that fail on the first pass. Failed items get placeholder files in the ZIP so nothing disappears silently.
 
-### Bulk Import Documents
+### Bulk import documents
 
-In the Doc Manager, the **Advanced** panel has a **Bulk Import** button. Point it at a folder of Markdown, HTML, or DOCX files and it maps them to existing documents by semantic numbering (e.g. `Chapter 01.md` matches the doc named "1. Chapter 01"). A preview modal shows what matched, what's missing, and any duplicates before you confirm. Uses the same two-pass retry system as bulk export.
+In the Doc Manager, the **Advanced** panel has a **Bulk Import** button. Point it at a folder of Markdown, HTML, or DOCX files and it maps them to existing documents by semantic numbering (`Chapter 01.md` matches the doc named `1. Chapter 01`). A preview shows what matched, what's missing, and any duplicates before you confirm. Same two-pass retry system as bulk export.
 
-### Refresh Documents (Reset the 365-Day Expiry)
+### Refresh documents (reset the 365-day expiry)
 
-FFN documents expire after 365 days untouched. The Doc Manager has a **Refresh** button per row and a **Refresh All** button. Bulk refresh skips documents already at 365 days, highlights each row as it processes, and updates the Life column in place when done.
+FFN documents expire after 365 days untouched. The Doc Manager has a **Refresh** button per row and a **Refresh All** button. Bulk refresh skips documents already at 365 days, highlights each row as it processes, and updates the Life column in place.
 
-### Paste Markdown or HTML into the Editor
+### Paste Markdown or HTML into the editor
 
-Writing in Markdown or raw HTML and pasting into FFN's TinyMCE editor? The extension intercepts the paste and converts it to rich text automatically. Markdown syntax is detected and rendered. HTML source is detected and rendered. Both can be toggled independently in Settings. There's also a **Force Intercept** option for pastes that carry rich-text clipboard data (e.g. from Word or Google Docs).
+Writing in Markdown or raw HTML and pasting into FFN's TinyMCE editor? The extension intercepts the paste and converts it to rich text. Markdown syntax is detected and rendered. HTML source is detected and rendered. Both can be toggled independently in Settings. A **Force Intercept** option handles pastes that carry rich-text clipboard data (from Word or Google Docs).
 
-### Migrate Stories to AO3
+### Migrate stories to AO3
 
-The Doc Manager has an **AO3 Migration** tool. Pick a work URL on AO3, map FFN documents to AO3 chapters, and a cross-tab bridge pushes the content across. The bridge uses GM storage as the communication channel between your FFN and AO3 tabs -- no server involved. The migration modal shows progress as each chapter uploads. Any failures get a summary you can copy.
+The Doc Manager has an **AO3 Migration** tool. Pick a work URL on AO3, map FFN documents to AO3 chapters, and a cross-tab bridge pushes the content across. The bridge uses GM storage for communication between FFN and AO3 tabs. No server involved. Your data is safe. The migration modal shows progress as each chapter uploads. Failures get a summary you can copy.
 
-This is also available standalone from the **Bulk Replace** feature on the Story Edit Content page (`/story/story_edit_content.php`), which maps documents to chapters and replaces their content in bulk.
+Also available standalone from the **Bulk Replace** feature on the Story Edit Content page (`/story/story_edit_content.php`), which maps documents to chapters and replaces their content in bulk.
 
-### Export Transforms
+### Export transforms
 
 Several Settings control how content is processed on export. These apply to single exports, bulk export, clipboard copy, and AO3 migration:
 
-- **AO3 HTML Compatibility** -- converts inline `style="text-align:*"` to `align="*"` attributes since AO3's editor strips the former but keeps the latter.
-- **Normalize HTML Paragraphs** -- flattens multi-line text inside `<p>` tags to single lines and adds blank lines between adjacent paragraphs.
-- **Append End Separator** -- tacks a separator onto exported content (`---` for Markdown, `<hr>` for HTML/DOCX).
-- **Strip After Marker** (AO3 migration only) -- drops everything after a custom marker line, so author's notes and other trailing content stay behind.
+- **AO3 HTML Compatibility**: converts inline `style="text-align:*"` to `align="*"` attributes. AO3's editor strips the former, keeps the latter.
+- **Normalize HTML Paragraphs**: flattens multi-line text inside `<p>` tags to single lines and adds blank lines between adjacent paragraphs.
+- **Append End Separator**: adds a separator to exported content (`---` for Markdown, `<hr>` for HTML/DOCX).
+- **Strip After Marker** (AO3 migration only): drops everything after a custom marker line, so author's notes and trailing content stay behind.
 
 ---
 
 ## Settings
 
-Click **FFN Enhancements Settings** in your Tampermonkey/Violentmonkey menu on any FFN page. Changes save immediately and sync to all open FanFiction.net tabs.
+Open **FFN Enhancements Settings** from your Tampermonkey/Violentmonkey menu on any FFN page. Changes save immediately and sync across all open FanFiction.net tabs.
 
 | Setting | Description |
 |---|---|
@@ -133,9 +133,9 @@ After installing Tampermonkey Beta on Chrome / Edge / Brave, open **Dashboard ->
 
 ### Step 2: Install FFN Enhancements
 
-[Click here to install](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js). Your extension manager should prompt you to confirm.
+[Click here to install](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js). Your userscript manager should prompt to confirm.
 
-If the link opens as code or downloads as a file, copy the text, open your extension manager dashboard, create a new script, and paste it in.
+If the link opens as code or downloads as a file, copy the text, open your userscript manager dashboard, create a new script, and paste it in.
 
 ### Theme Flash Limitation
 
@@ -144,21 +144,21 @@ FFN Enhancements injects a compact theme prelude at `document-start`, but usersc
 ### Step 3: Verify
 
 1. Go to any [FanFiction.net](https://www.fanfiction.net/j/0/2/0/) story.
-2. You should see a **Download** button next to **Follow/Favourite**. That means the extension is running and all features are available.
+2. You should see a **Download** button next to **Follow/Favourite**. If you see it, the extension is running.
 
 ---
 
 ## Roadmap
 
 - [x] Download documents as Markdown, HTML, or DOCX in both Doc Manager and Doc Editor
-- [x] Make text selectable while reading
-- [x] Bind arrow keys and WASD to chapter navigation
-- [x] Download stories as EPUB/PDF/HTML/MOBI via FicHub and Native
+- [x] Text selection unlocked on story pages
+- [x] Arrow key and WASD chapter navigation
+- [x] Download stories as EPUB/PDF/HTML/MOBI (FicHub + Native)
 - [x] Fix FFN's broken cover art modal
 - [x] Fluid reading mode (edge-to-edge layout)
 - [x] Paste Markdown and HTML source into the Doc Editor, auto-converted to rich text
 - [x] Single and bulk refresh of document expiry in Doc Manager
-- [x] Inject story cover art into EPUBs as thumbnail
+- [x] Story cover art embedded in EPUBs as thumbnail
 - [x] Settings menu with per-setting controls and cross-tab sync
 - [x] Clipboard copy from Doc Editor toolbar
 - [x] Bulk import Markdown/HTML/DOCX files into Doc Manager
@@ -172,7 +172,7 @@ FFN Enhancements injects a compact theme prelude at `document-start`, but usersc
 
 ## Updating
 
-The extension updates automatically. Your extension manager checks periodically. To force an update, open your Tampermonkey/Violentmonkey dashboard and click "Check for updates," or reinstall from the link above.
+The extension updates automatically. Your userscript manager checks periodically. To force an update, open your Tampermonkey/Violentmonkey dashboard and click "Check for updates," or reinstall from the link above.
 
 ## Compatibility
 
@@ -207,7 +207,7 @@ npx vitest            # watch mode -- re-runs on save
 npx vitest --ui       # interactive browser UI
 ```
 
-Test files live under `src/__tests__/` and match `**/*.test.ts`:
+Test files under `src/__tests__/`, matching `**/*.test.ts`:
 
 | File | What it tests |
 |---|---|
@@ -238,7 +238,7 @@ Test files live under `src/__tests__/` and match `**/*.test.ts`:
 3. Make your changes. Run `npm test` then `npm run build` to confirm everything is clean.
 4. Submit a Pull Request.
 
-### Commit Messages
+### Commit messages
 
 This project follows semantic commits:
 
