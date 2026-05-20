@@ -164,7 +164,7 @@ const scriptingState = {
     permissions: {
         contains: async (permissions: chrome.permissions.Permissions) => {
             const origins = permissions.origins ?? [];
-            return origins.every(origin => permissionsState.grantedOrigins.has(origin));
+            return origins.every((origin) => permissionsState.grantedOrigins.has(origin));
         },
         request: async (permissions: chrome.permissions.Permissions) => {
             permissionsState.requestCalls.push(permissions);

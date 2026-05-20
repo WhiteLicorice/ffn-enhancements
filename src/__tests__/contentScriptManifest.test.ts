@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
     CONTENT_SCRIPT_CSS_FILES,
@@ -7,7 +8,7 @@ import {
 } from '../background/contentScriptManifest';
 
 const manifest = JSON.parse(
-    readFileSync('/home/runner/work/ffn-enhancements/ffn-enhancements/extension/manifest.json', 'utf8'),
+    readFileSync(resolve(process.cwd(), 'extension/manifest.json'), 'utf8'),
 ) as {
     host_permissions: string[];
     content_scripts: Array<{ css?: string[]; js?: string[] }>;
