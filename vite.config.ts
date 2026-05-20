@@ -42,10 +42,6 @@ export default defineConfig(async () => {
           'run-at': 'document-start',
           require: [
             paintGatePrelude,
-            'https://cdn.jsdelivr.net/npm/jszip@3.1.5/dist/jszip.min.js',
-            'https://cdn.jsdelivr.net/npm/file-saver@2.0.4/dist/FileSaver.min.js',
-            'https://cdn.jsdelivr.net/npm/turndown@7.2.2/lib/turndown.browser.umd.js',
-            'https://cdn.jsdelivr.net/npm/marked@17.0.1/lib/marked.umd.js',
           ],
           grant: [
             'GM_xmlhttpRequest',
@@ -64,12 +60,6 @@ export default defineConfig(async () => {
         },
         build: {
           fileName: 'ffn-enhancements.user.js',
-          externalGlobals: {
-            'jszip': ['JSZip'],
-            'file-saver': ['saveAs'],
-            'turndown': ['TurndownService'],
-            'marked': ['marked'],
-          },
         },
       }),
     ],
