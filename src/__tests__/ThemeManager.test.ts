@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Theme } from '../enums/Theme';
 import { ThemeManager } from '../modules/ThemeManager';
 import { SettingsManager } from '../modules/SettingsManager';
 
 declare const jsdom: { reconfigure(options: { url: string }): void };
+
+const nativeOverrideStyles = readFileSync(join(process.cwd(), 'src/styles/native-overrides.css'), 'utf8');
+const componentStyles = readFileSync(join(process.cwd(), 'src/styles/components.css'), 'utf8');
 
 function resetDom(): void {
     document.documentElement.innerHTML = '<head></head><body></body>';
@@ -30,12 +35,19 @@ describe('ThemeManager', () => {
 
             ThemeManager.prime();
 
+            const tokenStyle = document.getElementById('ffne-theme-tokens');
+            const nativeStyle = document.getElementById('ffne-theme-native-overrides');
             expect(Array.from(document.querySelectorAll('style')).map(style => style.id)).toEqual([
                 'ffne-theme-tokens',
                 'ffne-theme-native-overrides',
                 'ffne-component-styles',
             ]);
-            expect(document.getElementById('ffne-theme-native-overrides')).not.toBeNull();
+            expect(tokenStyle?.textContent).toContain('--ffne-semantic-warning-text-dark');
+            expect(nativeOverrideStyles).toContain('#profile_top a[href*="/r/"]');
+            expect(nativeOverrideStyles).toContain('.panel_success');
+            expect(nativeOverrideStyles).toContain('--ffne-semantic-success-border');
+            expect(componentStyles).toContain('.ffne-dl-container');
+            expect(nativeStyle).not.toBeNull();
             expect(document.getElementById('ffne-theme-scanned-ffn-overrides')).toBeNull();
         },
     );
