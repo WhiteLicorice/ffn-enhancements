@@ -27,6 +27,8 @@ describe('PaintGate', () => {
 
         const style = document.getElementById('ffne-paint-gate-style');
         expect(style?.parentElement).toBe(document.documentElement);
+        expect(style?.textContent).toContain('opacity: 0 !important');
+        expect(style?.textContent).toContain('html.ffne-paint-gated::before');
         expect(document.documentElement.classList.contains('ffne-paint-gated')).toBe(true);
         expect(document.documentElement.style.backgroundColor).toBe('rgb(0, 0, 0)');
 
@@ -47,6 +49,26 @@ describe('PaintGate', () => {
         expect(document.documentElement.classList.contains('ffne-paint-gated')).toBe(false);
         expect(document.getElementById('ffne-paint-gate-style')).toBeNull();
         expect(document.documentElement.style.backgroundColor).toBe('');
+    });
+
+    it('restores a pre-existing inline root background on release', () => {
+        resetDom();
+        document.documentElement.style.backgroundColor = 'red';
+
+        PaintGate.prime();
+        PaintGate.release();
+
+        expect(document.documentElement.style.backgroundColor).toBe('red');
+    });
+
+    it('does not overwrite an inline root background changed while gated', () => {
+        resetDom();
+
+        PaintGate.prime();
+        document.documentElement.style.backgroundColor = 'rgb(10, 20, 30)';
+        PaintGate.release();
+
+        expect(document.documentElement.style.backgroundColor).toBe('rgb(10, 20, 30)');
     });
 
     it('fail-safe releases the gate after the timeout', () => {

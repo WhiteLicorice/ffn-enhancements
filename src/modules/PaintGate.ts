@@ -20,10 +20,22 @@ const paintGateCss = `
 html.${ROOT_CLASS},
 html.${ROOT_CLASS} body {
     background: ${BLACK} !important;
+    color-scheme: dark !important;
 }
 
 html.${ROOT_CLASS} body {
-    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: none !important;
+}
+
+html.${ROOT_CLASS}::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    background: ${BLACK};
+    pointer-events: none;
 }
 `;
 
@@ -59,8 +71,14 @@ export const PaintGate: ISitewideModule & {
         _clearFailSafe();
         _disconnectHeadObserver();
 
-        document.documentElement.classList.remove(ROOT_CLASS);
-        document.documentElement.style.backgroundColor = _previousRootBackground;
+        const wasPrimed = _isPrimed;
+        const root = document.documentElement;
+        const shouldRestoreBackground = root.style.backgroundColor === BLACK || root.style.backgroundColor === 'rgb(0, 0, 0)';
+
+        root.classList.remove(ROOT_CLASS);
+        if (wasPrimed && shouldRestoreBackground) {
+            root.style.backgroundColor = _previousRootBackground;
+        }
         document.getElementById(STYLE_ID)?.remove();
 
         _previousRootBackground = '';
