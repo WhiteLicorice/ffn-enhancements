@@ -41,14 +41,23 @@ export function makeCriticalThemeRequire(): string {
   return requireValue;
 }
 
+const BETA = process.env.FFNE_BETA === 'true';
+const VERSION = process.env.FFNE_VERSION || '0.0.0-dev';
+
+const USERSCRIPT_NAME = BETA ? 'FFN Enhancements (Beta)' : 'FFN Enhancements';
+const DOWNLOAD_URL = BETA
+  ? 'https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements.beta.user.js'
+  : 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js';
+const OUTPUT_FILE = BETA ? 'ffn-enhancements.beta.user.js' : 'ffn-enhancements.user.js';
+
 export default defineConfig({
   plugins: [
     monkey({
       entry: 'src/main.ts',
       userscript: {
-        name: 'FFN Enhancements',
+        name: USERSCRIPT_NAME,
         namespace: 'http://tampermonkey.net/',
-        version: '15.0',
+        version: VERSION,
         author: 'WhiteLicorice',
         connect: ['fichub.net', 'archiveofourown.org', 'www.fanfiction.net', 'fanfiction.net'],
         match: ['https://www.fanfiction.net/*', 'https://archiveofourown.org/*'],
@@ -67,11 +76,11 @@ export default defineConfig({
         ],
         require: [makeCriticalThemeRequire()],
         license: 'GPL-3.0-or-later',
-        updateURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',
-        downloadURL: 'https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js',
+        updateURL: DOWNLOAD_URL,
+        downloadURL: DOWNLOAD_URL,
       },
       build: {
-        fileName: 'ffn-enhancements.user.js',
+        fileName: OUTPUT_FILE,
       },
     }),
   ],

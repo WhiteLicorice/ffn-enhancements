@@ -4,6 +4,17 @@ A suite of modern enhancements to FFN's old-school interface, for readers and wr
 
 ---
 
+## Release Channels
+
+| Channel | Install Link | Updates |
+|---|---|---|
+| **Stable** | [ffn-enhancements.user.js](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js) | Manual trigger, tested |
+| **Beta** | [ffn-enhancements.beta.user.js](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements.beta.user.js) | Every push to `main`, bleeding-edge |
+
+Both channels auto-update through Tampermonkey. Install one or both — they have different names in the TM dashboard and won't collide. Beta is built straight from `main` on every push. Stable is cut manually and gets extra testing.
+
+---
+
 ## For readers
 
 ### Download stories in any format
@@ -50,6 +61,8 @@ Clicking a story's cover image should open it full size. FFN's jQuery plugin is 
 
 Five themes: **System** (follows your OS), **Light**, **Dark**, **Sepia**, and **High Contrast**. Picking one restyles both the extension's own UI panels and FFN's native page elements. Switch in Settings. Changes apply instantly across all open FFN tabs.
 
+A critical theme prelude runs at `document-start` (before FFN's own CSS) to set background, text color, and color-scheme, preventing the white flash during page load. On Chromium and Firefox, Tampermonkey Beta's **Instant** inject mode minimizes the remaining injection-delay flash to near-zero. **If this is undesired, then just set theme to Light (default) in the settings and use [Dark Reader](https://darkreader.org/) for dark mode instead.**
+
 ---
 
 ## For writers
@@ -84,7 +97,9 @@ Writing in Markdown or raw HTML and pasting into FFN's TinyMCE editor? The exten
 
 The Doc Manager has an **AO3 Migration** tool. Pick a work URL on AO3, map FFN documents to AO3 chapters, and a cross-tab bridge pushes the content across. The bridge uses GM storage for communication between FFN and AO3 tabs. No server involved. Your data is safe. The migration modal shows progress as each chapter uploads. Failures get a summary you can copy.
 
-Also available standalone from the **Bulk Replace** feature on the Story Edit Content page (`/story/story_edit_content.php`), which maps documents to chapters and replaces their content in bulk.
+### Bulk Replace (Story Edit Content)
+
+On the Story Edit Content page (`/story/story_edit_content.php`), a **Bulk Replace** feature maps documents to chapters and replaces their content in bulk. Same document-to-chapter mapping logic as the AO3 migration tool. Also supports live chapter content preloading and auto-fill for nearby doc-to-chapter mappings.
 
 ### Export transforms
 
@@ -120,9 +135,9 @@ Open **FFN Enhancements Settings** from your Tampermonkey/Violentmonkey menu on 
 
 ## Installation
 
-### Step 1: Install Tampermonkey Beta
+### Step 1: Install a userscript manager
 
-For the best first-paint behavior, use **Tampermonkey Beta**:
+For the best first-paint behavior and theme injection speed, use **Tampermonkey Beta**:
 
 - **Chrome / Brave:** [Tampermonkey Beta on the Chrome Web Store](https://chromewebstore.google.com/detail/tampermonkey-beta/gcalenpjmijncebpfijmoaglllgpjagf)
 - **Edge:** [Tampermonkey Beta on Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/tampermonkey-beta/fcmfnpggmnlmfebfghbfnillijihnkoh)
@@ -133,9 +148,11 @@ After installing Tampermonkey Beta on Chrome / Edge / Brave, open **Dashboard ->
 
 ### Step 2: Install FFN Enhancements
 
-[Click here to install](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js). Your userscript manager should prompt to confirm.
+**Stable release:** [Click here to install](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js).
 
-If the link opens as code or downloads as a file, copy the text, open your userscript manager dashboard, create a new script, and paste it in.
+**Beta release:** [Click here to install](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements.beta.user.js).
+
+Your userscript manager should prompt to confirm installation. If the link opens as code or downloads as a file, copy the text, open your userscript manager dashboard, create a new script, and paste it in.
 
 ### Theme Flash Limitation
 
@@ -148,35 +165,20 @@ FFN Enhancements injects a compact theme prelude at `document-start`, but usersc
 
 ---
 
-## Roadmap
+## Updating
 
-- [x] Download documents as Markdown, HTML, or DOCX in both Doc Manager and Doc Editor
-- [x] Text selection unlocked on story pages
-- [x] Arrow key and WASD chapter navigation
-- [x] Download stories as EPUB/PDF/HTML/MOBI (FicHub + Native)
-- [x] Fix FFN's broken cover art modal
-- [x] Fluid reading mode (edge-to-edge layout)
-- [x] Paste Markdown and HTML source into the Doc Editor, auto-converted to rich text
-- [x] Single and bulk refresh of document expiry in Doc Manager
-- [x] Story cover art embedded in EPUBs as thumbnail
-- [x] Settings menu with per-setting controls and cross-tab sync
-- [x] Clipboard copy from Doc Editor toolbar
-- [x] Bulk import Markdown/HTML/DOCX files into Doc Manager
-- [x] AO3 migration bridge (cross-tab, GM-storage IPC)
-- [x] Bulk Replace on Story Edit Content page
-- [x] Export transforms: AO3 HTML compat, paragraph normalization, end separator
-- [x] Site theme support with Light, Dark, Sepia, High Contrast, and System modes
-- [ ] Custom font settings sitewide (needs a `FontManager` module hooked into the `EarlyBoot` system)
+Both stable and beta channels auto-update through your userscript manager. Tampermonkey/Violentmonkey checks for updates periodically.
+
+- **Stable:** receives updates when a new version is cut manually. Safer, less frequent.
+- **Beta:** receives updates on every push to `main`. Bleeding-edge, may have rough edges.
+
+To force an update, open your userscript manager dashboard and click "Check for updates," or reinstall from the links above.
 
 ---
 
-## Updating
-
-The extension updates automatically. Your userscript manager checks periodically. To force an update, open your Tampermonkey/Violentmonkey dashboard and click "Check for updates," or reinstall from the link above.
-
 ## Compatibility
 
-Tested on Edge and Firefox.
+Tested on Edge and Firefox. Also runs on archiveofourown.org only for the AO3 migration bridge.
 
 ---
 
@@ -198,6 +200,8 @@ npm install
 npm run build    # tsc type-check + vite bundle -> dist/ffn-enhancements.user.js
 npm run dev      # vite dev server with hot reload (install the local URL into TM once)
 ```
+
+Local builds use version `0.0.0-dev` with no update URL pointing to production. CI sets `FFNE_VERSION` and `FFNE_BETA` environment variables to produce release artifacts with correct versioning and update URLs.
 
 ### Testing
 
@@ -226,17 +230,30 @@ Test files under `src/__tests__/`, matching `**/*.test.ts`:
 | `Ao3Bridge.test.ts` | Bridge message serialization and heartbeat logic |
 | `Ao3Service.test.ts` | AO3 page interaction and chapter management |
 | `Ao3BridgeClient.test.ts` | FFN-side bridge client request/response handling |
+| `CssScanner.test.ts` | Runtime CSS scanner color remapping and caching |
+| `ThemeManager.test.ts` | Theme switching, token injection, and prelude integration |
+| `LayoutManager.test.ts` | Fluid mode class application and viewport meta injection |
+| `bootstrap.test.ts` | Route dispatch and module registration |
+| `criticalThemeRequire.test.ts` | Critical theme require payload size and encoding |
+| `themePrelude.test.ts` | Prelude guard conditions and localStorage fallback |
+| `UiOwnership.test.ts` | Injected style/UI element ID ownership and selector collision |
+| `htmlSanitizer.test.ts` | HTML sanitizer safety and tag allowlisting |
+| `runBulkOperation.test.ts` | Bulk operation retry and cooldown orchestration |
+| `jszip-lock.test.ts` | JSZip version pin and API compatibility |
 
-### Contributing
+### CI / CD
 
-1. Fork the repository.
-2. Create a branch with a descriptive prefix:
-   - `feat/` for new features
-   - `fix/` for bug fixes
-   - `refactor/` for code restructuring
-   - `docs/` for documentation updates
-3. Make your changes. Run `npm test` then `npm run build` to confirm everything is clean.
-4. Submit a Pull Request.
+| Workflow | Trigger | Output |
+|---|---|---|
+| `beta-release.yml` | Push to `main` | `ffn-enhancements.beta.user.js` attached to [beta release](https://github.com/WhiteLicorice/ffn-enhancements/releases/tag/beta) |
+| `stable-release.yml` | Manual (`workflow_dispatch`) | `ffn-enhancements.user.js` attached to new versioned release |
+
+Both workflows auto-generate categorized patch notes from conventional commit messages.
+
+To cut a stable release:
+1. Go to **Actions > Stable Release > Run workflow**.
+2. Enter the version (e.g. `0.16.0`).
+3. The workflow builds, tags `v0.16.0`, creates a GitHub Release, and uploads the script.
 
 ### Commit messages
 
@@ -253,3 +270,39 @@ This project follows semantic commits:
 - `debug/test:` Testing, scaffolding, and debugging
 
 Example: `feat: add markdown export to doc manager`
+
+### Contributing
+
+1. Fork the repository.
+2. Create a branch with a descriptive prefix:
+   - `feat/` for new features
+   - `fix/` for bug fixes
+   - `refactor/` for code restructuring
+   - `docs/` for documentation updates
+3. Make your changes. Run `npm test` then `npm run build` to confirm everything is clean.
+4. Submit a Pull Request.
+
+---
+
+## Roadmap
+
+- [x] Download documents as Markdown, HTML, or DOCX in both Doc Manager and Doc Editor
+- [x] Text selection unlocked on story pages
+- [x] Arrow key and WASD chapter navigation
+- [x] Download stories as EPUB/PDF/HTML/MOBI (FicHub + Native)
+- [x] Fix FFN's broken cover art modal
+- [x] Fluid reading mode (edge-to-edge layout)
+- [x] Paste Markdown and HTML source into the Doc Editor, auto-converted to rich text
+- [x] Single and bulk refresh of document expiry in Doc Manager
+- [x] Story cover art embedded in EPUBs as thumbnail
+- [x] Settings menu with per-setting controls and cross-tab sync
+- [x] Clipboard copy from Doc Editor toolbar
+- [x] Bulk import Markdown/HTML/DOCX files into Doc Manager
+- [x] AO3 migration bridge (cross-tab, GM-storage IPC)
+- [x] Bulk Replace on Story Edit Content page
+- [x] Export transforms: AO3 HTML compat, paragraph normalization, end separator
+- [x] Site theme support with Light, Dark, Sepia, High Contrast, and System modes
+- [x] Critical theme prelude for FOUC prevention
+- [x] Automated beta releases on push to main
+- [x] Manual stable release pipeline with auto-generated patch notes
+- [ ] Custom font settings sitewide (needs a `FontManager` module hooked into the `EarlyBoot` system)
