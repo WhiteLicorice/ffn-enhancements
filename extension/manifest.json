@@ -4,7 +4,7 @@
   "version": "0.17.0",
   "description": "Modern enhancements for FanFiction.net",
   "permissions": ["storage", "scripting", "activeTab"],
-  "host_permissions": [
+  "optional_host_permissions": [
     "*://www.fanfiction.net/*",
     "*://fanfiction.net/*",
     "*://archiveofourown.org/*",

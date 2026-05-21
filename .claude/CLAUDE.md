@@ -61,16 +61,20 @@ npm test        # vitest run -v
 
 ### 2.1 Extension Icon Click → Settings Modal Flow
 
-**Prerequisite: host permissions.** On Firefox MV3, `host_permissions` are
-user-opt-in — manifest `content_scripts` do NOT auto-execute until granted via
-about:addons OR via `chrome.permissions.request` from a user gesture. The
-service worker's `action.onClicked` handler calls `ensureHostPermissions()`
-before dispatching `OPEN_SETTINGS`. On grant, the service worker
-programmatically injects the full content-script bundle
-(`CONTENT_SCRIPT_CSS_FILES` + `CONTENT_SCRIPT_JS_FILES`) into all currently
-open FFN/AO3 tabs via `injectIntoMatchingTabs()` (also fired from
-`chrome.permissions.onAdded`). Chrome auto-grants at install so this is a
-no-op fast path.
+**Prerequisite: optional host permissions.** All four host origins (FFN, AO3,
+fichub.net) live under `optional_host_permissions` in
+`extension/manifest.json`. Neither Chrome nor Firefox auto-grants optional
+patterns at install — `content_scripts` do NOT auto-execute until the user
+accepts the prompt triggered by `chrome.permissions.request` from the service
+worker's `action.onClicked` handler. We use `optional_host_permissions` (not
+`host_permissions`) because Firefox MV3 forbids requesting required
+`host_permissions` via `permissions.request` (MDN: "The permissions that can be
+requested with the request() method are limited to the optional_permissions and
+optional_host_permissions declared in manifest.json"). On grant,
+`chrome.permissions.onAdded` fires and the service worker injects the full
+content-script bundle (`CONTENT_SCRIPT_CSS_FILES` + `CONTENT_SCRIPT_JS_FILES`)
+into all currently open FFN/AO3 tabs via `injectIntoMatchingTabs()`. Future
+navigations auto-load `content_scripts` as normal.
 
 The extension icon click (`action.onClicked`) opens the settings modal on the
 active FFN/AO3 tab. The dispatch chain in
@@ -87,13 +91,13 @@ active FFN/AO3 tab. The dispatch chain in
    `chrome.scripting.insertCSS({ files: CONTENT_SCRIPT_CSS_FILES })`, then
    `chrome.scripting.executeScript({ files: ['content/prelude.js'] })`, then
    `chrome.scripting.executeScript({ files: ['content/main.js'] })`. This is
-   required on Firefox MV3 where host_permissions are user-opt-in — manifest
-   `content_scripts` do NOT auto-execute until the user grants host access via
-   about:addons. The `activeTab` permission (granted by the toolbar click) lets
-   the service worker inject the bundle regardless of host-permission state.
-   `prelude.js` is guarded by `__ffnePreludeBootstrapped` and `main.ts` is
-   guarded by `__ffneContentBootstrapped`, so re-injection on an already-loaded
-   tab is a no-op.
+   required on Firefox MV3 when optional host permissions have not been granted
+   yet — manifest `content_scripts` do NOT auto-execute until the user grants
+   host access. The `activeTab` permission (granted by the toolbar click) lets
+   the service worker inject the bundle regardless of current host-access
+   state. `prelude.js` is guarded by `__ffnePreludeBootstrapped` and `main.ts`
+   is guarded by `__ffneContentBootstrapped`, so re-injection on an
+   already-loaded tab is a no-op.
 
 3. **Step 3 (retry):** Repeat `sendMessage`. After step 2 completes, the
    `OPEN_SETTINGS` listener is registered synchronously by `SettingsMenu.prime()`
@@ -111,9 +115,9 @@ about:debugging.
 The dispatch flow does NOT use `window.postMessage` — that approach has a silent
 failure mode: `scripting.executeScript({ func })` returns true if the func
 *ran*, regardless of whether any `message` listener received the post. On
-Firefox MV3 without granted host_permissions, the content script never loads,
-so the listener never exists, but the executeScript call still succeeds. Using
-`sendMessage` as primary avoids the false positive.
+Firefox MV3 without granted optional host permissions, the content script
+never loads, so the listener never exists, but the executeScript call still
+succeeds. Using `sendMessage` as primary avoids the false positive.
 
 ---
 
@@ -166,7 +170,7 @@ const response = await backgroundFetch({
 
 - `backgroundFetch()` never throws — errors returned in `response.error`.
 - Service worker handles `CrossOriginFetchMessage` by executing `fetch()` with
-  full `host_permissions` (no CORS restrictions).
+  full granted host access (no CORS restrictions).
 - Blob responses are converted `number[]` → `Uint8Array` → `Blob` (JSON-safe messaging).
 
 ### 3.3 Tabs (`src/platform/tabs.ts`)
@@ -796,8 +800,8 @@ tsconfig.json                    - Strict TypeScript config
     receipt of `window.postMessage` from the injected closure.** The
     `executeScript` promise resolves when the injected function *finishes
     executing*, NOT when any `message` listener acknowledges the post. If the
-    content script is not loaded — for example, on Firefox MV3 where
-    host_permissions are user-opt-in and the user has not granted them —
+    content script is not loaded — for example, on Firefox MV3 where optional
+    host permissions have not been granted yet —
     `window.postMessage` posts to a window with no `'message'` listener for the
     expected type, the executeScript still resolves successfully, and the
     service worker falsely reports the open-settings dispatch as successful.
@@ -809,26 +813,28 @@ tsconfig.json                    - Strict TypeScript config
     `openSettingsInTab` relies on to trigger the inject + retry fallback. See
     Section 2.1 for the full chain.
 
-17. **GOTCHA: Firefox MV3 host_permissions are user-opt-in.** Manifest
-    declarations are NOT auto-granted on Firefox at install. Declared
-    `content_scripts` stay inert until the user grants host access via
-    `about:addons -> <ext> -> Permissions and data`, OR until the extension
-    calls `chrome.permissions.request({ origins: [...] })` from a user gesture
-    (for example `action.onClicked`).
+17. **GOTCHA: Use `optional_host_permissions`, NOT `host_permissions`, when
+    you need `chrome.permissions.request` to prompt the user.** Per MDN:
+    `permissions.request()` can ONLY request permissions/origins declared in
+    `optional_permissions` / `optional_host_permissions`. On Firefox, calling
+    `permissions.request({ origins: [<pattern in host_permissions>] })`
+    resolves false (or rejects) without showing a prompt — silently breaking
+    any first-run UX that depends on it.
 
-    The service worker uses `ensureHostPermissions()` before dispatching
-    `OPEN_SETTINGS`, so the first toolbar click both grants permission and
-    activates the extension. On grant, `chrome.permissions.onAdded` fires and
-    `injectIntoMatchingTabs()` injects the full bundle (CSS + prelude + main,
-    in order) into all open FFN/AO3 tabs. Future navigations auto-execute
-    manifest `content_scripts` as normal. Chrome auto-grants — no-op there.
+    This extension declares all FFN/AO3/fichub.net patterns under
+    `optional_host_permissions` so the service worker's `action.onClicked`
+    handler can prompt on first click. Side effect: Chrome no longer shows the
+    install-time "Read and change data on..." warning; users see the same
+    first-click prompt as Firefox. Tradeoff accepted — one consistent UX
+    across browsers beats divergent flows.
 
-    Do NOT swap `host_permissions` for `optional_host_permissions` — Chrome
-    would then also prompt. Keep `host_permissions`.
+    `content_scripts.matches` works against either `host_permissions` or
+    `optional_host_permissions` once the corresponding origin is granted —
+    no change needed there.
 
-    Asset list lives in `src/background/contentScriptManifest.ts`. Keep it in
-    sync with `extension/manifest.json`
-    (`src/__tests__/contentScriptManifest.test.ts` enforces this).
+    The drift test in `src/__tests__/contentScriptManifest.test.ts` reads
+    `manifest.optional_host_permissions` and asserts it matches
+    `REQUESTED_HOST_PATTERNS`. Keep them in sync when adding/removing hosts.
 
 ---
 

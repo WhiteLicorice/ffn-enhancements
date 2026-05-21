@@ -10,14 +10,14 @@ import {
 const manifest = JSON.parse(
     readFileSync(resolve(process.cwd(), 'extension/manifest.json'), 'utf8'),
 ) as {
-    host_permissions: string[];
+    optional_host_permissions: string[];
     content_scripts: Array<{ css?: string[]; js?: string[] }>;
 };
 
 describe('contentScriptManifest matches extension/manifest.json', () => {
-    it('REQUESTED_HOST_PATTERNS matches host_permissions', () => {
+    it('REQUESTED_HOST_PATTERNS matches optional_host_permissions', () => {
         expect([...REQUESTED_HOST_PATTERNS].sort()).toEqual(
-            [...manifest.host_permissions].sort(),
+            [...manifest.optional_host_permissions].sort(),
         );
     });
 
