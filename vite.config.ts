@@ -1,112 +1,104 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { getOutDir, patchManifest } from './scripts/manifest-utils.mjs';
 
-function copyDirRecursive(src: string, dest: string): void {
-    if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
-    for (const entry of readdirSync(src, { withFileTypes: true })) {
-        const srcPath = join(src, entry.name);
-        const destPath = join(dest, entry.name);
-        if (entry.isDirectory()) {
-            copyDirRecursive(srcPath, destPath);
-        } else {
-            copyFileSync(srcPath, destPath);
-        }
-    }
+// ─── Entry catalog ────────────────────────────────────────────────────────────
+//
+// Each `vite build` invocation emits exactly ONE entry. The orchestrator at
+// `scripts/build-all.mjs` runs three sequential builds, once per entry,
+// passing `FFNE_ENTRY=sw|prelude|main` via the environment.
+//
+// **Why single-entry per build.** Manifest V3 loads content scripts as
+// CLASSIC scripts. A multi-entry Vite/Rollup build de-dupes shared modules
+// (notably `webextension-polyfill`) into a `chunks/` file and emits
+// `import { x } from '../chunks/...'` at the top of each consumer. That
+// `import` is a SyntaxError in a content-script context, so the entire
+// content script fails to execute — i.e., the extension never injects any UI.
+// Service workers tolerate the chunk because Chrome MV3 declares
+// `background.type: "module"`, but content scripts have no equivalent
+// escape hatch.
+//
+// Single-entry builds force Rollup to inline every static import into the
+// entry bundle. No `chunks/` directory is emitted, no cross-bundle imports
+// exist, and content scripts execute under classic-script semantics.
+//
+// Re-exports `patchManifest` for unit tests in `src/__tests__/viteConfig.test.ts`.
+
+export { patchManifest };
+
+interface EntrySpec {
+    name: string;
+    src: string;
+    format: 'es' | 'iife';
 }
 
-export function patchManifest(manifestPath: string): void {
-    const target = getBuildTarget();
-    const requestedVersion = process.env.FFNE_VERSION;
-
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-        version?: string;
-        version_name?: string;
-        background?: Record<string, unknown>;
-        browser_specific_settings?: Record<string, unknown>;
-    };
-
-    if (requestedVersion) {
-        manifest.version = toManifestVersion(requestedVersion);
-        manifest.version_name = requestedVersion;
-    }
-
-    if (target === 'firefox') {
-        // Firefox MV3 uses event pages (background.scripts), NOT service workers.
-        // CRITICAL: Emit ONLY `scripts`. Do NOT also include `service_worker`.
-        // Firefox 121+ has experimental SW support behind the
-        // `extensions.backgroundServiceWorker.enabled` pref. When BOTH keys are
-        // present, Firefox can prefer `service_worker`, attempt to load the
-        // bundle as a real ServiceWorker, fail silently (no `type: "module"`;
-        // uses chrome.action which isn't on the SW scope), and never fall back
-        // to the event-page `scripts` entry. Result: action.onClicked is never
-        // wired and clicking the toolbar icon does nothing. See CLAUDE.md
-        // Gotcha #15.
-        //
-        // We also do NOT set type:'module' — the bundled service-worker.js has
-        // no imports/exports, and module scripts defer execution past the event
-        // dispatch that wakes the event page.
-        manifest.background = {
-            scripts: ['background/service-worker.js'],
-        };
-        // Keep browser_specific_settings for AMO.
-    } else {
-        // Chrome MV3 uses service workers. The source manifest already declares
-        // { service_worker, type: 'module' } — leave it intact and just strip
-        // the Firefox-only block.
-        delete manifest.browser_specific_settings;
-    }
-
-    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-}
-
-function getBuildTarget(): 'chrome' | 'firefox' {
-    return process.env.FFNE_TARGET === 'firefox' ? 'firefox' : 'chrome';
-}
-
-function toManifestVersion(version: string): string {
-    const core = version.match(/^(\d+)\.(\d+)\.(\d+)/);
-    if (!core) return '0.0.0';
-
-    const betaBuild = version.match(/beta\.(\d+)/);
-    if (!betaBuild) return `${core[1]}.${core[2]}.${core[3]}`;
-
-    const build = Number(betaBuild[1]);
-    const safeBuild = Number.isFinite(build) ? Math.max(0, Math.min(build, 65535)) : 0;
-    return `${core[1]}.${core[2]}.${core[3]}.${safeBuild}`;
-}
-
-export default defineConfig({
-    plugins: [
-        {
-            name: 'copy-extension-assets',
-            writeBundle() {
-                const distDir = resolve(__dirname, getBuildTarget() === 'firefox' ? 'dist-firefox' : 'dist-chrome');
-                const extensionDir = resolve(__dirname, 'extension');
-                copyDirRecursive(extensionDir, distDir);
-                patchManifest(join(distDir, 'manifest.json'));
-            },
-        },
-    ],
-    build: {
-        rollupOptions: {
-            input: {
-                'content/main': resolve(__dirname, 'src/main.ts'),
-                'content/prelude': resolve(__dirname, 'src/prelude/themePrelude.ts'),
-                'background/service-worker': resolve(__dirname, 'src/background/service-worker.ts'),
-            },
-            output: {
-                entryFileNames: '[name].js',
-                chunkFileNames: 'chunks/[name]-[hash].js',
-                assetFileNames: 'assets/[name]-[hash].[ext]',
-            },
-        },
-        outDir: getBuildTarget() === 'firefox' ? 'dist-firefox' : 'dist-chrome',
-        emptyOutDir: true,
-        minify: 'esbuild',
-        cssMinify: true,
-        target: 'es2020',
-        modulePreload: false,
+const ENTRIES: Record<string, EntrySpec> = {
+    sw: {
+        name: 'background/service-worker',
+        src: 'src/background/service-worker.ts',
+        // Chrome MV3 declares `background.type: "module"`, so ESM is fine.
+        // Firefox event-page strips that key via patchManifest; with no
+        // top-level imports/exports after single-entry inlining, the emitted
+        // file is effectively a classic script regardless of format.
+        format: 'es',
     },
+    prelude: {
+        name: 'content/prelude',
+        src: 'src/prelude/themePrelude.ts',
+        format: 'iife',
+    },
+    main: {
+        name: 'content/main',
+        src: 'src/main.ts',
+        format: 'iife',
+    },
+};
+
+export type EntryKey = keyof typeof ENTRIES;
+
+function getEntryKey(): EntryKey | null {
+    const key = process.env.FFNE_ENTRY;
+    if (key && Object.prototype.hasOwnProperty.call(ENTRIES, key)) {
+        return key as EntryKey;
+    }
+    return null;
+}
+
+export default defineConfig(() => {
+    const entryKey = getEntryKey();
+    if (!entryKey) {
+        throw new Error(
+            'vite.config.ts: FFNE_ENTRY env var is required. '
+            + `Set it to one of: ${Object.keys(ENTRIES).join(', ')}. `
+            + 'Use `npm run build` to run the full multi-entry orchestrated build.',
+        );
+    }
+
+    const entry = ENTRIES[entryKey];
+
+    return {
+        build: {
+            outDir: getOutDir(),
+            // The orchestrator wipes the dir before invoking the first build.
+            // Subsequent builds in the same target session must NOT empty it.
+            emptyOutDir: false,
+            minify: 'esbuild' as const,
+            cssMinify: true,
+            target: 'es2020',
+            modulePreload: false,
+            rollupOptions: {
+                input: { [entry.name]: resolve(__dirname, entry.src) },
+                output: {
+                    format: entry.format,
+                    entryFileNames: '[name].js',
+                    chunkFileNames: 'chunks/[name]-[hash].js',
+                    assetFileNames: 'assets/[name]-[hash].[ext]',
+                    // Single-entry builds naturally inline everything. This
+                    // flag is a safety belt against future Rollup behavior
+                    // around code-splitting heuristics.
+                    inlineDynamicImports: true,
+                },
+            },
+        },
+    };
 });

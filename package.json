@@ -4,8 +4,8 @@
   "version": "0.17.0",
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch",
-    "build": "tsc && vite build",
+    "dev": "node scripts/build-all.mjs --watch",
+    "build": "tsc && node scripts/build-all.mjs",
     "build:chrome": "node scripts/build-target.mjs chrome",
     "build:firefox": "node scripts/build-target.mjs firefox",
     "test": "vitest run -v",
