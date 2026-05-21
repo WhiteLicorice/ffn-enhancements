@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 // Orchestrates the per-entry Vite build for FFN Enhancements.
 //
-// Background: A multi-entry Vite build de-dupes shared modules (most notably
-// `webextension-polyfill`) into a `chunks/` directory and emits cross-bundle
-// `import { x } from '../chunks/...'` statements at the top of each consumer.
-// Manifest V3 loads content scripts as CLASSIC scripts in both Chrome and
-// Firefox, so those imports become SyntaxErrors and the content scripts never
-// execute. Effect: the extension fails to inject any UI.
+// Background: A multi-entry Vite build de-dupes shared modules into a
+// `chunks/` directory and emits cross-bundle `import` statements at the top
+// of each consumer. Manifest V3 loads content scripts as CLASSIC scripts in
+// both Chrome and Firefox, so those imports become SyntaxErrors and the
+// content scripts never execute. Effect: the extension fails to inject any UI.
 //
 // This script invokes Vite once per entry with `FFNE_ENTRY` set, producing
 // single-entry self-contained bundles. After all sub-builds finish, it copies
@@ -22,6 +21,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
 import { copyDirRecursive, patchManifest } from './manifest-utils.mjs';
+import { sanitizeDirectory } from './sanitize-dist.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -60,6 +60,7 @@ if (watch) {
         watchers.push(await buildEntry(entry));
     }
     copyAssetsAndPatchManifest();
+    sanitizeDirectory(outDir);
 
     const shutdown = async () => {
         for (const w of watchers) {
@@ -76,4 +77,5 @@ if (watch) {
         await buildEntry(entry);
     }
     copyAssetsAndPatchManifest();
+    sanitizeDirectory(outDir);
 }

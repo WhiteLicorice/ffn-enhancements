@@ -110,11 +110,6 @@ const browserMock = {
     },
 };
 
-Object.defineProperty(globalThis, 'browser', {
-    configurable: true,
-    value: browserMock,
-});
-
 Object.defineProperty(globalThis, 'chrome', {
     configurable: true,
     value: browserMock,

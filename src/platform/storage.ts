@@ -1,5 +1,3 @@
-import browser from 'webextension-polyfill';
-
 const STORAGE_PREFIX = 'ffne_';
 const _pendingLocalWrites = new Map<string, number>();
 const LOCAL_WRITE_GUARD_MS = 200;
@@ -61,7 +59,7 @@ export const platformStorage: PlatformStorage = {
         }
 
         _pendingLocalWrites.set(fk, Date.now());
-        await browser.storage.local.set({ [fk]: value });
+        await chrome.storage.local.set({ [fk]: value });
     },
 
     async remove(key: string): Promise<void> {
@@ -72,11 +70,11 @@ export const platformStorage: PlatformStorage = {
             // localStorage unavailable.
         }
         _pendingLocalWrites.set(fk, Date.now());
-        await browser.storage.local.remove(fk);
+        await chrome.storage.local.remove(fk);
     },
 
     async hydrateFromPersistentStorage(): Promise<Record<string, string | number | boolean>> {
-        const stored = await browser.storage.local.get(null);
+        const stored = await chrome.storage.local.get(null);
         const hydrated: Record<string, string | number | boolean> = {};
 
         for (const [key, value] of Object.entries(stored)) {
@@ -100,7 +98,7 @@ export const platformStorage: PlatformStorage = {
     },
 
     onChanged(callback: (key: string, newValue: unknown, oldValue: unknown) => void): () => void {
-        const handler = (changes: Record<string, browser.Storage.StorageChange>) => {
+        const handler = (changes: Record<string, chrome.storage.StorageChange>) => {
             _cleanStalePendingWrites();
             for (const [changedKey, change] of Object.entries(changes)) {
                 if (!changedKey.startsWith(STORAGE_PREFIX)) continue;
@@ -129,7 +127,7 @@ export const platformStorage: PlatformStorage = {
             }
         };
 
-        browser.storage.onChanged.addListener(handler);
-        return () => browser.storage.onChanged.removeListener(handler);
+        chrome.storage.onChanged.addListener(handler);
+        return () => chrome.storage.onChanged.removeListener(handler);
     },
 };

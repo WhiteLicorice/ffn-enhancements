@@ -1,10 +1,6 @@
 import { vi } from 'vitest';
 import './__mocks__/browser';
 
-vi.mock('webextension-polyfill', () => ({
-    default: (globalThis as unknown as { browser: unknown }).browser,
-}));
-
 vi.mock('file-saver', () => ({
     saveAs: vi.fn(),
 }));

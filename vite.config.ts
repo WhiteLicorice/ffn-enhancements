@@ -10,10 +10,9 @@ import { getOutDir, patchManifest } from './scripts/manifest-utils.mjs';
 //
 // **Why single-entry per build.** Manifest V3 loads content scripts as
 // CLASSIC scripts. A multi-entry Vite/Rollup build de-dupes shared modules
-// (notably `webextension-polyfill`) into a `chunks/` file and emits
-// `import { x } from '../chunks/...'` at the top of each consumer. That
-// `import` is a SyntaxError in a content-script context, so the entire
-// content script fails to execute — i.e., the extension never injects any UI.
+// into a `chunks/` file and emits `import { x } from '../chunks/...'`
+// at the top of each consumer. That `import` is a SyntaxError in a
+// content-script context, so the entire content script fails to execute.
 // Service workers tolerate the chunk because Chrome MV3 declares
 // `background.type: "module"`, but content scripts have no equivalent
 // escape hatch.
@@ -21,6 +20,11 @@ import { getOutDir, patchManifest } from './scripts/manifest-utils.mjs';
 // Single-entry builds force Rollup to inline every static import into the
 // entry bundle. No `chunks/` directory is emitted, no cross-bundle imports
 // exist, and content scripts execute under classic-script semantics.
+//
+// Browser APIs use `chrome.*` directly — no polyfill. Both Chrome and Firefox
+// ship the full `chrome.*` alias with Promise support in MV3 for the API
+// surface this extension uses. Non-ASCII safety: `esbuild.charset: 'ascii'`
+// plus `scripts/sanitize-dist.mjs` post-build scan.
 //
 // Re-exports `patchManifest` for unit tests in `src/__tests__/viteConfig.test.ts`.
 
@@ -36,11 +40,11 @@ const ENTRIES: Record<string, EntrySpec> = {
     sw: {
         name: 'background/service-worker',
         src: 'src/background/service-worker.ts',
-        // Chrome MV3 declares `background.type: "module"`, so ESM is fine.
-        // Firefox event-page strips that key via patchManifest; with no
-        // top-level imports/exports after single-entry inlining, the emitted
-        // file is effectively a classic script regardless of format.
-        format: 'es',
+        // Chrome MV3 declares `background.type: "module"`, so ESM would be
+        // acceptable, but IIFE works identically in both Chrome's module
+        // service-worker and Firefox's classic event-page contexts without
+        // relying on inlined-bundle having no import/export statements.
+        format: 'iife',
     },
     prelude: {
         name: 'content/prelude',
@@ -84,6 +88,9 @@ export default defineConfig(() => {
             emptyOutDir: false,
             minify: 'esbuild' as const,
             cssMinify: true,
+            esbuild: {
+                charset: 'ascii',
+            },
             target: 'es2020',
             modulePreload: false,
             rollupOptions: {

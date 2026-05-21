@@ -7,7 +7,6 @@ import { FicHubStatus } from '../enums/FicHubStatus';
 import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
 import { FicHubMetadataSerializer } from '../serializers/FicHubMetadataSerializer';
 import JSZip from 'jszip';
-import browser from 'webextension-polyfill';
 import { backgroundFetch } from '../platform/messaging';
 import { markFfneUiRoot } from '../utils/ffneUi';
 
@@ -365,11 +364,11 @@ export function _sanitizeFilename(name: string): string {
 
 export async function _ensureFicHubPermission(): Promise<boolean> {
     const permissions = { origins: [FICHUB_PERMISSION_ORIGIN] };
-    if (await browser.permissions.contains(permissions)) {
+    if (await chrome.permissions.contains(permissions)) {
         return true;
     }
 
-    const granted = await browser.permissions.request(permissions);
+    const granted = await chrome.permissions.request(permissions);
     if (!granted) {
         _showPermissionToast(FICHUB_PERMISSION_MESSAGE);
     }

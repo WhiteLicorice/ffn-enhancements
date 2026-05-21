@@ -1,13 +1,11 @@
-import browser from 'webextension-polyfill';
-
 import { MessageType } from './message-types';
 import type { BackgroundMessage, CrossOriginFetchMessage, CrossOriginFetchResponse } from './message-types';
 
 console.log('FFN Enhancements service worker loaded.');
 
-browser.runtime.onMessage.addListener(async (
+chrome.runtime.onMessage.addListener(async (
     message: unknown,
-    sender: browser.Runtime.MessageSender,
+    sender: chrome.runtime.MessageSender,
 ): Promise<unknown> => {
     const typedMessage = message as BackgroundMessage;
     switch (typedMessage.type) {
@@ -16,7 +14,7 @@ browser.runtime.onMessage.addListener(async (
 
         case MessageType.OPEN_TAB:
             try {
-                await browser.tabs.create({ url: typedMessage.url, active: typedMessage.active ?? true });
+                await chrome.tabs.create({ url: typedMessage.url, active: typedMessage.active ?? true });
                 return { ok: true };
             } catch (err) {
                 return { ok: false, error: getErrorMessage(err) };
@@ -29,7 +27,7 @@ browser.runtime.onMessage.addListener(async (
 
 async function handleCrossOriginFetch(
     msg: CrossOriginFetchMessage,
-    _sender: browser.Runtime.MessageSender,
+    _sender: chrome.runtime.MessageSender,
 ): Promise<CrossOriginFetchResponse> {
     try {
         const controller = new AbortController();

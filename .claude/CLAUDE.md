@@ -41,23 +41,31 @@ npm test        # vitest run -v
 ```
 
 - TypeScript strict (`strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`).
-- Vite multi-entry build: 4 entry points + shared chunks:
+- Vite single-entry builds (3 entry points, no shared chunks):
   - `content/main.js` — main content script (all modules)
   - `content/prelude.js` — document-start theme prelude (<1 KB)
   - `background/service-worker.js` — service worker (fetch proxy, tab mgmt)
-  - `popup/popup.js` — extension popup
+- Each entry built as IIFE to avoid classic-script `import` errors in
+  content scripts + Firefox event-page background. Single-entry builds
+  force Rollup to inline every static import — no cross-bundle chunks.
 - `build.minify: 'esbuild'` + `build.target: 'es2020'` for prod.
+- `esbuild.charset: 'ascii'` — first line of defense against non-ASCII
+  bytes in bundles. `scripts/sanitize-dist.mjs` post-build scanner is the
+  second safety net (Firefox can reject extensions with non-ASCII in scripts).
 - `emptyOutDir: true` — dist/ fully regenerated each build.
-- Static assets (manifest.json, CSS, icons, popup.html) live in `extension/`,
-  copied to `dist/` by `copy-extension-assets` Vite plugin post-bundle.
-- Shared chunks land in `dist/chunks/` (e.g., `message-types-*.js`, `themeClass-*.js`).
+- Static assets (manifest.json, CSS, icons) live in `extension/`,
+  copied to `dist/` by `copyDirRecursive()` in `build-all.mjs` post-bundle.
 - `modulePreload: false` — extension content scripts no support module preload.
 - Target-specific output dirs: `dist-chrome/` + `dist-firefox/`.
   `FFNE_TARGET` env var picks target (`chrome` or `firefox`).
-- `patchManifest()` in `vite.config.ts` handles target-specific tweaks:
+- `patchManifest()` in `scripts/manifest-utils.mjs` handles target-specific tweaks:
   - **Chrome:** Strips `browser_specific_settings` (CWS rejects).
   - **Firefox:** Event-page `background.scripts` only — no
     `service_worker`, no `type: "module"` (see Gotcha #15).
+- Browser APIs use `chrome.*` directly — no polyfill. Both browsers ship
+  the full `chrome.*` alias with Promise support in MV3 for the API surface
+  this extension uses (`storage.local`, `runtime.sendMessage/onMessage`,
+  `tabs.create`, `permissions.contains/request`).
 
 ### 2.1 Extension Icon Click → Settings Modal Flow
 
@@ -790,10 +798,11 @@ tsconfig.json                    - Strict TypeScript config
     `patchManifest` helper in `vite.config.ts` handles per-target split,
     exported for unit testing in `src/__tests__/viteConfig.test.ts`.
 
-    Register listeners against
-    `(globalThis.browser?.action ?? chrome.action).onClicked` so binding
-    works regardless of which namespace Firefox exposes first during
-    event-page wake-up.
+    Register listeners against `chrome.action.onClicked`. Both Chrome and
+    Firefox ship the full `chrome.*` alias with Promise support in MV3 — no
+    polyfill needed. The background bundle is built as IIFE (not ESM), so it
+    works identically whether Chrome loads it as a module service worker or
+    Firefox loads it as a classic event-page script.
 
 16. **GOTCHA: `chrome.scripting.executeScript({ func })` no confirm
     receipt of `window.postMessage` from injected closure.**
