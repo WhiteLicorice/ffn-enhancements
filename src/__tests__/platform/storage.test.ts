@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import '../__mocks__/chrome';
-import { mockChromeStorage } from '../__mocks__/chrome';
+import '../__mocks__/browser';
+import { mockChromeStorage } from '../__mocks__/browser';
 import { platformStorage } from '../../platform/storage';
 
 describe('platformStorage', () => {

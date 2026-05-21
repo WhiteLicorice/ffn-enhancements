@@ -6,7 +6,6 @@
 
 export const MessageType = {
     CROSS_ORIGIN_FETCH: 'CROSS_ORIGIN_FETCH',
-    OPEN_SETTINGS: 'OPEN_SETTINGS',
     OPEN_TAB: 'OPEN_TAB',
 } as const;
 
@@ -30,14 +29,10 @@ export interface CrossOriginFetchResponse {
     error?: string;
 }
 
-export interface OpenSettingsMessage {
-    type: typeof MessageType.OPEN_SETTINGS;
-}
-
 export interface OpenTabMessage {
     type: typeof MessageType.OPEN_TAB;
     url: string;
     active?: boolean;
 }
 
-export type BackgroundMessage = CrossOriginFetchMessage | OpenSettingsMessage | OpenTabMessage;
+export type BackgroundMessage = CrossOriginFetchMessage | OpenTabMessage;

@@ -1,25 +1,13 @@
-// Content-script <-> service-worker messaging.
-//
-// Content scripts use `backgroundFetch()` to request cross-origin fetches
-// and other privileged operations. The service worker handles these in its
-// chrome.runtime.onMessage listener.
-//
-// All cross-origin HTTP requests flow through the service worker because:
-// 1. Content scripts may face CSP restrictions from the host page.
-// 2. Service worker has unrestricted fetch() for declared host_permissions.
-// 3. Consistent behavior across Chrome and Firefox.
+import browser from 'webextension-polyfill';
 
 import type { CrossOriginFetchMessage, CrossOriginFetchResponse } from '../background/message-types';
-import { runtimeSendMessage, tabsQuery, tabsSendMessage } from './chromeApi';
 
 export interface FetchRequestOptions {
     url: string;
     method?: 'GET' | 'POST';
     headers?: Record<string, string>;
     body?: string;
-    /** 'blob' returns response data as a Blob (for binary downloads). */
     responseType?: 'text' | 'blob';
-    /** Timeout in ms. The service worker aborts the fetch after this duration. */
     timeout?: number;
 }
 
@@ -31,13 +19,6 @@ export interface FetchResponse {
     error?: string;
 }
 
-/**
- * Sends a cross-origin fetch request through the service worker.
- * The service worker has full host_permissions and no CORS restrictions.
- *
- * Returns a FetchResponse with data as string (text mode) or Blob (blob mode).
- * Never throws — errors are returned in the response object.
- */
 export async function backgroundFetch(options: FetchRequestOptions): Promise<FetchResponse> {
     const message: CrossOriginFetchMessage = {
         type: 'CROSS_ORIGIN_FETCH',
@@ -50,14 +31,13 @@ export async function backgroundFetch(options: FetchRequestOptions): Promise<Fet
     };
 
     try {
-        const response = await runtimeSendMessage<CrossOriginFetchResponse>(message);
+        const response = await browser.runtime.sendMessage(message) as CrossOriginFetchResponse;
 
         if (options.responseType === 'blob' && Array.isArray(response.data)) {
-            const bytes = new Uint8Array(response.data);
             return {
                 ok: response.ok,
                 status: response.status,
-                data: new Blob([bytes]),
+                data: new Blob([new Uint8Array(response.data)]),
                 finalUrl: response.finalUrl,
                 error: response.error,
             };
@@ -71,8 +51,6 @@ export async function backgroundFetch(options: FetchRequestOptions): Promise<Fet
             error: response.error,
         };
     } catch (err) {
-        // chrome.runtime.sendMessage throws if the service worker is not running
-        // or if the extension context is invalid.
         const message = err instanceof Error ? err.message : String(err);
         return {
             ok: false,
@@ -82,45 +60,4 @@ export async function backgroundFetch(options: FetchRequestOptions): Promise<Fet
             error: `Messaging error: ${message}`,
         };
     }
-}
-
-/**
- * Sends a message from an extension page to the active tab's content script.
- * Used to trigger actions like opening the settings modal.
- */
-export async function sendToActiveTab(message: unknown): Promise<void> {
-    try {
-        const tabs = await tabsQuery({ active: true, currentWindow: true });
-        const tabId = tabs[0]?.id;
-        if (tabId !== undefined) {
-            await tabsSendMessage(tabId, message);
-        }
-    } catch {
-        // Tab may not be ready to receive messages (e.g., no content script loaded).
-    }
-}
-
-/**
- * Registers a listener for messages from the service worker.
- * Returns an unsubscribe function for cleanup.
- *
- * Use this in content scripts to handle incoming messages:
- *   const unsub = onMessage((msg) => { ... });
- *   // later: unsub();
- */
-export function onMessage(
-    callback: (message: Record<string, unknown>, sender: chrome.runtime.MessageSender) => unknown,
-): () => void {
-    const listener = (
-        message: Record<string, unknown>,
-        sender: chrome.runtime.MessageSender,
-        sendResponse: (response?: unknown) => void,
-    ) => {
-        const response = callback(message, sender);
-        if (response !== undefined) {
-            sendResponse(response);
-        }
-    };
-    chrome.runtime.onMessage.addListener(listener);
-    return () => chrome.runtime.onMessage.removeListener(listener);
 }

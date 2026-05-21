@@ -15,11 +15,11 @@
     "package:firefox": "node scripts/build-package-target.mjs firefox"
   },
   "devDependencies": {
-    "@types/chrome": "^0.1.42",
     "@types/file-saver": "^2.0.4",
     "@types/jszip": "3.1.5",
     "@types/marked": "^5.0.2",
     "@types/turndown": "^5.0.6",
+    "@types/webextension-polyfill": "^0.12.5",
     "@vitest/ui": "^4.1.5",
     "jsdom": "^29.1.0",
     "typescript": "^5.9.3",
@@ -31,7 +31,8 @@
     "htmlparser2": "^12.0.0",
     "jszip": "3.1.5",
     "marked": "^17.0.1",
-    "turndown": "^7.2.2"
+    "turndown": "^7.2.2",
+    "webextension-polyfill": "^0.12.0"
   },
   "description": "A browser extension that enhances FanFiction.net's interface for readers and authors.",
   "repository": {

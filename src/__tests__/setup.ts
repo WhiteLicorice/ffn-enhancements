@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import './__mocks__/chrome';
+import './__mocks__/browser';
 
 vi.mock('file-saver', () => ({
     saveAs: vi.fn(),

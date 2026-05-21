@@ -7,6 +7,7 @@ import { FicHubStatus } from '../enums/FicHubStatus';
 import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
 import { FicHubMetadataSerializer } from '../serializers/FicHubMetadataSerializer';
 import JSZip from 'jszip';
+import browser from 'webextension-polyfill';
 import { backgroundFetch } from '../platform/messaging';
 
 const MODULE_NAME = 'FicHubDownloader';
@@ -14,6 +15,8 @@ const FICHUB_API_TIMEOUT_MS = 60_000;
 const FICHUB_FILE_TIMEOUT_MS = 120_000;
 const COVER_INJECTION_TIMEOUT_MS = 120_000;
 const EPUB_MIME_TYPE = 'application/epub+zip';
+const FICHUB_PERMISSION_ORIGIN = '*://fichub.net/*';
+const FICHUB_PERMISSION_MESSAGE = 'Allow access to fichub.net to enable downloads.';
 
 /**
  * Concrete implementation of the Downloader strategy using the FicHub API.
@@ -30,6 +33,9 @@ export const FicHubDownloader: IFanficDownloader = {
         const log = Core.getLogger(this.MODULE_NAME, 'downloadAsEPUB');
 
         try {
+            const hasPermission = await _ensureFicHubPermission();
+            if (!hasPermission) return;
+
             const dlUrl = await _getFicHubDownloadUrl(storyUrl, SupportedFormats.EPUB, onProgress);
 
             if (onProgress) onProgress("Fetching EPUB Data...");
@@ -142,8 +148,13 @@ export async function checkFicHubFreshness(
 function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgress?: CallableFunction): Promise<void> {
     const log = Core.getLogger(MODULE_NAME, 'processApiRequest');
 
-    return _getFicHubDownloadUrl(storyUrl, format, onProgress)
+    return _ensureFicHubPermission()
+        .then((hasPermission) => {
+            if (!hasPermission) return null;
+            return _getFicHubDownloadUrl(storyUrl, format, onProgress);
+        })
         .then(dlUrl => {
+            if (!dlUrl) return;
             log(`Redirecting to: ${dlUrl}`);
             if (onProgress) onProgress("Downloading...");
             window.location.href = dlUrl;
@@ -347,4 +358,17 @@ function _saveBlob(blob: Blob, filename: string): void {
 
 export function _sanitizeFilename(name: string): string {
     return name.replace(/[<>:"/\\|?*]/g, "").trim();
+}
+
+export async function _ensureFicHubPermission(): Promise<boolean> {
+    const permissions = { origins: [FICHUB_PERMISSION_ORIGIN] };
+    if (await browser.permissions.contains(permissions)) {
+        return true;
+    }
+
+    const granted = await browser.permissions.request(permissions);
+    if (!granted) {
+        alert(FICHUB_PERMISSION_MESSAGE);
+    }
+    return granted;
 }
