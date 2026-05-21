@@ -6,20 +6,23 @@ import { SupportedFormats } from '../enums/SupportedFormats';
 import { FicHubStatus } from '../enums/FicHubStatus';
 import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
 import { FicHubMetadataSerializer } from '../serializers/FicHubMetadataSerializer';
-import JSZip from 'jszip';
-import { backgroundFetch } from '../platform/messaging';
-import { extensionApi } from '../platform/extensionApi';
-import { MessageType, type EnsureFicHubPermissionResponse } from '../background/message-types';
-import { markFfneUiRoot } from '../utils/ffneUi';
+import { backgroundFetch, type FetchResponse } from '../platform/messaging';
+import { blobToBytes, bytesToArrayBuffer, bytesToText, createZip, textToBytes, unzipBytes, type ZipFileEntry } from '../utils/zip';
 
 const MODULE_NAME = 'FicHubDownloader';
 const FICHUB_API_TIMEOUT_MS = 60_000;
 const FICHUB_FILE_TIMEOUT_MS = 120_000;
 const COVER_INJECTION_TIMEOUT_MS = 120_000;
 const EPUB_MIME_TYPE = 'application/epub+zip';
-const FICHUB_PERMISSION_MESSAGE = 'Allow access to fichub.net to enable downloads.';
-const FICHUB_PERMISSION_TOAST_ID = 'ffne-fichub-permission-toast';
-const FICHUB_PERMISSION_TOAST_TIMEOUT_MS = 4000;
+const FICHUB_PERMISSION_MESSAGE = 'Enable access to fichub.net in extension permissions.';
+const FICHUB_PERMISSION_ERROR_PATTERNS = [
+    'permission',
+    'permissions',
+    'host',
+    'access',
+    'not allowed',
+    'denied',
+] as const;
 
 /**
  * Concrete implementation of the Downloader strategy using the FicHub API.
@@ -36,9 +39,6 @@ export const FicHubDownloader: IFanficDownloader = {
         const log = Core.getLogger(this.MODULE_NAME, 'downloadAsEPUB');
 
         try {
-            const hasPermission = await _ensureFicHubPermission();
-            if (!hasPermission) return;
-
             const dlUrl = await _getFicHubDownloadUrl(storyUrl, SupportedFormats.EPUB, onProgress);
 
             if (onProgress) onProgress("Fetching EPUB Data...");
@@ -151,13 +151,8 @@ export async function checkFicHubFreshness(
 function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgress?: CallableFunction): Promise<void> {
     const log = Core.getLogger(MODULE_NAME, 'processApiRequest');
 
-    return _ensureFicHubPermission()
-        .then((hasPermission) => {
-            if (!hasPermission) return null;
-            return _getFicHubDownloadUrl(storyUrl, format, onProgress);
-        })
+    return _getFicHubDownloadUrl(storyUrl, format, onProgress)
         .then(dlUrl => {
-            if (!dlUrl) return;
             log(`Redirecting to: ${dlUrl}`);
             if (onProgress) onProgress("Downloading...");
             window.location.href = dlUrl;
@@ -168,7 +163,11 @@ function _processApiRequest(storyUrl: string, format: SupportedFormats, onProgre
         });
 }
 
-async function _getFicHubDownloadUrl(storyUrl: string, format: SupportedFormats, onProgress?: CallableFunction): Promise<string> {
+export async function _getFicHubDownloadUrl(
+    storyUrl: string,
+    format: SupportedFormats,
+    onProgress?: CallableFunction,
+): Promise<string> {
     const log = Core.getLogger(MODULE_NAME, 'getDownloadUrl');
     const apiUrl = `https://fichub.net/api/v0/epub?q=${encodeURIComponent(storyUrl)}`;
 
@@ -187,7 +186,7 @@ async function _getFicHubDownloadUrl(storyUrl: string, format: SupportedFormats,
     }
 
     if (!response.ok || typeof response.data !== 'string') {
-        throw new Error(`FicHub API request failed: HTTP ${response.status}`);
+        throw _buildFicHubRequestError(response, `FicHub API request failed: HTTP ${response.status}`);
     }
 
     const data = JSON.parse(response.data || '{}');
@@ -201,7 +200,7 @@ async function _getFicHubDownloadUrl(storyUrl: string, format: SupportedFormats,
     throw new Error("Format not found");
 }
 
-async function _fetchBlob(url: string): Promise<Blob> {
+export async function _fetchBlob(url: string): Promise<Blob> {
     const response = await backgroundFetch({
         url,
         method: 'GET',
@@ -211,7 +210,7 @@ async function _fetchBlob(url: string): Promise<Blob> {
     });
 
     if (!response.ok) {
-        throw new Error(`Download failed: ${response.status}`);
+        throw _buildFicHubRequestError(response, `Download failed: ${response.status}`);
     }
 
     if (response.data instanceof Blob) {
@@ -231,52 +230,47 @@ function _withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string
     });
 }
 
-async function _injectCoverIntoEpub(epubBlob: Blob, coverBlob: Blob): Promise<Blob> {
+export async function _injectCoverIntoEpub(epubBlob: Blob, coverBlob: Blob): Promise<Blob> {
     const log = Core.getLogger(MODULE_NAME, 'injectCover');
-    const zip = await JSZip.loadAsync(epubBlob);
+    const zipEntries = unzipBytes(await blobToBytes(epubBlob));
+    const coverBytes = await blobToBytes(coverBlob);
     const coverMimeType = coverBlob.type || 'image/jpeg';
 
-    const { opfPath, opfDir } = await _findOpfPath(zip);
-    const opfDoc = await _parseOpfDocument(zip, opfPath);
+    const { opfPath, opfDir } = _findOpfPath(zipEntries);
+    const opfDoc = _parseOpfDocument(zipEntries, opfPath);
 
     const existingHref = _findExistingCoverHref(opfDoc);
 
     if (existingHref) {
         log("Existing cover metadata found. Replacing file.");
-        zip.file(_resolveFullPath(opfDir, existingHref), coverBlob);
+        zipEntries[_resolveFullPath(opfDir, existingHref)] = coverBytes;
     } else {
         log("No existing cover found. Injecting image and metadata.");
-        _injectCoverMetadata(zip, opfPath, opfDir, coverBlob, coverMimeType, opfDoc);
+        _injectCoverMetadata(zipEntries, opfPath, opfDir, coverBytes, coverMimeType, opfDoc);
     }
 
-    const epubBytes = await zip.generateAsync({
-        type: "arraybuffer",
-        mimeType: EPUB_MIME_TYPE,
-        compression: "STORE",
-    });
-    return new Blob([epubBytes], { type: EPUB_MIME_TYPE });
+    return new Blob([bytesToArrayBuffer(createZip(_createStoredZipEntries(zipEntries)))], { type: EPUB_MIME_TYPE });
 }
 
-async function _findOpfPath(zip: JSZip): Promise<{ opfPath: string; opfDir: string }> {
-    const containerFile = zip.file("META-INF/container.xml");
+function _findOpfPath(zipEntries: Record<string, Uint8Array>): { opfPath: string; opfDir: string } {
+    const containerFile = zipEntries["META-INF/container.xml"];
     if (!containerFile) throw new Error("Invalid EPUB: Missing container.xml");
 
-    const container = await containerFile.async("text");
+    const container = bytesToText(containerFile);
     const opfPathMatch = container.match(/full-path="([^"]+)"/);
     if (!opfPathMatch) throw new Error("Invalid EPUB: Cannot find OPF path");
 
     const opfPath = opfPathMatch[1];
-    const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/'));
+    const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/')) : '';
     return { opfPath, opfDir };
 }
 
-async function _parseOpfDocument(zip: JSZip, opfPath: string): Promise<Document> {
-    const opfFile = zip.file(opfPath);
+function _parseOpfDocument(zipEntries: Record<string, Uint8Array>, opfPath: string): Document {
+    const opfFile = zipEntries[opfPath];
     if (!opfFile) throw new Error(`Invalid EPUB: Missing OPF file at ${opfPath}`);
 
-    const opfContent = await opfFile.async("text");
     const parser = new DOMParser();
-    return parser.parseFromString(opfContent, "application/xml");
+    return parser.parseFromString(bytesToText(opfFile), "application/xml");
 }
 
 export function _findExistingCoverHref(opfDoc: Document): string | null {
@@ -297,10 +291,10 @@ export function _resolveFullPath(opfDir: string, href: string): string {
 }
 
 function _injectCoverMetadata(
-    zip: JSZip,
+    zipEntries: Record<string, Uint8Array>,
     opfPath: string,
     opfDir: string,
-    coverBlob: Blob,
+    coverBytes: Uint8Array,
     coverMimeType: string,
     opfDoc: Document
 ): void {
@@ -309,7 +303,7 @@ function _injectCoverMetadata(
     const COVER_IMG_FILENAME = `images/cover.${_imageExtensionForMimeType(coverMimeType)}`;
 
     const fullImgPath = opfDir ? `${opfDir}/${COVER_IMG_FILENAME}` : COVER_IMG_FILENAME;
-    zip.file(fullImgPath, coverBlob);
+    zipEntries[fullImgPath] = coverBytes;
 
     const metadata = opfDoc.getElementsByTagNameNS(OPF_NS, "metadata")[0];
     if (metadata) {
@@ -336,7 +330,37 @@ function _injectCoverMetadata(
     }
 
     const serializer = new XMLSerializer();
-    zip.file(opfPath, serializer.serializeToString(opfDoc));
+    zipEntries[opfPath] = textToBytes(serializer.serializeToString(opfDoc));
+}
+
+function _createStoredZipEntries(zipEntries: Record<string, Uint8Array>): ZipFileEntry[] {
+    const entries: ZipFileEntry[] = [];
+
+    if (zipEntries['mimetype']) {
+        entries.push({ path: 'mimetype', data: zipEntries['mimetype'], options: { level: 0 } });
+    }
+
+    Object.keys(zipEntries)
+        .filter((path) => path !== 'mimetype')
+        .sort()
+        .forEach((path) => {
+            entries.push({ path, data: zipEntries[path], options: { level: 0 } });
+        });
+
+    return entries;
+}
+
+function _buildFicHubRequestError(response: FetchResponse, defaultMessage: string): Error {
+    if (_isFicHubPermissionError(response)) {
+        return new Error(FICHUB_PERMISSION_MESSAGE);
+    }
+
+    return new Error(defaultMessage);
+}
+
+function _isFicHubPermissionError(response: FetchResponse): boolean {
+    const error = response.error?.toLowerCase() ?? '';
+    return response.status === 0 && FICHUB_PERMISSION_ERROR_PATTERNS.some((pattern) => error.includes(pattern));
 }
 
 function _imageExtensionForMimeType(mimeType: string): string {
@@ -361,47 +385,4 @@ function _saveBlob(blob: Blob, filename: string): void {
 
 export function _sanitizeFilename(name: string): string {
     return name.replace(/[<>:"/\\|?*]/g, "").trim();
-}
-
-export async function _ensureFicHubPermission(): Promise<boolean> {
-    try {
-        const response = await extensionApi.runtime.sendMessage<EnsureFicHubPermissionResponse>({
-            type: MessageType.ENSURE_FICHUB_PERMISSION,
-        });
-        if (response.ok && response.granted) {
-            return true;
-        }
-    } catch {
-        // The background page owns extension-only permission APIs.
-    }
-
-    _showPermissionToast(FICHUB_PERMISSION_MESSAGE);
-    return false;
-}
-
-function _showPermissionToast(message: string): void {
-    const existing = document.getElementById(FICHUB_PERMISSION_TOAST_ID);
-    if (existing) existing.remove();
-
-    const toast = markFfneUiRoot(document.createElement('div'));
-    toast.id = FICHUB_PERMISSION_TOAST_ID;
-    toast.textContent = message;
-    toast.style.cssText = [
-        'position:fixed',
-        'right:16px',
-        'bottom:16px',
-        'z-index:2147483647',
-        'max-width:320px',
-        'padding:10px 12px',
-        'border-radius:8px',
-        'background:#8b1e1e',
-        'color:#fff',
-        'font:13px/1.4 system-ui,sans-serif',
-        'box-shadow:0 6px 18px rgba(0,0,0,.25)',
-    ].join(';');
-
-    document.body.appendChild(toast);
-    window.setTimeout(() => {
-        toast.remove();
-    }, FICHUB_PERMISSION_TOAST_TIMEOUT_MS);
 }

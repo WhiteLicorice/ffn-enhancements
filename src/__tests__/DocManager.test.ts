@@ -7,7 +7,7 @@ import { DocFetchService } from '../services/DocFetchService';
 import { SettingsManager } from '../modules/SettingsManager';
 import { Core } from '../modules/Core';
 import { DocManagerDelegate } from '../delegates/DocManagerDelegate';
-import JSZip from 'jszip';
+import { bytesToArrayBuffer, createZip, textToBytes, type ZipFileEntry } from '../utils/zip';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -71,21 +71,33 @@ async function makeDocxFile(
     relativePath: string,
     documentXml: string,
 ): Promise<File> {
-    const zip = new JSZip();
-    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8"?>
+    const entries: ZipFileEntry[] = [
+        {
+            path: '[Content_Types].xml',
+            data: textToBytes(`<?xml version="1.0" encoding="UTF-8"?>
         <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
             <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
             <Default Extension="xml" ContentType="application/xml"/>
             <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-        </Types>`);
-    zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8"?>
+        </Types>`),
+            options: { level: 0 },
+        },
+        {
+            path: '_rels/.rels',
+            data: textToBytes(`<?xml version="1.0" encoding="UTF-8"?>
         <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
             <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-        </Relationships>`);
-    zip.file('word/document.xml', documentXml);
-    const blob = await zip.generateAsync({
-        type: 'blob',
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        </Relationships>`),
+            options: { level: 0 },
+        },
+        {
+            path: 'word/document.xml',
+            data: textToBytes(documentXml),
+            options: { level: 0 },
+        },
+    ];
+    const blob = new Blob([bytesToArrayBuffer(createZip(entries))], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     });
     return makeFile(name, relativePath, blob, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 }

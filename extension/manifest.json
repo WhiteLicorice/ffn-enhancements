@@ -7,9 +7,7 @@
   "host_permissions": [
     "*://www.fanfiction.net/*",
     "*://fanfiction.net/*",
-    "*://archiveofourown.org/*"
-  ],
-  "optional_host_permissions": [
+    "*://archiveofourown.org/*",
     "*://fichub.net/*"
   ],
   "background": {

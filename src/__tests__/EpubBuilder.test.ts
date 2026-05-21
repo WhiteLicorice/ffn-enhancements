@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { saveAs } from 'file-saver';
 import { EpubBuilder } from '../modules/EpubBuilder';
 import { StoryMetadata } from '../interfaces/StoryMetadata';
 import { ChapterData } from '../interfaces/ChapterData';
+import { blobToBytes, bytesToText, unzipBytes } from '../utils/zip';
 
 function meta(overrides: Partial<StoryMetadata> = {}): StoryMetadata {
     return {
@@ -34,6 +36,39 @@ function chap(n: number, overrides: Partial<ChapterData> = {}): ChapterData {
 function chapters(count: number): ChapterData[] {
     return Array.from({ length: count }, (_, i) => chap(i + 1));
 }
+
+beforeEach(() => {
+    vi.mocked(saveAs).mockClear();
+});
+
+describe('EpubBuilder.build', () => {
+    it('writes a valid EPUB archive with required files', async () => {
+        await EpubBuilder.build(meta(), chapters(2));
+
+        expect(saveAs).toHaveBeenCalledTimes(1);
+        const [blob] = vi.mocked(saveAs).mock.calls[0] as [Blob, string];
+        const zip = unzipBytes(await blobToBytes(blob));
+
+        expect(bytesToText(zip['mimetype'])).toBe('application/epub+zip');
+        expect(bytesToText(zip['META-INF/container.xml'])).toContain('content.opf');
+        expect(bytesToText(zip['OEBPS/content.opf'])).toContain('dc:title');
+        expect(bytesToText(zip['OEBPS/toc.ncx'])).toContain('navMap');
+        expect(bytesToText(zip['OEBPS/chapter_1.xhtml'])).toContain('Content of chapter 1.');
+        expect(bytesToText(zip['OEBPS/chapter_2.xhtml'])).toContain('Content of chapter 2.');
+    });
+
+    it('includes cover files when a cover blob is present', async () => {
+        await EpubBuilder.build(meta({ coverBlob: new Blob(['cover'], { type: 'image/png' }) }), chapters(1));
+
+        const [blob] = vi.mocked(saveAs).mock.calls[0] as [Blob, string];
+        const zip = unzipBytes(await blobToBytes(blob));
+
+        expect(bytesToText(zip['OEBPS/content.opf'])).toContain('name="cover"');
+        expect(bytesToText(zip['OEBPS/cover.xhtml'])).toContain('cover.png');
+        expect(bytesToText(zip['OEBPS/title.xhtml'])).toContain('cover.png');
+        expect(zip['OEBPS/cover.png']).toBeInstanceOf(Uint8Array);
+    });
+});
 
 // ─── escape ───────────────────────────────────────────────────────────────
 

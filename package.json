@@ -15,11 +15,11 @@
     "package:firefox": "node scripts/build-package-target.mjs firefox"
   },
   "devDependencies": {
-    "@types/file-saver": "^2.0.4",
-    "@types/jszip": "3.1.5",
-    "@types/marked": "^5.0.2",
-    "@types/turndown": "^5.0.6",
     "@types/chrome": "^0.0.300",
+    "@types/file-saver": "^2.0.4",
+    "@types/marked": "^5.0.2",
+    "@types/node": "^25.9.1",
+    "@types/turndown": "^5.0.6",
     "@vitest/ui": "^4.1.5",
     "jsdom": "^29.1.0",
     "typescript": "^5.9.3",
@@ -27,9 +27,9 @@
     "vitest": "^4.1.5"
   },
   "dependencies": {
+    "fflate": "0.8.2",
     "file-saver": "^2.0.4",
     "htmlparser2": "^12.0.0",
-    "jszip": "3.1.5",
     "marked": "^17.0.1",
     "turndown": "^7.2.2"
   },

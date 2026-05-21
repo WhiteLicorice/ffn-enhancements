@@ -1,10 +1,10 @@
 // modules/EpubBuilder.ts
 
 import { Core } from './Core';
-import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { StoryMetadata } from '../interfaces/StoryMetadata';
 import { ChapterData } from '../interfaces/ChapterData';
+import { blobToBytes, bytesToArrayBuffer, createZip, textToBytes, type ZipFileEntry } from '../utils/zip';
 
 /** Serializes a DOM Document to an OPF XML string with the EPUB-required XML declaration. */
 function _serializeOpfDocument(doc: Document): string {
@@ -30,20 +30,23 @@ export const EpubBuilder = {
         const log = Core.getLogger(this.MODULE_NAME, 'build');
         log(`Generating EPUB for "${meta.title}" with ${chapters.length} chapters.`);
 
-        const zip = new JSZip();
-
-        // 1. Mimetype (Must be first, uncompressed)
-        zip.file('mimetype', 'application/epub+zip', { compression: "STORE" });
-
-        // 2. Container XML
-        zip.file('META-INF/container.xml', `<?xml version="1.0"?>
+        const entries: ZipFileEntry[] = [
+            {
+                path: 'mimetype',
+                data: textToBytes('application/epub+zip'),
+                options: { level: 0 },
+            },
+            {
+                path: 'META-INF/container.xml',
+                data: textToBytes(`<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
     <rootfiles>
         <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
     </rootfiles>
-</container>`);
+</container>`),
+            },
+        ];
 
-        // 3. Stylesheet
         const css = `
             body { font-family: "Times New Roman", serif; line-height: 1.5; margin: 5%; }
             h1, h2, h3 { text-align: center; }
@@ -59,51 +62,28 @@ export const EpubBuilder = {
             .label { font-weight: bold; margin-right: 5px; }
             a { color: inherit; text-decoration: none; border-bottom: 1px dashed #555; }
         `;
-        zip.file('OEBPS/style.css', css);
+        entries.push({ path: 'OEBPS/style.css', data: textToBytes(css) });
 
-        // 3.5 Cover Image Handling
-        // We determine the mimetype dynamically, defaulting to jpeg if missing.
         let coverMime = 'image/jpeg';
         if (meta.coverBlob) {
             coverMime = meta.coverBlob.type || 'image/jpeg';
-            // Determine extension based on mime
             const ext = coverMime.includes('png') ? 'png' : 'jpg';
-            zip.file(`OEBPS/cover.${ext}`, meta.coverBlob);
-            zip.file('OEBPS/cover.xhtml', this.generateCoverPage(ext));
+            entries.push({ path: `OEBPS/cover.${ext}`, data: await blobToBytes(meta.coverBlob), options: { level: 0 } });
+            entries.push({ path: 'OEBPS/cover.xhtml', data: textToBytes(this.generateCoverPage(ext)) });
         }
 
-        // 4. Title Page (Text + Little Cover)
-        zip.file('OEBPS/title.xhtml', this.generateTitlePage(meta, chapters.length));
+        entries.push({ path: 'OEBPS/title.xhtml', data: textToBytes(this.generateTitlePage(meta, chapters.length)) });
+        entries.push({ path: 'OEBPS/toc.xhtml', data: textToBytes(this.generateTOCPage(meta, chapters)) });
+        entries.push({ path: 'OEBPS/content.opf', data: textToBytes(this.generateOPF(meta, chapters, coverMime)) });
+        entries.push({ path: 'OEBPS/toc.ncx', data: textToBytes(this.generateNCX(meta, chapters)) });
 
-        // 5. Table of Contents HTML
-        zip.file('OEBPS/toc.xhtml', this.generateTOCPage(meta, chapters));
-
-        // 6. Content.opf (Manifest)
-        zip.file('OEBPS/content.opf', this.generateOPF(meta, chapters, coverMime));
-
-        // 7. TOC.ncx (Navigation)
-        zip.file('OEBPS/toc.ncx', this.generateNCX(meta, chapters));
-
-        // 8. Chapter Files
         chapters.forEach((chap) => {
             const filename = `OEBPS/chapter_${chap.number}.xhtml`;
-            zip.file(filename, this.generateXHTML(chap.title, chap.content));
+            entries.push({ path: filename, data: textToBytes(this.generateXHTML(chap.title, chap.content)) });
         });
 
-        // 9. Generate Blob and Download
-        // type: "arraybuffer" + manual Blob construction: JSZip ≥3.2.0
-        // bundled by Vite has historically deadlocked on type: "blob" in browser-like runtimes.
-        // All JSZip tests use arraybuffer + new Blob() successfully.
-        // Level 1 is ~5x faster than the default (6) while keeping ~80 % of
-        // the compression ratio.  Large multi-chapter stories complete in
-        // seconds instead of minutes.
-        const epubBytes = await zip.generateAsync({
-            type: 'arraybuffer',
-            mimeType: 'application/epub+zip',
-            compression: "DEFLATE",
-            compressionOptions: { level: 1 },
-        });
-        const blob = new Blob([epubBytes], { type: 'application/epub+zip' });
+        const epubBytes = createZip(entries, { level: 1 });
+        const blob = new Blob([bytesToArrayBuffer(epubBytes)], { type: 'application/epub+zip' });
 
         saveAs(blob, `${meta.title} - ${meta.author}.epub`);
         log('Download triggered.');
