@@ -7,7 +7,6 @@
 export const MessageType = {
     CROSS_ORIGIN_FETCH: 'CROSS_ORIGIN_FETCH',
     OPEN_TAB: 'OPEN_TAB',
-    ENSURE_FICHUB_PERMISSION: 'ENSURE_FICHUB_PERMISSION',
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -25,7 +24,9 @@ export interface CrossOriginFetchMessage {
 export interface CrossOriginFetchResponse {
     ok: boolean;
     status: number;
-    data: string | number[] | null;
+    data?: string | null;
+    dataBase64?: string;
+    mimeType?: string;
     finalUrl: string;
     error?: string;
 }
@@ -36,14 +37,4 @@ export interface OpenTabMessage {
     active?: boolean;
 }
 
-export interface EnsureFicHubPermissionMessage {
-    type: typeof MessageType.ENSURE_FICHUB_PERMISSION;
-}
-
-export interface EnsureFicHubPermissionResponse {
-    ok: boolean;
-    granted: boolean;
-    error?: string;
-}
-
-export type BackgroundMessage = CrossOriginFetchMessage | OpenTabMessage | EnsureFicHubPermissionMessage;
+export type BackgroundMessage = CrossOriginFetchMessage | OpenTabMessage;

@@ -1,7 +1,7 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import JSZip from 'jszip';
+import { zipSync } from 'fflate';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const TARGET = process.env.FFNE_TARGET === 'firefox' ? 'firefox' : 'chrome';
@@ -16,29 +16,25 @@ function defaultPackageName() {
 }
 
 async function main() {
-    const zip = new JSZip();
-    await addDirectory(zip, DIST_DIR);
-    const archive = await zip.generateAsync({
-        type: 'nodebuffer',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 9 },
-    });
+    const archiveEntries = {};
+    await addDirectory(archiveEntries, DIST_DIR);
+    const archive = zipSync(archiveEntries, { level: 9 });
     await writeFile(OUTPUT_PATH, archive);
     console.log(`Packaged ${PACKAGE_NAME} (${archive.length} bytes).`);
 }
 
-async function addDirectory(zip, dir) {
+async function addDirectory(archiveEntries, dir) {
     const entries = await readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
         const fullPath = join(dir, entry.name);
         if (entry.isDirectory()) {
-            await addDirectory(zip, fullPath);
+            await addDirectory(archiveEntries, fullPath);
             continue;
         }
 
         const archivePath = relative(DIST_DIR, fullPath).split(sep).join('/');
-        zip.file(archivePath, await readFile(fullPath));
+        archiveEntries[archivePath] = await readFile(fullPath);
     }
 }
 

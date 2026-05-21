@@ -3,17 +3,15 @@ import type {
     BackgroundMessage,
     CrossOriginFetchMessage,
     CrossOriginFetchResponse,
-    EnsureFicHubPermissionResponse,
 } from './message-types';
 import {
     extensionApi,
     type ExtensionRuntimeMessageListener,
     type ExtensionRuntimeMessageSender,
 } from '../platform/extensionApi';
+import { bytesToBase64 } from '../utils/base64';
 
 console.log('FFN Enhancements service worker loaded.');
-
-const FICHUB_PERMISSION_ORIGIN = '*://fichub.net/*';
 
 const onMessage: ExtensionRuntimeMessageListener = (message, sender, sendResponse) => {
     void handleMessage(message as BackgroundMessage, sender)
@@ -40,9 +38,6 @@ async function handleMessage(
                 return { ok: false, error: getErrorMessage(err) };
             }
 
-        case MessageType.ENSURE_FICHUB_PERMISSION:
-            return ensureFicHubPermission();
-
         default:
             return { ok: false, error: 'Unknown message type' };
     }
@@ -67,11 +62,12 @@ async function handleCrossOriginFetch(
         if (timer) clearTimeout(timer);
 
         if (msg.responseType === 'blob') {
-            const buffer = await response.arrayBuffer();
+            const bytes = new Uint8Array(await response.arrayBuffer());
             return {
                 ok: response.ok,
                 status: response.status,
-                data: Array.from(new Uint8Array(buffer)),
+                dataBase64: bytesToBase64(bytes),
+                mimeType: response.headers.get('content-type') ?? undefined,
                 finalUrl: response.url,
             };
         }
@@ -93,23 +89,4 @@ async function handleCrossOriginFetch(
 
 function getErrorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
-}
-
-async function ensureFicHubPermission(): Promise<EnsureFicHubPermissionResponse> {
-    const permissions = { origins: [FICHUB_PERMISSION_ORIGIN] };
-
-    try {
-        if (await extensionApi.permissions.contains(permissions)) {
-            return { ok: true, granted: true };
-        }
-
-        const granted = await extensionApi.permissions.request(permissions);
-        return { ok: true, granted };
-    } catch (err) {
-        return {
-            ok: false,
-            granted: false,
-            error: getErrorMessage(err),
-        };
-    }
 }

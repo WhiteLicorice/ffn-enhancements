@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import '../__mocks__/browser';
 import {
     mockBrowserApi,
-    mockChromePermissions,
     mockChromeRuntime,
     mockChromeStorage,
     mockChromeTabs,
@@ -14,7 +13,6 @@ describe('extensionApi', () => {
     beforeEach(() => {
         mockBrowserApi.install();
         mockChromeRuntime._reset();
-        mockChromePermissions._reset();
         mockChromeTabs._reset();
         mockChromeStorage._reset();
     });
@@ -28,14 +26,10 @@ describe('extensionApi', () => {
 
         await extensionApi.storage.local.set({ ffne_theme: 'dark' });
         const stored = await extensionApi.storage.local.get(null);
-        const hasPermissionBefore = await extensionApi.permissions.contains({ origins: ['*://fichub.net/*'] });
-        const requested = await extensionApi.permissions.request({ origins: ['*://fichub.net/*'] });
         const createdTab = await extensionApi.tabs.create({ url: 'https://example.com/', active: false });
         const response = await extensionApi.runtime.sendMessage<{ ok: boolean; echoed: unknown }>({ type: 'PING' });
 
         expect(stored.ffne_theme).toBe('dark');
-        expect(hasPermissionBefore).toBe(false);
-        expect(requested).toBe(true);
         expect(createdTab).toMatchObject({ url: 'https://example.com/', active: false });
         expect(response).toEqual({ ok: true, echoed: { type: 'PING' } });
     });
@@ -45,13 +39,9 @@ describe('extensionApi', () => {
 
         await extensionApi.storage.local.set({ ffne_theme: 'sepia' });
         const stored = await extensionApi.storage.local.get(null);
-        const hasPermissionBefore = await extensionApi.permissions.contains({ origins: ['*://fichub.net/*'] });
-        const requested = await extensionApi.permissions.request({ origins: ['*://fichub.net/*'] });
         const createdTab = await extensionApi.tabs.create({ url: 'https://example.com/fallback', active: true });
 
         expect(stored.ffne_theme).toBe('sepia');
-        expect(hasPermissionBefore).toBe(false);
-        expect(requested).toBe(true);
         expect(createdTab).toMatchObject({ url: 'https://example.com/fallback', active: true });
     });
 

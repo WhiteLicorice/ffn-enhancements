@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DocxBuilder } from '../modules/DocxBuilder';
-import JSZip from 'jszip';
+import { blobToBytes, bytesToText, unzipBytes } from '../utils/zip';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -433,13 +433,13 @@ describe('DocxBuilder._buildZip', () => {
             'Test',
             new Map(),
         );
-        const zip = await JSZip.loadAsync(blob);
+        const zip = unzipBytes(await blobToBytes(blob));
 
-        expect(Object.keys(zip.files)).toContain('[Content_Types].xml');
-        expect(Object.keys(zip.files)).toContain('_rels/.rels');
-        expect(Object.keys(zip.files)).toContain('word/document.xml');
-        expect(Object.keys(zip.files)).toContain('word/styles.xml');
-        expect(Object.keys(zip.files)).toContain('word/numbering.xml');
+        expect(Object.keys(zip)).toContain('[Content_Types].xml');
+        expect(Object.keys(zip)).toContain('_rels/.rels');
+        expect(Object.keys(zip)).toContain('word/document.xml');
+        expect(Object.keys(zip)).toContain('word/styles.xml');
+        expect(Object.keys(zip)).toContain('word/numbering.xml');
     });
 
     it('includes hyperlink relationships when hyperlinks exist', async () => {
@@ -449,8 +449,8 @@ describe('DocxBuilder._buildZip', () => {
             'Test',
             hyperlinks,
         );
-        const zip = await JSZip.loadAsync(blob);
-        expect(Object.keys(zip.files)).toContain('word/_rels/document.xml.rels');
+        const zip = unzipBytes(await blobToBytes(blob));
+        expect(Object.keys(zip)).toContain('word/_rels/document.xml.rels');
     });
 
     it('omits hyperlink relationships when none exist', async () => {
@@ -459,8 +459,8 @@ describe('DocxBuilder._buildZip', () => {
             'Test',
             new Map(),
         );
-        const zip = await JSZip.loadAsync(blob);
-        expect(Object.keys(zip.files)).not.toContain('word/_rels/document.xml.rels');
+        const zip = unzipBytes(await blobToBytes(blob));
+        expect(Object.keys(zip)).not.toContain('word/_rels/document.xml.rels');
     });
 
     it('writes valid document.xml content', async () => {
@@ -469,8 +469,8 @@ describe('DocxBuilder._buildZip', () => {
             'Test',
             new Map(),
         );
-        const zip = await JSZip.loadAsync(blob);
-        const docXml = await zip.file('word/document.xml')!.async('text');
+        const zip = unzipBytes(await blobToBytes(blob));
+        const docXml = bytesToText(zip['word/document.xml']);
         expect(docXml).toContain('Hello World');
         expect(docXml).toContain('<w:document');
     });
@@ -481,8 +481,8 @@ describe('DocxBuilder._buildZip', () => {
             'Test',
             new Map(),
         );
-        const zip = await JSZip.loadAsync(blob);
-        const ctXml = await zip.file('[Content_Types].xml')!.async('text');
+        const zip = unzipBytes(await blobToBytes(blob));
+        const ctXml = bytesToText(zip['[Content_Types].xml']);
         expect(ctXml).toContain('document.main+xml');
         expect(ctXml).toContain('styles+xml');
         expect(ctXml).toContain('numbering+xml');
@@ -494,8 +494,8 @@ describe('DocxBuilder._buildZip', () => {
             'Test',
             new Map(),
         );
-        const zip = await JSZip.loadAsync(blob);
-        const relsXml = await zip.file('_rels/.rels')!.async('text');
+        const zip = unzipBytes(await blobToBytes(blob));
+        const relsXml = bytesToText(zip['_rels/.rels']);
         expect(relsXml).toContain('officeDocument');
         expect(relsXml).toContain('word/document.xml');
     });
@@ -510,18 +510,18 @@ describe('DocxBuilder.build', () => {
         expect(blob).toBeInstanceOf(Blob);
         expect(blob.type).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 
-        const zip = await JSZip.loadAsync(blob);
-        expect(Object.keys(zip.files)).toContain('word/document.xml');
+        const zip = unzipBytes(await blobToBytes(blob));
+        expect(Object.keys(zip)).toContain('word/document.xml');
 
-        const docXml = await zip.file('word/document.xml')!.async('text');
+        const docXml = bytesToText(zip['word/document.xml']);
         expect(docXml).toContain('<w:pStyle w:val="Heading1"/>');
         expect(docXml).toContain('<w:b/>');
     });
 
     it('handles empty HTML', async () => {
         const blob = await DocxBuilder.build('', 'Empty');
-        const zip = await JSZip.loadAsync(blob);
-        const docXml = await zip.file('word/document.xml')!.async('text');
+        const zip = unzipBytes(await blobToBytes(blob));
+        const docXml = bytesToText(zip['word/document.xml']);
         // Should have empty body
         expect(docXml).toContain('<w:body>');
     });
@@ -538,8 +538,8 @@ describe('DocxBuilder.build', () => {
             <p>Final paragraph.</p>
         `;
         const blob = await DocxBuilder.build(html, 'Complex');
-        const zip = await JSZip.loadAsync(blob);
-        const docXml = await zip.file('word/document.xml')!.async('text');
+        const zip = unzipBytes(await blobToBytes(blob));
+        const docXml = bytesToText(zip['word/document.xml']);
 
         expect(docXml).toContain('Heading1');
         expect(docXml).toContain('Heading2');

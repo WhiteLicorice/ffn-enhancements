@@ -1,7 +1,7 @@
 // modules/DocxBuilder.ts
 
 import { Core } from './Core';
-import JSZip from 'jszip';
+import { bytesToArrayBuffer, createZip, textToBytes, type ZipFileEntry } from '../utils/zip';
 
 // ─── Intermediate Representation Types ─────────────────────────────────────
 
@@ -43,7 +43,7 @@ interface ParseResult {
  *
  * The conversion pipeline:
  *   HTML string → DOMParser → recursive DOM walk → OoxmlParagraph[]
- *   → _generateDocumentXml() → OOXML string → JSZip → Blob
+ *   → _generateDocumentXml() → OOXML string → ZIP archive → Blob
  *
  * Only the subset of HTML produced by FFN's TinyMCE editor is supported:
  * paragraphs, headings (h1–h3), bold/italic/underline/strikethrough,
@@ -133,21 +133,24 @@ ${bodyXML}
      * Packages all DOCX components into a ZIP Blob.
      */
     _buildZip: async function (paragraphs: OoxmlParagraph[], _title: string, hyperlinks: Map<string, string>): Promise<Blob> {
-        const zip = new JSZip();
-
-        zip.file('[Content_Types].xml', CONTENT_TYPES_XML);
-        zip.file('_rels/.rels', RELS_XML);
-        zip.file('word/styles.xml', STYLES_XML);
-        zip.file('word/numbering.xml', NUMBERING_XML);
-        zip.file('word/document.xml', this._generateDocumentXml(paragraphs, hyperlinks));
+        const entries: ZipFileEntry[] = [
+            { path: '[Content_Types].xml', data: textToBytes(CONTENT_TYPES_XML), options: { level: 0 } },
+            { path: '_rels/.rels', data: textToBytes(RELS_XML), options: { level: 0 } },
+            { path: 'word/styles.xml', data: textToBytes(STYLES_XML), options: { level: 0 } },
+            { path: 'word/numbering.xml', data: textToBytes(NUMBERING_XML), options: { level: 0 } },
+            { path: 'word/document.xml', data: textToBytes(this._generateDocumentXml(paragraphs, hyperlinks)), options: { level: 0 } },
+        ];
 
         if (hyperlinks.size > 0) {
-            zip.file('word/_rels/document.xml.rels', generateDocumentRels(hyperlinks));
+            entries.push({
+                path: 'word/_rels/document.xml.rels',
+                data: textToBytes(generateDocumentRels(hyperlinks)),
+                options: { level: 0 },
+            });
         }
 
-        return zip.generateAsync({
-            type: 'blob',
-            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        return new Blob([bytesToArrayBuffer(createZip(entries))], {
+            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         });
     },
 };

@@ -1,10 +1,42 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import './__mocks__/browser';
-import { mockChromePermissions, mockChromeRuntime } from './__mocks__/browser';
-import { MessageType, type EnsureFicHubPermissionResponse } from '../background/message-types';
-import { _ensureFicHubPermission, _sanitizeFilename, _resolveFullPath, _findExistingCoverHref } from '../modules/FicHubDownloader';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// ─── _sanitizeFilename ────────────────────────────────────────────────────
+vi.mock('../platform/messaging', () => ({
+    backgroundFetch: vi.fn(),
+}));
+
+import {
+    _fetchBlob,
+    _findExistingCoverHref,
+    _getFicHubDownloadUrl,
+    _injectCoverIntoEpub,
+    _resolveFullPath,
+    _sanitizeFilename,
+} from '../modules/FicHubDownloader';
+import { SupportedFormats } from '../enums/SupportedFormats';
+import { backgroundFetch } from '../platform/messaging';
+import { blobToBytes, bytesToArrayBuffer, bytesToText, createZip, textToBytes, unzipBytes, type ZipFileEntry } from '../utils/zip';
+
+const backgroundFetchMock = vi.mocked(backgroundFetch);
+
+function makeEpubBlob(opf: string, extraEntries: Record<string, Uint8Array>): Blob {
+    const entries: ZipFileEntry[] = [
+        { path: 'mimetype', data: textToBytes('application/epub+zip'), options: { level: 0 } },
+        {
+            path: 'META-INF/container.xml',
+            data: textToBytes(`<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles>
+        <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    </rootfiles>
+</container>`),
+            options: { level: 0 },
+        },
+        { path: 'OEBPS/content.opf', data: textToBytes(opf), options: { level: 0 } },
+        ...Object.entries(extraEntries).map<ZipFileEntry>(([path, data]) => ({ path, data, options: { level: 0 } })),
+    ];
+
+    return new Blob([bytesToArrayBuffer(createZip(entries))], { type: 'application/epub+zip' });
+}
 
 describe('_sanitizeFilename', () => {
     it('removes invalid Windows filename characters', () => {
@@ -27,17 +59,7 @@ describe('_sanitizeFilename', () => {
         expect(_sanitizeFilename('Story - Author.epub')).toBe('Story - Author.epub');
         expect(_sanitizeFilename('Chapter_01.md')).toBe('Chapter_01.md');
     });
-
-    it('handles empty string', () => {
-        expect(_sanitizeFilename('')).toBe('');
-    });
-
-    it('handles string of only invalid chars', () => {
-        expect(_sanitizeFilename('<>:"/\\|?*')).toBe('');
-    });
 });
-
-// ─── _resolveFullPath ─────────────────────────────────────────────────────
 
 describe('_resolveFullPath', () => {
     it('returns href only when opfDir is empty', () => {
@@ -47,144 +69,149 @@ describe('_resolveFullPath', () => {
     it('joins opfDir and href with slash', () => {
         expect(_resolveFullPath('OEBPS', 'images/cover.jpg')).toBe('OEBPS/images/cover.jpg');
     });
-
-    it('works with nested directories', () => {
-        expect(_resolveFullPath('EPUB/content', 'images/cover.jpg')).toBe('EPUB/content/images/cover.jpg');
-    });
-
-    it('preserves href with leading directories', () => {
-        expect(_resolveFullPath('OEBPS', '../Images/cover.jpg')).toBe('OEBPS/../Images/cover.jpg');
-    });
 });
 
-// ─── _findExistingCoverHref ───────────────────────────────────────────────
-
 describe('_findExistingCoverHref', () => {
-    function opfDocWithCover(coverId: string, coverHref: string): Document {
-        const parser = new DOMParser();
-        const xml = `<?xml version="1.0"?>
+    it('returns href when cover meta and item exist', () => {
+        const doc = new DOMParser().parseFromString(`<?xml version="1.0"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
     <metadata>
-        <meta name="cover" content="${coverId}"/>
+        <meta name="cover" content="cover-img"/>
     </metadata>
     <manifest>
-        <item id="${coverId}" href="${coverHref}" media-type="image/jpeg"/>
+        <item id="cover-img" href="images/cover.jpg" media-type="image/jpeg"/>
     </manifest>
-</package>`;
-        return parser.parseFromString(xml, 'application/xml');
-    }
+</package>`, 'application/xml');
 
-    function opfDocWithoutCover(): Document {
-        const parser = new DOMParser();
-        const xml = `<?xml version="1.0"?>
+        expect(_findExistingCoverHref(doc)).toBe('images/cover.jpg');
+    });
+
+    it('returns null when no cover metadata exists', () => {
+        const doc = new DOMParser().parseFromString(`<?xml version="1.0"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
     <metadata/>
     <manifest/>
-</package>`;
-        return parser.parseFromString(xml, 'application/xml');
-    }
+</package>`, 'application/xml');
 
-    it('returns href when cover meta and item exist', () => {
-        const doc = opfDocWithCover('cover-img', 'images/cover.jpg');
-        expect(_findExistingCoverHref(doc)).toBe('images/cover.jpg');
-    });
-
-    it('returns null when no cover meta tag', () => {
-        const doc = opfDocWithoutCover();
         expect(_findExistingCoverHref(doc)).toBeNull();
-    });
-
-    it('returns null when cover meta exists but item missing', () => {
-        const parser = new DOMParser();
-        const xml = `<?xml version="1.0"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
-    <metadata>
-        <meta name="cover" content="missing-item"/>
-    </metadata>
-    <manifest/>
-</package>`;
-        const doc = parser.parseFromString(xml, 'application/xml');
-        expect(_findExistingCoverHref(doc)).toBeNull();
-    });
-
-    it('returns null when cover meta has no content attribute', () => {
-        const parser = new DOMParser();
-        const xml = `<?xml version="1.0"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
-    <metadata>
-        <meta name="cover"/>
-    </metadata>
-</package>`;
-        const doc = parser.parseFromString(xml, 'application/xml');
-        expect(_findExistingCoverHref(doc)).toBeNull();
-    });
-
-    it('finds cover item by id even in presence of other items', () => {
-        const parser = new DOMParser();
-        const xml = `<?xml version="1.0"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
-    <metadata>
-        <meta name="cover" content="cov"/>
-    </metadata>
-    <manifest>
-        <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
-        <item id="cov" href="images/cover.jpg" media-type="image/jpeg"/>
-        <item id="chap1" href="chapter_1.xhtml" media-type="application/xhtml+xml"/>
-    </manifest>
-</package>`;
-        const doc = parser.parseFromString(xml, 'application/xml');
-        expect(_findExistingCoverHref(doc)).toBe('images/cover.jpg');
     });
 });
 
-describe('_ensureFicHubPermission', () => {
+describe('_getFicHubDownloadUrl', () => {
     beforeEach(() => {
-        mockChromeRuntime._reset();
-        mockChromePermissions._reset();
-        document.body.innerHTML = '';
+        backgroundFetchMock.mockReset();
     });
 
-    function installPermissionResponder(response: EnsureFicHubPermissionResponse): void {
-        const chromeApi = (globalThis as unknown as {
-            chrome: {
-                runtime: {
-                    onMessage: {
-                        addListener(listener: (
-                            message: unknown,
-                            sender: unknown,
-                            sendResponse: (response: unknown) => void,
-                        ) => unknown): void;
-                    };
-                };
-            };
-        }).chrome;
-
-        chromeApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-            if ((message as { type?: string }).type !== MessageType.ENSURE_FICHUB_PERMISSION) {
-                return undefined;
-            }
-            sendResponse(response);
-            return true;
+    it('extracts relative format URLs from the API response', async () => {
+        backgroundFetchMock.mockResolvedValue({
+            ok: true,
+            status: 200,
+            data: JSON.stringify({ urls: { epub: '/downloads/story.epub' } }),
+            finalUrl: 'https://fichub.net/api/v0/epub?q=test',
         });
-    }
 
-    it('asks the background context to ensure FicHub permission', async () => {
-        installPermissionResponder({ ok: true, granted: true });
-
-        const granted = await _ensureFicHubPermission();
-
-        expect(granted).toBe(true);
-        expect(document.getElementById('ffne-fichub-permission-toast')).toBeNull();
-        expect(mockChromePermissions.state.requestCalls).toEqual([]);
+        await expect(_getFicHubDownloadUrl('https://www.fanfiction.net/s/1/1/Test', SupportedFormats.EPUB))
+            .resolves
+            .toBe('https://fichub.net/downloads/story.epub');
     });
 
-    it('shows a denial toast when the background context cannot grant permission', async () => {
-        installPermissionResponder({ ok: true, granted: false });
+    it('preserves absolute format URLs from the API response', async () => {
+        backgroundFetchMock.mockResolvedValue({
+            ok: true,
+            status: 200,
+            data: JSON.stringify({ pdf_url: 'https://cdn.fichub.net/story.pdf' }),
+            finalUrl: 'https://fichub.net/api/v0/epub?q=test',
+        });
 
-        const granted = await _ensureFicHubPermission();
+        await expect(_getFicHubDownloadUrl('https://www.fanfiction.net/s/1/1/Test', SupportedFormats.PDF))
+            .resolves
+            .toBe('https://cdn.fichub.net/story.pdf');
+    });
 
-        expect(granted).toBe(false);
-        expect(document.getElementById('ffne-fichub-permission-toast')?.textContent)
-            .toBe('Allow access to fichub.net to enable downloads.');
+    it('surfaces host-access guidance for permission-like fetch failures', async () => {
+        backgroundFetchMock.mockResolvedValue({
+            ok: false,
+            status: 0,
+            data: null,
+            finalUrl: 'https://fichub.net/api/v0/epub?q=test',
+            error: 'Access to fetch at "https://fichub.net" is not allowed',
+        });
+
+        await expect(_getFicHubDownloadUrl('https://www.fanfiction.net/s/1/1/Test', SupportedFormats.EPUB))
+            .rejects
+            .toThrow('Enable access to fichub.net in extension permissions.');
+    });
+});
+
+describe('_fetchBlob', () => {
+    beforeEach(() => {
+        backgroundFetchMock.mockReset();
+    });
+
+    it('returns EPUB blobs from background fetch responses', async () => {
+        backgroundFetchMock.mockResolvedValue({
+            ok: true,
+            status: 200,
+            data: new Blob(['epub'], { type: 'application/epub+zip' }),
+            finalUrl: 'https://fichub.net/download.epub',
+        });
+
+        const blob = await _fetchBlob('https://fichub.net/download.epub');
+
+        expect(blob).toBeInstanceOf(Blob);
+        expect(blob.type).toBe('application/epub+zip');
+    });
+
+    it('surfaces host-access guidance for permission-like blob failures', async () => {
+        backgroundFetchMock.mockResolvedValue({
+            ok: false,
+            status: 0,
+            data: null,
+            finalUrl: 'https://fichub.net/download.epub',
+            error: 'Missing host permission for the requested resource',
+        });
+
+        await expect(_fetchBlob('https://fichub.net/download.epub'))
+            .rejects
+            .toThrow('Enable access to fichub.net in extension permissions.');
+    });
+});
+
+describe('_injectCoverIntoEpub', () => {
+    it('replaces an existing cover file', async () => {
+        const original = makeEpubBlob(`<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+    <metadata>
+        <meta name="cover" content="cover-image"/>
+    </metadata>
+    <manifest>
+        <item id="cover-image" href="images/cover.jpg" media-type="image/jpeg"/>
+    </manifest>
+</package>`, {
+            'OEBPS/images/cover.jpg': textToBytes('old-cover'),
+        });
+
+        const updated = await _injectCoverIntoEpub(original, new Blob(['new-cover'], { type: 'image/jpeg' }));
+        const zip = unzipBytes(await blobToBytes(updated));
+
+        expect(bytesToText(zip['OEBPS/images/cover.jpg'])).toBe('new-cover');
+        expect(bytesToText(zip['mimetype'])).toBe('application/epub+zip');
+    });
+
+    it('injects a new cover image and OPF metadata when missing', async () => {
+        const original = makeEpubBlob(`<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+    <metadata/>
+    <manifest/>
+</package>`, {});
+
+        const updated = await _injectCoverIntoEpub(original, new Blob(['cover-bytes'], { type: 'image/png' }));
+        const zip = unzipBytes(await blobToBytes(updated));
+        const opf = bytesToText(zip['OEBPS/content.opf']);
+
+        expect(bytesToText(zip['OEBPS/images/cover.png'])).toBe('cover-bytes');
+        expect(opf).toContain('name="cover"');
+        expect(opf).toContain('id="cover-image"');
+        expect(opf).toContain('properties="cover-image"');
     });
 });

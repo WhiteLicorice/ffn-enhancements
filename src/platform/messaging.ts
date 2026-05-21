@@ -1,5 +1,7 @@
-import type { CrossOriginFetchMessage, CrossOriginFetchResponse } from '../background/message-types';
+import { MessageType, type CrossOriginFetchMessage, type CrossOriginFetchResponse } from '../background/message-types';
 import { extensionApi } from './extensionApi';
+import { base64ToBytes } from '../utils/base64';
+import { bytesToArrayBuffer } from '../utils/zip';
 
 export interface FetchRequestOptions {
     url: string;
@@ -20,7 +22,7 @@ export interface FetchResponse {
 
 export async function backgroundFetch(options: FetchRequestOptions): Promise<FetchResponse> {
     const message: CrossOriginFetchMessage = {
-        type: 'CROSS_ORIGIN_FETCH',
+        type: MessageType.CROSS_ORIGIN_FETCH,
         url: options.url,
         method: options.method || 'GET',
         headers: options.headers,
@@ -32,11 +34,13 @@ export async function backgroundFetch(options: FetchRequestOptions): Promise<Fet
     try {
         const response = await extensionApi.runtime.sendMessage<CrossOriginFetchResponse>(message);
 
-        if (options.responseType === 'blob' && Array.isArray(response.data)) {
+        if (options.responseType === 'blob' && typeof response.dataBase64 === 'string') {
             return {
                 ok: response.ok,
                 status: response.status,
-                data: new Blob([new Uint8Array(response.data)]),
+                data: new Blob([bytesToArrayBuffer(base64ToBytes(response.dataBase64))], {
+                    type: response.mimeType ?? 'application/octet-stream',
+                }),
                 finalUrl: response.finalUrl,
                 error: response.error,
             };

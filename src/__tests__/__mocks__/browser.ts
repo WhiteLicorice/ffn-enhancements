@@ -89,12 +89,6 @@ const runtimeState = {
     lastError: undefined as { message?: string } | undefined,
 };
 
-const permissionsState = {
-    grantedOrigins: new Set<string>(),
-    requestResult: true,
-    requestCalls: [] as Array<{ origins?: string[] }>,
-};
-
 const tabsState = {
     createCalls: [] as Array<{ url?: string; active?: boolean }>,
 };
@@ -137,19 +131,6 @@ async function dispatchRuntimeMessage(message: unknown): Promise<unknown> {
     return { ok: true, message };
 }
 
-function containsPermission(permissions: { origins?: string[] }): boolean {
-    return (permissions.origins ?? []).every((origin) => permissionsState.grantedOrigins.has(origin));
-}
-
-function requestPermission(permissions: { origins?: string[] }): boolean {
-    permissionsState.requestCalls.push(permissions);
-    if (!permissionsState.requestResult) return false;
-    for (const origin of permissions.origins ?? []) {
-        permissionsState.grantedOrigins.add(origin);
-    }
-    return true;
-}
-
 function createTab(properties: { url?: string; active?: boolean }): { id: number; url?: string; active?: boolean } {
     tabsState.createCalls.push(properties);
     return { id: tabsState.createCalls.length, ...properties };
@@ -163,10 +144,6 @@ const browserMock = {
             remove: (keys: string | string[]) => storageInstance.remove(keys) as Promise<void>,
         },
         onChanged: storageInstance.onChanged,
-    },
-    permissions: {
-        contains: async (permissions: { origins?: string[] }) => containsPermission(permissions),
-        request: async (permissions: { origins?: string[] }) => requestPermission(permissions),
     },
     tabs: {
         create: async (properties: { url?: string; active?: boolean }) => createTab(properties),
@@ -222,30 +199,6 @@ const chromeMock = {
         local: storageInstance,
         onChanged: storageInstance.onChanged,
     },
-    permissions: {
-        contains: (
-            permissions: { origins?: string[] },
-            callback?: (granted: boolean) => void,
-        ) => {
-            const granted = containsPermission(permissions);
-            if (callback) {
-                callback(granted);
-                return;
-            }
-            return Promise.resolve(granted);
-        },
-        request: (
-            permissions: { origins?: string[] },
-            callback?: (granted: boolean) => void,
-        ) => {
-            const granted = requestPermission(permissions);
-            if (callback) {
-                callback(granted);
-                return;
-            }
-            return Promise.resolve(granted);
-        },
-    },
     tabs: {
         create: (
             properties: { url?: string; active?: boolean },
@@ -286,14 +239,6 @@ export const mockBrowserApi = {
 };
 
 export const mockChromeStorage = storageInstance;
-export const mockChromePermissions = {
-    state: permissionsState,
-    _reset(): void {
-        permissionsState.grantedOrigins.clear();
-        permissionsState.requestResult = true;
-        permissionsState.requestCalls.length = 0;
-    },
-};
 export const mockChromeTabs = {
     state: tabsState,
     _reset(): void {

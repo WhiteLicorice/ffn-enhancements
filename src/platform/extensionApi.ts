@@ -29,10 +29,6 @@ interface PromiseNamespaceApi {
             removeListener(listener: ExtensionStorageChangedListener): void;
         };
     };
-    permissions: {
-        contains(permissions: chrome.permissions.Permissions): Promise<boolean>;
-        request(permissions: chrome.permissions.Permissions): Promise<boolean>;
-    };
     tabs: {
         create(properties: chrome.tabs.CreateProperties): Promise<unknown>;
     };
@@ -57,10 +53,6 @@ interface CallbackNamespaceApi {
             addListener(listener: ExtensionStorageChangedListener): void;
             removeListener(listener: ExtensionStorageChangedListener): void;
         };
-    };
-    permissions: {
-        contains(permissions: chrome.permissions.Permissions, callback: (result: boolean) => void): void;
-        request(permissions: chrome.permissions.Permissions, callback: (result: boolean) => void): void;
     };
     tabs: {
         create(properties: chrome.tabs.CreateProperties, callback: (tab: unknown) => void): void;
@@ -175,30 +167,6 @@ export const extensionApi = {
             removeListener(listener: ExtensionStorageChangedListener): void {
                 getEventApi().storage.onChanged.removeListener(listener);
             },
-        },
-    },
-    permissions: {
-        contains(permissions: chrome.permissions.Permissions): Promise<boolean> {
-            const browserApi = getBrowserApi();
-            if (browserApi) {
-                return browserApi.permissions.contains(permissions);
-            }
-
-            const chromeApi = getChromeApi();
-            return callChromeApi<boolean>((callback) => {
-                chromeApi.permissions.contains(permissions, callback);
-            });
-        },
-        request(permissions: chrome.permissions.Permissions): Promise<boolean> {
-            const browserApi = getBrowserApi();
-            if (browserApi) {
-                return browserApi.permissions.request(permissions);
-            }
-
-            const chromeApi = getChromeApi();
-            return callChromeApi<boolean>((callback) => {
-                chromeApi.permissions.request(permissions, callback);
-            });
         },
     },
     tabs: {

@@ -21,7 +21,7 @@
     "noUncheckedSideEffectImports": true,
 
     /* Browser extension API types */
-    "types": ["chrome"]
+    "types": ["chrome", "node"]
   },
   "include": ["src"]
 }
