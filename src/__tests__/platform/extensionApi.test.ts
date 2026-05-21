@@ -58,16 +58,16 @@ describe('extensionApi', () => {
     it('rejects chrome callback responses when runtime.lastError is set', async () => {
         mockBrowserApi.uninstall();
 
-        const chromeApi = (globalThis as typeof globalThis & {
-            chrome: { runtime: { sendMessage(message: unknown, callback?: (response: unknown) => void): void; lastError?: { message?: string } } };
-        }).chrome;
-        const originalSendMessage = chromeApi.runtime.sendMessage;
+        const chromeApi = (globalThis as typeof globalThis & { chrome: typeof chrome }).chrome;
+        const originalSendMessage = chromeApi.runtime.sendMessage.bind(chromeApi.runtime);
 
-        chromeApi.runtime.sendMessage = (_message, callback) => {
+        const failingSendMessage = ((_message: unknown, callback?: (response: unknown) => void) => {
             chromeApi.runtime.lastError = { message: 'Permission denied' };
             callback?.(undefined);
             chromeApi.runtime.lastError = undefined;
-        };
+        }) as typeof chrome.runtime.sendMessage;
+
+        chromeApi.runtime.sendMessage = failingSendMessage;
 
         try {
             await expect(extensionApi.runtime.sendMessage({ type: 'FAIL' }))

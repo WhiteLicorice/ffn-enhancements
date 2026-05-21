@@ -118,7 +118,9 @@ export const extensionApi = {
 
             const chromeApi = getChromeApi();
             return callChromeApi<TResponse>((callback) => {
-                chromeApi.runtime.sendMessage(message, callback);
+                chromeApi.runtime.sendMessage(message, (response) => {
+                    callback(response as TResponse);
+                });
             });
         },
         onMessage: {

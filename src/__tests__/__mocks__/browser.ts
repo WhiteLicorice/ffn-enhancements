@@ -7,6 +7,11 @@ class MockStorageArea {
     private _store = new Map<string, unknown>();
     private _listeners: StorageChangeCallback[] = [];
 
+    get(_keys?: string | string[] | Record<string, unknown> | null): Promise<Record<string, unknown>>;
+    get(
+        _keys: string | string[] | Record<string, unknown> | null | undefined,
+        callback: (items: Record<string, unknown>) => void,
+    ): void;
     get(
         _keys?: string | string[] | Record<string, unknown> | null,
         callback?: (items: Record<string, unknown>) => void,
@@ -19,6 +24,8 @@ class MockStorageArea {
         return Promise.resolve(items);
     }
 
+    set(items: Record<string, unknown>): Promise<void>;
+    set(items: Record<string, unknown>, callback: () => void): void;
     set(items: Record<string, unknown>, callback?: () => void): Promise<void> | void {
         const changes: Record<string, StorageChange> = {};
         for (const [key, value] of Object.entries(items)) {
@@ -33,6 +40,8 @@ class MockStorageArea {
         }
     }
 
+    remove(keys: string | string[]): Promise<void>;
+    remove(keys: string | string[], callback: () => void): void;
     remove(keys: string | string[], callback?: () => void): Promise<void> | void {
         const keyList = Array.isArray(keys) ? keys : [keys];
         const changes: Record<string, StorageChange> = {};
