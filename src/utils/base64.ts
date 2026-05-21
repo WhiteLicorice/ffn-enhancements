@@ -1,3 +1,4 @@
+// Keep spreads into String.fromCharCode under typical engine argument limits.
 const CHUNK_SIZE = 0x8000;
 
 export function bytesToBase64(bytes: Uint8Array): string {

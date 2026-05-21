@@ -19,6 +19,7 @@ export async function blobToBytes(blob: Blob): Promise<Uint8Array> {
 }
 
 export function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    // Copy into a fresh ArrayBuffer so the result always satisfies BlobPart typing.
     return new Uint8Array(bytes).buffer;
 }
 
