@@ -1,25 +1,25 @@
-﻿﻿# FFN Enhancements - Agent Orientation Guide
+# FFN Enhancements - Agent Orientation Guide
 
-> This file is a jumpstart reference for AI agents working in this repository.
-> It captures architecture decisions, conventions, gotchas, and patterns that
-> took non-trivial investigation to discover. Update it when you learn something
-> new or change something fundamental.
+> Jumpstart reference for AI agents in repo.
+> Captures architecture, conventions, gotchas, patterns
+> needing non-trivial investigation. Update when learn
+> new or change fundamental.
 
 ---
 
 ## Conventions
 
-Adhere to best software-engineering and UX/UI conventions. Favor modular, scalable, maintainable, readable, correct, and well-documented code. Fix bugs at the root. Implement features to be future-proof. Avoid bandaids or hacks unless genuinely constrained by the environment. Be liberal with GOTCHAs and TODOs in the codebase; these are for future developers. Update tests as updates to the codebase are done. Refrain from using non-ASCII characters anywhere in the codebase, to avoid encoding errors.
+Follow best software engineering + UX/UI conventions. Favor modular, scalable, maintainable, readable, correct, well-documented code. Fix bugs at root. Build features future-proof. Avoid bandaids/hacks unless env-constrained. Be liberal with GOTCHAs + TODOs for future devs. Update tests alongside code. No non-ASCII anywhere — avoid encoding errors.
 
 ---
 
 ## 1. What This Project Is
 
-A **Manifest V3 browser extension** (Chrome + Firefox) that enhances FanFiction.net's interface for both readers and authors. It was migrated from a Tampermonkey userscript to achieve zero-FOUC theme injection via native `manifest.json` `content_scripts.css`.
+**Manifest V3 browser extension** (Chrome + Firefox) enhancing FanFiction.net for readers + authors. Migrated from Tampermonkey userscript for zero-FOUC theme injection via native `manifest.json` `content_scripts.css`.
 
-The extension runs on `https://www.fanfiction.net/*` and `https://archiveofourown.org/*`.
+Runs on `https://www.fanfiction.net/*` + `https://archiveofourown.org/*`.
 
-Extension store distribution: Chrome Web Store + Firefox Add-ons (AMO). Load unpacked from `dist/` for development.
+Store distribution: Chrome Web Store + Firefox Add-ons (AMO). Load unpacked from `dist/` for dev.
 
 **In-scope pages:**
 
@@ -40,90 +40,89 @@ npm run dev     # vite build --watch  (rebuild on file changes)
 npm test        # vitest run -v
 ```
 
-- TypeScript is strict (`strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`).
-- Vite multi-entry build produces 4 entry points + shared chunks:
+- TypeScript strict (`strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`).
+- Vite multi-entry build: 4 entry points + shared chunks:
   - `content/main.js` — main content script (all modules)
-  - `content/prelude.js` — document-start theme prelude (minimal, <1 KB)
-  - `background/service-worker.js` — service worker (fetch proxy, tab management)
+  - `content/prelude.js` — document-start theme prelude (<1 KB)
+  - `background/service-worker.js` — service worker (fetch proxy, tab mgmt)
   - `popup/popup.js` — extension popup
-- `build.minify: 'esbuild'` and `build.target: 'es2020'` for production.
-- `emptyOutDir: true` — dist/ is fully regenerated each build.
-- Static assets (manifest.json, CSS, icons, popup.html) live in `extension/` and
-  are copied to `dist/` by the `copy-extension-assets` Vite plugin after bundling.
+- `build.minify: 'esbuild'` + `build.target: 'es2020'` for prod.
+- `emptyOutDir: true` — dist/ fully regenerated each build.
+- Static assets (manifest.json, CSS, icons, popup.html) live in `extension/`,
+  copied to `dist/` by `copy-extension-assets` Vite plugin post-bundle.
 - Shared chunks land in `dist/chunks/` (e.g., `message-types-*.js`, `themeClass-*.js`).
-- `modulePreload: false` — extension content scripts don't support module preload.
-- Target-specific output directories: `dist-chrome/` and `dist-firefox/`. The
-  `FFNE_TARGET` env var controls which target is built (`chrome` or `firefox`).
-- `patchManifest()` in `vite.config.ts` handles target-specific manifest tweaks:
-  - **Chrome:** Removes `browser_specific_settings` (CWS rejects it).
-  - **Firefox:** Uses event-page `background.scripts` only — does NOT include
-    `service_worker` and does NOT set `type: "module"` (see Gotcha #15).
+- `modulePreload: false` — extension content scripts no support module preload.
+- Target-specific output dirs: `dist-chrome/` + `dist-firefox/`.
+  `FFNE_TARGET` env var picks target (`chrome` or `firefox`).
+- `patchManifest()` in `vite.config.ts` handles target-specific tweaks:
+  - **Chrome:** Strips `browser_specific_settings` (CWS rejects).
+  - **Firefox:** Event-page `background.scripts` only — no
+    `service_worker`, no `type: "module"` (see Gotcha #15).
 
 ### 2.1 Extension Icon Click → Settings Modal Flow
 
 **Prerequisite: optional host permissions.** All four host origins (FFN, AO3,
-fichub.net) live under `optional_host_permissions` in
-`extension/manifest.json`. Neither Chrome nor Firefox auto-grants optional
-patterns at install — `content_scripts` do NOT auto-execute until the user
-accepts the prompt triggered by `chrome.permissions.request` from the service
-worker's `action.onClicked` handler. We use `optional_host_permissions` (not
+fichub.net) under `optional_host_permissions` in
+`extension/manifest.json`. Chrome + Firefox no auto-grant optional
+patterns at install — `content_scripts` no auto-execute until user
+accepts prompt triggered by `chrome.permissions.request` from service
+worker's `action.onClicked` handler. Use `optional_host_permissions` (not
 `host_permissions`) because Firefox MV3 forbids requesting required
 `host_permissions` via `permissions.request` (MDN: "The permissions that can be
 requested with the request() method are limited to the optional_permissions and
 optional_host_permissions declared in manifest.json"). On grant,
-`chrome.permissions.onAdded` fires and the service worker injects the full
+`chrome.permissions.onAdded` fires, service worker injects full
 content-script bundle (`CONTENT_SCRIPT_CSS_FILES` + `CONTENT_SCRIPT_JS_FILES`)
-into all currently open FFN/AO3 tabs via `injectIntoMatchingTabs()`. Future
-navigations auto-load `content_scripts` as normal.
+into all open FFN/AO3 tabs via `injectIntoMatchingTabs()`. Future
+navigations auto-load `content_scripts` normally.
 
-The extension icon click (`action.onClicked`) opens the settings modal on the
-active FFN/AO3 tab. The dispatch chain in
-`src/background/service-worker.ts` → `openSettingsInTab(tabId)` is:
+Extension icon click (`action.onClicked`) opens settings modal on
+active FFN/AO3 tab. Dispatch chain in
+`src/background/service-worker.ts` → `openSettingsInTab(tabId)`:
 
 1. **Step 1 (primary):** `chrome.tabs.sendMessage(tabId, { type: OPEN_SETTINGS })`.
-   The content script's `SettingsMenu.prime()` registers a
-   `chrome.runtime.onMessage` handler that calls `SettingsPage.openModal()` and
-   acknowledges with `{ ok: true }`. This gives clean failure semantics: missing
-   listener rejects with "Receiving end does not exist", so we can detect it.
+   Content script's `SettingsMenu.prime()` registers
+   `chrome.runtime.onMessage` handler calling `SettingsPage.openModal()`,
+   acks with `{ ok: true }`. Clean failure semantics: missing
+   listener rejects with "Receiving end does not exist" — detectable.
 
-2. **Step 2 (inject):** If step 1 fails, inject the full content-script bundle
+2. **Step 2 (inject):** If step 1 fails, inject full content-script bundle
    via `injectFullContentScripts(tabId)`: first
    `chrome.scripting.insertCSS({ files: CONTENT_SCRIPT_CSS_FILES })`, then
    `chrome.scripting.executeScript({ files: ['content/prelude.js'] })`, then
-   `chrome.scripting.executeScript({ files: ['content/main.js'] })`. This is
-   required on Firefox MV3 when optional host permissions have not been granted
-   yet — manifest `content_scripts` do NOT auto-execute until the user grants
-   host access. The `activeTab` permission (granted by the toolbar click) lets
-   the service worker inject the bundle regardless of current host-access
-   state. `prelude.js` is guarded by `__ffnePreludeBootstrapped` and `main.ts`
-   is guarded by `__ffneContentBootstrapped`, so re-injection on an
-   already-loaded tab is a no-op.
+   `chrome.scripting.executeScript({ files: ['content/main.js'] })`.
+   Required on Firefox MV3 when optional host permissions not granted
+   yet — manifest `content_scripts` no auto-execute until user grants
+   host access. `activeTab` permission (granted by toolbar click) lets
+   service worker inject bundle regardless of current host-access
+   state. `prelude.js` guarded by `__ffnePreludeBootstrapped`, `main.ts`
+   guarded by `__ffneContentBootstrapped` — re-injection on
+   already-loaded tab is no-op.
 
-3. **Step 3 (retry):** Repeat `sendMessage`. After step 2 completes, the
-   `OPEN_SETTINGS` listener is registered synchronously by `SettingsMenu.prime()`
-   (inside `EarlyBoot.prime()`), so the retry hits the listener and the modal
-   opens.
+3. **Step 3 (retry):** Repeat `sendMessage`. After step 2,
+   `OPEN_SETTINGS` listener registered synchronously by `SettingsMenu.prime()`
+   (inside `EarlyBoot.prime()`), retry hits listener, modal opens.
 
-4. **Tab routing:** If the active tab is not on a supported host (FFN/AO3),
-   `openSettingsForTab` opens `https://www.fanfiction.net/` in a new tab and
+4. **Tab routing:** If active tab not on supported host (FFN/AO3),
+   `openSettingsForTab` opens `https://www.fanfiction.net/` in new tab,
    queues `openSettingsInTab` on `tabs.onUpdated` (status `complete`).
 
-Each step logs success or failure to the background console with the
-`FFN-Enhancements:` prefix so the chain is easy to grep in Firefox
+Each step logs success/failure to background console with
+`FFN-Enhancements:` prefix — easy to grep in Firefox
 about:debugging.
 
-The dispatch flow does NOT use `window.postMessage` — that approach has a silent
-failure mode: `scripting.executeScript({ func })` returns true if the func
-*ran*, regardless of whether any `message` listener received the post. On
-Firefox MV3 without granted optional host permissions, the content script
-never loads, so the listener never exists, but the executeScript call still
-succeeds. Using `sendMessage` as primary avoids the false positive.
+Dispatch flow no use `window.postMessage` — that has silent
+failure mode: `scripting.executeScript({ func })` returns true if func
+*ran*, regardless of whether `message` listener received post. On
+Firefox MV3 without granted optional host permissions, content script
+never loads, listener never exists, but executeScript still
+succeeds. Using `sendMessage` as primary avoids false positive.
 
 ---
 
 ## 3. Platform Abstraction Layer
 
-All browser-extension APIs are accessed through thin wrappers in `src/platform/`:
+All browser-extension APIs accessed through thin wrappers in `src/platform/`:
 
 ### 3.1 Storage (`src/platform/storage.ts`)
 
@@ -147,10 +146,10 @@ const unsub = platformStorage.onChanged((key, newValue, oldValue) => {
 
 - All keys use `ffne_` prefix (added internally by platformStorage).
 - `get()` reads from localStorage (sync, available at document-start).
-- `set()` writes to localStorage (sync) + `chrome.storage.local` (async persistence).
+- `set()` writes localStorage (sync) + `chrome.storage.local` (async persist).
 - `onChanged()` wraps `chrome.storage.onChanged` with local-write guard
-  (200ms timestamp window) to prevent double subscriber notification.
-- Bridge keys (`ao3_bridge_*`) use the same prefix — do NOT include `ffne_` in
+  (200ms timestamp window) — prevents double subscriber notification.
+- Bridge keys (`ao3_bridge_*`) use same prefix — do NOT include `ffne_` in
   key constants.
 
 ### 3.2 Messaging (`src/platform/messaging.ts`)
@@ -168,10 +167,10 @@ const response = await backgroundFetch({
 // response: { ok, status, data: string|Blob|null, finalUrl, error? }
 ```
 
-- `backgroundFetch()` never throws — errors returned in `response.error`.
-- Service worker handles `CrossOriginFetchMessage` by executing `fetch()` with
+- `backgroundFetch()` never throws — errors in `response.error`.
+- Service worker handles `CrossOriginFetchMessage` by `fetch()` with
   full granted host access (no CORS restrictions).
-- Blob responses are converted `number[]` → `Uint8Array` → `Blob` (JSON-safe messaging).
+- Blob responses converted `number[]` → `Uint8Array` → `Blob` (JSON-safe messaging).
 
 ### 3.3 Tabs (`src/platform/tabs.ts`)
 
@@ -185,8 +184,8 @@ await openTab('https://archiveofourown.org/', true);
 
 ### 3.4 Message Types (`src/background/message-types.ts`)
 
-Shared type definitions for content-script <-> service-worker communication.
-Used by platform layer and service worker. Keep in sync with `service-worker.ts` handler.
+Shared type definitions for content-script <-> service-worker comms.
+Used by platform layer + service worker. Keep in sync with `service-worker.ts` handler.
 
 ---
 
@@ -194,7 +193,7 @@ Used by platform layer and service worker. Keep in sync with `service-worker.ts`
 
 ### 4.1 Module-as-Object-Literal
 
-All modules are plain object literals exported as `const`. There are no classes.
+All modules = plain object literals exported as `const`. No classes.
 
 ```typescript
 export const MyModule = {
@@ -204,14 +203,14 @@ export const MyModule = {
 };
 ```
 
-`this` works correctly inside these objects when methods are called as
-`MyModule.doThing()`. Be careful when passing methods as callbacks - use
+`this` works inside these objects when methods called as
+`MyModule.doThing()`. Careful when passing methods as callbacks — use
 `.bind(this)` or arrow wrappers if needed.
 
 ### 4.2 Two-Phase Boot via `EarlyBoot` + `ISitewideModule`
 
-Sitewide modules (ones that need to run on every page, not just one route)
-implement the `ISitewideModule` interface:
+Sitewide modules (run on every page, not one route)
+implement `ISitewideModule`:
 
 ```typescript
 export interface ISitewideModule {
@@ -220,7 +219,7 @@ export interface ISitewideModule {
 }
 ```
 
-They register themselves with `EarlyBoot` in `main.ts`:
+Register with `EarlyBoot` in `main.ts`:
 
 ```typescript
 EarlyBoot.register(SettingsManager);   // MUST be first
@@ -233,29 +232,29 @@ EarlyBoot.prime();                     // Calls prime() on all, synchronously
 EarlyBoot.init();                      // Calls init() on all
 ```
 
-Registration order = execution order. The current required order is:
+Registration order = execution order. Required order:
 
-1. `SettingsManager` - must load all settings into cache before anyone reads them.
-2. `SettingsMenu` - reads settings to build menu labels; must come after SettingsManager.
-3. `ThemeManager` - reads `theme` setting, injects CSS custom properties and component styles at `prime()` to prevent FOUC; must come before LayoutManager so token vars are available.
-4. `LayoutManager` - reads `fluidMode` in `prime()` to prevent FOUC; must come after ThemeManager so fluid CSS layers correctly over theme tokens.
+1. `SettingsManager` - load all settings into cache before reads.
+2. `SettingsMenu` - reads settings to build menu labels; after SettingsManager.
+3. `ThemeManager` - reads `theme` setting, injects CSS vars + component styles at `prime()` to prevent FOUC; before LayoutManager so token vars available.
+4. `LayoutManager` - reads `fluidMode` in `prime()` to prevent FOUC; after ThemeManager so fluid CSS layers over theme tokens.
 
-**Phase 1 rules:** `prime()` runs synchronously at `document-start`. Do not
-read `document.body` or `document.head` (not guaranteed to exist yet). Safe
-operations: inject `<style>` on `document.documentElement`, arm `MutationObserver`,
-call synchronous GM functions.
+**Phase 1 rules:** `prime()` runs synchronously at `document-start`. No
+read `document.body` or `document.head` (not guaranteed exist yet). Safe
+ops: inject `<style>` on `document.documentElement`, arm `MutationObserver`,
+call sync GM funcs.
 
-**Phase 2 rules:** `init()` runs at `DOMContentLoaded`. All DOM operations are
-safe here.
+**Phase 2 rules:** `init()` runs at `DOMContentLoaded`. All DOM ops
+safe.
 
-Programmatic reinjection re-runs `prelude.js` and `main.js`. Keep both guarded
+Programmatic reinjection re-runs `prelude.js` + `main.js`. Keep both guarded
 by bootstrap flags (`__ffnePreludeBootstrapped`,
-`__ffneContentBootstrapped`) so already-primed tabs do not accumulate duplicate
+`__ffneContentBootstrapped`) so already-primed tabs no accumulate duplicate
 style tags or listeners.
 
 ### 4.3 Delegate / Strategy Pattern (Page Objects)
 
-FFN's DOM structure differs between pages. All CSS selector knowledge lives in
+FFN DOM differs between pages. All CSS selector knowledge lives in
 **Delegate** objects, never in module business logic.
 
 ```
@@ -269,18 +268,18 @@ src/delegates/
   LayoutManagerDelegate.ts - fluid-mode element selectors
 ```
 
-DOM keys are defined in `src/enums/Elements.ts`. Add a new key there first,
-then implement it in the relevant delegate.
+DOM keys defined in `src/enums/Elements.ts`. Add new key there first,
+then implement in relevant delegate.
 
-`Core.setDelegate(path)` is called in `Core.startup()` (invoked from `main.ts`)
-and sets `Core.activeDelegate`. After that, all modules call:
+`Core.setDelegate(path)` called in `Core.startup()` (from `main.ts`),
+sets `Core.activeDelegate`. After, all modules call:
 
 ```typescript
 Core.getElement(Elements.MY_KEY)      // single element (null on miss)
 Core.getElements(Elements.MY_KEY)     // array (empty on miss)
 ```
 
-`Core.getElement` first tries the active page-specific delegate, then falls back
+`Core.getElement` tries active page-specific delegate first, falls back
 to `GlobalDelegate` (chain of responsibility).
 
 ### 4.4 Page-Specific Module Routing
@@ -293,20 +292,20 @@ else if (path.includes("/docs/edit.php"))   DocEditor.init();
 else if (path.startsWith("/s/"))          { StoryReader.init(); StoryDownloader.init(); }
 ```
 
-Page-specific modules do not implement `ISitewideModule`. They have a single
-`init()` entry point and are called directly.
+Page-specific modules no implement `ISitewideModule`. Single
+`init()` entry point, called directly.
 
 ### 4.5 Services Layer
 
-Doc-related network and parsing concerns were extracted from `Core` into focused
+Doc-related network + parsing concerns extracted from `Core` into focused
 services in `src/services/`:
 
 - `ContentParser` - `TurndownService` instance, `parseHtmlFromPrivateDoc()`,
-  `parseContentFromPrivateDoc()`. Consumed by `DocEditor` and `DocFetchService`.
+  `parseContentFromPrivateDoc()`. Consumed by `DocEditor` + `DocFetchService`.
 - `DocFetchService` - `_fetchDocPage()`, `fetchAndConvertPrivateDoc()`,
   `fetchPrivateDocAsHtml()`, `refreshPrivateDoc()`. Consumed by `DocManager`.
 
-Both services import `Core` for `getElement`/`getLogger` - no circular deps.
+Both services import `Core` for `getElement`/`getLogger` — no circular deps.
 
 ---
 
@@ -317,12 +316,12 @@ Both services import `Core` for `getElement`/`getLogger` - no circular deps.
 Central key-value store backed by `chrome.storage.local` + `localStorage` mirror
 (via `platformStorage`).
 
-- `FFNSettings` interface defines the full schema with types.
+- `FFNSettings` interface defines full schema with types.
 - `DEFAULTS` object provides fallbacks for first-time users.
 - Storage prefix: `ffne_` (added by `platformStorage` internally).
-- In-memory cache (`_cache`) is populated in `prime()` and used for all reads.
-  Reads are synchronous and cheap (from `localStorage` via `platformStorage.get()`).
-- `_loadAll()` validates enum values on load to guard against stale storage.
+- In-memory cache (`_cache`) populated in `prime()`, used for all reads.
+  Reads sync + cheap (from `localStorage` via `platformStorage.get()`).
+- `_loadAll()` validates enum values on load — guards stale storage.
 
 **API:**
 ```typescript
@@ -337,31 +336,31 @@ unsub(); // remove listener
 ```
 
 **`subscribe()` pub-sub API:**
-- `subscribe(key, cb)` returns an unsubscribe function.
-- Fires for both local changes (`set()`) and remote changes (cross-tab via
+- `subscribe(key, cb)` returns unsubscribe function.
+- Fires for local changes (`set()`) + remote changes (cross-tab via
   `chrome.storage.onChanged`).
-- Internal storage uses `Map<string, Set<(unknown, unknown)=>void>>`.
-- Subscriber errors are caught individually.
+- Internal storage: `Map<string, Set<(unknown, unknown)=>void>>`.
+- Subscriber errors caught individually.
 
 **Cross-tab sync (`chrome.storage.onChanged`):**
 - Single listener registered in `prime()` via `platformStorage.onChanged()`.
 - `platformStorage` handles local-write guard (200ms timestamp window) so
-  same-tab changes don't double-fire subscribers.
+  same-tab changes no double-fire subscribers.
 - `_mirrorThemeCache()` writes theme to `localStorage['ffne_theme_cache']` for
-  the prelude to read synchronously at `document_start`.
+  prelude to read synchronously at `document_start`.
 
-**To add a new setting:**
+**Add new setting:**
 1. Add field + type to `FFNSettings` interface.
 2. Add default to `DEFAULTS`.
 3. Add one-liner in `_loadAll()`: `_loadBool(key)`, `_loadEnum(key, EnumObj)`, or `_loadPositiveNumber(key)`.
-4. Automatic: `_registerOnChangedListener()` handles all keys via a single
+4. Automatic: `_registerOnChangedListener()` handles all keys via single
    `chrome.storage.onChanged` listener.
-5. Add a control row in `SettingsPage.ts` (see checklist Section 11).
+5. Add control row in `SettingsPage.ts` (see checklist Section 11).
 
 ### 5.2 SettingsMenu (`src/modules/SettingsMenu.ts`)
 
-Registers a single Tampermonkey menu command that opens the settings modal
-on the current page via `SettingsPage.openModal()`:
+Registers single Tampermonkey menu command opening settings modal
+on current page via `SettingsPage.openModal()`:
 
 ```typescript
 GM_registerMenuCommand('FFN Enhancements Settings', () => {
@@ -369,51 +368,51 @@ GM_registerMenuCommand('FFN Enhancements Settings', () => {
 });
 ```
 
-**Why not per-setting menu commands?**
-The old approach cycled labels via `GM_registerMenuCommand` / `GM_unregisterMenuCommand`.
+**Why no per-setting menu commands?**
+Old approach cycled labels via `GM_registerMenuCommand` / `GM_unregisterMenuCommand`.
 Two problems:
-1. TM closes the extension menu immediately on click - rapid-cycle UX is janky.
-2. With `autoClose: false`, labels re-sort alphabetically after each update, which is
+1. TM closes extension menu immediately on click — rapid-cycle UX janky.
+2. With `autoClose: false`, labels re-sort alphabetically after each update —
    disorienting.
-A modal eliminates both issues and allows richer UI.
+Modal eliminates both, enables richer UI.
 
-**Why a modal instead of a new tab?**
-Opening `https://www.fanfiction.net/?ffne_settings=1` made an unnecessary server
-request just to render our own UI. A modal runs in the same script context, needs
-no URL interception, and has direct GM storage access.
+**Why modal instead of new tab?**
+Opening `https://www.fanfiction.net/?ffne_settings=1` made unnecessary server
+request just to render own UI. Modal runs in same script context, no
+URL interception, direct GM storage access.
 
-`SettingsMenu.ts` itself does not need to change when new settings are added.
+`SettingsMenu.ts` no need change when new settings added.
 Add settings UI in `SettingsPage.ts` instead.
 
 ### 5.3 SettingsPage (`src/modules/SettingsPage.ts`)
 
-Modal settings UI injected into `document.body` on the current FFN page.
+Modal settings UI injected into `document.body` on current FFN page.
 Opened via `SettingsPage.openModal()`, dismissed via `closeModal()` (x button,
 backdrop click, or ESC key).
 
 **No URL interception:**
-There is no `?ffne_settings=1` URL or routing intercept in `main.ts`. The modal
-runs entirely in the current tab's context - no server request, no navigation.
+No `?ffne_settings=1` URL or routing intercept in `main.ts`. Modal
+runs entirely in current tab context — no server request, no nav.
 
 **Styling:**
 Self-contained styles injected into `document.head` on first open (guarded by
-`#ffne-settings-styles` ID to prevent duplicates). Uses FFN's colour palette
-(`#336699` navy, `#f0f4f8` header bg) and Verdana/Arial for visual consistency.
+`#ffne-settings-styles` ID — prevents duplicates). Uses FFN colour palette
+(`#336699` navy, `#f0f4f8` header bg) + Verdana/Arial for visual consistency.
 
 **Save-on-change UX:**
-Changes are persisted immediately via `SettingsManager.set()` on `input/change`
-events. A per-row "+" flash indicator (`_flashSaved()`) confirms each save.
+Changes persisted immediately via `SettingsManager.set()` on `input/change`
+events. Per-row "+" flash indicator (`_flashSaved()`) confirms each save.
 
 **Cross-tab sync:**
 `_registerSubscriptions()` registers `SettingsManager.subscribe()` callbacks for
-every setting and returns their unsubscribe functions. `closeModal()` calls all
-unsubscribers to prevent accumulation across multiple open/close cycles.
+every setting, returns unsubscribe functions. `closeModal()` calls all
+unsubscribers — prevents accumulation across multiple open/close cycles.
 
 **`NUMERIC_KEYS` constant:**
-Drives bulk wiring of numeric `<input type="number">` controls. Must stay in sync
-with numeric fields in `FFNSettings`. Adding a new numeric setting requires:
-1. Adding the key to `NUMERIC_KEYS` in `SettingsPage.ts`.
-2. The subscribe loop in `_registerSubscriptions()` then handles it automatically.
+Drives bulk wiring of numeric `<input type="number">` controls. Must stay synced
+with numeric fields in `FFNSettings`. Adding new numeric setting requires:
+1. Add key to `NUMERIC_KEYS` in `SettingsPage.ts`.
+2. Subscribe loop in `_registerSubscriptions()` handles automatically.
 
 **Sections:**
 | Section | Settings |
@@ -423,13 +422,13 @@ with numeric fields in `FFNSettings`. Adding a new numeric setting requires:
 | Reader | `scrollStep` |
 | Advanced (collapsible) | `fetchMaxRetries`, `fetchRetryBaseMs`, `iframeLoadTimeoutMs`, `iframeSaveTimeoutMs`, `bulkExportDelayMs`, `bulkCooldownMs`, `bulkRetryDelayMs` |
 
-**GOTCHA:** `openModal()` appends to `document.body` - safe to call any time after
-`DOMContentLoaded`. It must NOT be called from `prime()` (document-start, body may
-not exist). The TM menu command callback only fires after user interaction, which
-is always post-DOMContentLoaded, so this is naturally satisfied.
+**GOTCHA:** `openModal()` appends to `document.body` — safe any time after
+`DOMContentLoaded`. Must NOT be called from `prime()` (document-start, body may
+no exist). TM menu command callback only fires after user interaction, always
+post-DOMContentLoaded — naturally satisfied.
 
-**GOTCHA:** Always call `closeModal()` to clean up subscriptions and the ESC key
-listener. Removing the backdrop element alone leaves listeners dangling.
+**GOTCHA:** Always call `closeModal()` to clean up subscriptions + ESC key
+listener. Removing backdrop element alone leaves listeners dangling.
 
 ---
 
@@ -437,33 +436,33 @@ listener. Removing the backdrop element alone leaves listeners dangling.
 
 ### Architecture
 
-All colors in the extension flow through **CSS custom properties** (`--ffne-*`).
-Default values are defined in `src/styles/ThemeTokens.ts` and injected as a
+All colors flow through **CSS custom properties** (`--ffne-*`).
+Defaults defined in `src/styles/ThemeTokens.ts`, injected as
 `:root { ... }` block at `document-start` by `ThemeManager.prime()`. Themes
-override these variables; all CSS files consume them via `var(--ffne-*)`.
+override these vars; all CSS files consume via `var(--ffne-*)`.
 
 **Token categories:**
 - `--ffne-brand-*` (FFN navy palette)
 - `--ffne-semantic-*` (success/error/warning/running)
 - `--ffne-ui-*` (surfaces, text levels, borders, toggles)
 - `--ffne-shadow-*` (modal, overlay, toast, etc.)
-- `--ffne-ui-text-on-accent` (always light text for use on colored backgrounds)
+- `--ffne-ui-text-on-accent` (always light text for colored backgrounds)
 
-**GOTCHA:** `--ffne-ui-white` maps to a surface color (dark in dark theme).
-Do NOT use it for text on colored backgrounds (modal headers, toasts, badges).
+**GOTCHA:** `--ffne-ui-white` maps to surface color (dark in dark theme).
+Do NOT use for text on colored backgrounds (modal headers, toasts, badges).
 Use `--ffne-ui-text-on-accent` instead.
 
 ### ThemeManager (`src/modules/ThemeManager.ts`)
 
-Implements `ISitewideModule`. Registered in EarlyBoot between SettingsMenu and
+Implements `ISitewideModule`. Registered in EarlyBoot between SettingsMenu +
 LayoutManager.
 
 **Phase 1 (`prime()`):** Injects token CSS, component CSS, applies HTML class
-(`ffne-theme-<name>`), and sets `color-scheme`. Prevents FOUC for our own UI.
+(`ffne-theme-<name>`), sets `color-scheme`. Prevents FOUC for own UI.
 
 **Phase 2 (`init()`):** Runs `CssScanner` to generate FFN native element
 overrides, subscribes to theme setting changes, watches `prefers-color-scheme`
-for SYSTEM mode, and arms a `MutationObserver` for TinyMCE iframe theming.
+for SYSTEM mode, arms `MutationObserver` for TinyMCE iframe theming.
 
 **Public API:**
 - `setTheme(theme: Theme)` - switch theme (persists via SettingsManager)
@@ -472,24 +471,24 @@ for SYSTEM mode, and arms a `MutationObserver` for TinyMCE iframe theming.
 ### CssScanner (`src/services/CssScanner.ts`)
 
 Runtime CSS scanner (Dark Reader-style). Reads `document.styleSheets`, extracts
-color-related properties, maps them via the theme's `colorMap`, and generates
+color-related properties, maps via theme's `colorMap`, generates
 scoped override CSS under `html.ffne-theme-<name>`.
 
-- Skips our own `<style>` tags (ID prefix `ffne-`/`ffe-`/`ffn-enhancements`)
+- Skips own `<style>` tags (ID prefix `ffne-`/`ffe-`/`ffn-enhancements`)
 - Handles `@media`/`@supports` grouping rules
-- Preserves `!important` and alpha channels
+- Preserves `!important` + alpha channels
 - Caches results per page/theme combination
 
 ### Theme Definitions (`src/themes/`)
 
 Each theme implements `IThemeDefinition`:
-- `tokens` - CSS var overrides for our injected UI
-- `colorMap` - FFN color remapping table for the scanner
+- `tokens` - CSS var overrides for injected UI
+- `colorMap` - FFN color remapping table for scanner
 - `isDark` - controls `color-scheme` property
 
 Available themes: `SYSTEM` (auto), `LIGHT`, `DARK`, `SEPIA`, `HIGH_CONTRAST`.
 
-Adding a new theme:
+Adding new theme:
 1. Create `src/themes/MyTheme.ts` implementing `IThemeDefinition`.
 2. Add entry to `src/themes/index.ts` (`THEME_DEFINITIONS`).
 3. Add value to `src/enums/Theme.ts`.
@@ -497,7 +496,7 @@ Adding a new theme:
 
 ### CSS Files
 
-All module CSS is extracted to dedicated `.css` files in `src/styles/`:
+All module CSS extracted to dedicated `.css` files in `src/styles/`:
 - `settings-modal.css` - settings UI
 - `fluid-mode.css` - fluid layout overrides
 - `components.css` - shared components (cover modal, dropdown, toast, Ao3 panel, status classes)
@@ -505,47 +504,47 @@ All module CSS is extracted to dedicated `.css` files in `src/styles/`:
 - `story-edit-content.css` - StoryEditContent bulk replace UI
 - `native-overrides.css` - FFN native element overrides (fallback for cross-origin CSS)
 
-Imported via `?raw` and injected as `<style>` tags.
+Imported via `?raw`, injected as `<style>` tags.
 
 ---
 
 ## 6. Doc Download Feature
 
-Author documents (from the FFN doc manager/editor) can be exported as
-Markdown (default), HTML, or DOCX. The format is controlled by the
+Author docs (from FFN doc manager/editor) export as
+Markdown (default), HTML, or DOCX. Format controlled by
 `docDownloadFormat` setting.
 
 ### DOCX conversion
 
-The DOCX path converts HTML -> OOXML via `DocxBuilder.build(html, title)`.
-It reuses the existing `fetchPrivateDocAsHtml()` / `parseHtmlFromPrivateDoc()`
-paths - no new fetch or parsing infrastructure needed. `DocxBuilder` produces a
-valid Office Open XML archive (ZIP-wrapped) using the already-available `JSZip`
+DOCX path converts HTML -> OOXML via `DocxBuilder.build(html, title)`.
+Reuses existing `fetchPrivateDocAsHtml()` / `parseHtmlFromPrivateDoc()`
+paths — no new fetch/parsing infra needed. `DocxBuilder` produces
+valid Office Open XML archive (ZIP-wrapped) using available `JSZip`
 library.
 
 ### Content extraction flow
 
-1. `ContentParser.parseHtmlFromPrivateDoc(doc, title)` - reads the raw HTML from the
+1. `ContentParser.parseHtmlFromPrivateDoc(doc, title)` - reads raw HTML from
    TinyMCE `<textarea>` (`Elements.EDITOR_TEXT_AREA`). Returns `string | null`.
 2. `ContentParser.parseContentFromPrivateDoc(doc, title)` - calls `parseHtmlFromPrivateDoc`,
-   then converts via Turndown. Returns Markdown `string | null`.
+   converts via Turndown. Returns Markdown `string | null`.
 3. `DocFetchService._fetchDocPage(docId, title)` - internal shared fetch helper
-   that delegates to the generic `fetchWithBackoff` utility for retry/backoff.
+   delegating to generic `fetchWithBackoff` utility for retry/backoff.
    Returns `Document | null`.
-4. `DocFetchService.fetchAndConvertPrivateDoc(docId, title)` - fetches a doc page
-   and returns Markdown.
-5. `DocFetchService.fetchPrivateDocAsHtml(docId, title)` - fetches a doc page
-   and returns raw HTML.
+4. `DocFetchService.fetchAndConvertPrivateDoc(docId, title)` - fetches doc page,
+   returns Markdown.
+5. `DocFetchService.fetchPrivateDocAsHtml(docId, title)` - fetches doc page,
+   returns raw HTML.
 
-**Note:** The shared `fetchWithBackoff(url, options)` utility lives in
-`src/utils/fetchWithBackoff.ts` and is used by both `DocFetchService._fetchDocPage` and
-`NativeDownloader._fetchChapter`. Centralizes retry count, delay strategy, and
+**Note:** Shared `fetchWithBackoff(url, options)` utility lives in
+`src/utils/fetchWithBackoff.ts`, used by `DocFetchService._fetchDocPage` +
+`NativeDownloader._fetchChapter`. Centralizes retry count, delay strategy,
 429 handling in one place.
 
 ### Format-aware download in modules
 
-Both `DocManager.runSingleExport`, `DocManager.runBulkExport`, and
-`DocEditor.exportCurrentDoc` follow the same pattern:
+Both `DocManager.runSingleExport`, `DocManager.runBulkExport`, +
+`DocEditor.exportCurrentDoc` follow same pattern:
 
 ```typescript
 const format = SettingsManager.get('docDownloadFormat');
@@ -562,18 +561,18 @@ if (format === DocDownloadFormat.DOCX) {
 }
 ```
 
-**`DocDownloadFormat` enum values ARE the file extensions** (`'md'`, `'html'`),
-so `${title}.${format}` produces the correct filename directly.
+**`DocDownloadFormat` enum values ARE file extensions** (`'md'`, `'html'`),
+so `${title}.${format}` produces correct filename directly.
 
-**`StoryReader` / `StoryDownloader` are NOT affected** by this setting - they
-use FicHub integration and `NativeDownloader`, which is reader-facing and outside
-the doc-download scope.
+**`StoryReader` / `StoryDownloader` NOT affected** by this setting —
+use FicHub integration + `NativeDownloader`, reader-facing, outside
+doc-download scope.
 
 ---
 
 ## 7. Logging
 
-All logging goes through `FFNLogger` (or `Core.getLogger` which delegates to it):
+All logging through `FFNLogger` (or `Core.getLogger` which delegates):
 
 ```typescript
 // Module-level logger factory (preferred - eliminates repetition)
@@ -586,26 +585,26 @@ FFNLogger.log('ModuleName', 'funcName', 'message', optionalData);
 
 Log format: `(ffn-enhancements) <ModuleName> <funcName>: <message>`.
 
-`MODULE_NAME` is a string constant on each module object (e.g., `'doc-manager'`,
-`'LayoutManager'`). Keep it consistent and meaningful - it appears in every log line.
+`MODULE_NAME` = string constant on each module object (e.g., `'doc-manager'`,
+`'LayoutManager'`). Keep consistent + meaningful — appears in every log line.
 
 ---
 
 ## 8. Reader Download Stack
 
-Reader-side story downloads (EPUB, MOBI, PDF) are handled separately and are
-not related to the doc-download feature:
+Reader-side story downloads (EPUB, MOBI, PDF) handled separately,
+not related to doc-download feature:
 
-- `StoryDownloader` - wires the UI; delegates to `IFanficDownloader` implementations.
-- `FicHubDownloader` - fetches via the FicHub API using `GM_xmlhttpRequest` (CORS bypass).
-  Also injects local FFN cover art into the EPUB via `JSZip`.
-- `NativeDownloader` - falls back to the FFN-native download if FicHub is unavailable.
+- `StoryDownloader` - wires UI; delegates to `IFanficDownloader` implementations.
+- `FicHubDownloader` - fetches via FicHub API using `GM_xmlhttpRequest` (CORS bypass).
+  Also injects local FFN cover art into EPUB via `JSZip`.
+- `NativeDownloader` - falls back to FFN-native download if FicHub unavailable.
 - `EpubBuilder` - low-level EPUB ZIP construction utility.
 - `LocalMetadataSerializer` / `FicHubMetadataSerializer` - scrape story metadata
   for EPUB metadata injection.
 
-`GM_xmlhttpRequest` is needed (and granted) because `fichub.net` is a cross-origin
-request; normal `fetch()` would be blocked by CORS.
+`GM_xmlhttpRequest` needed (granted) because `fichub.net` is cross-origin;
+normal `fetch()` blocked by CORS.
 
 ---
 
@@ -708,155 +707,155 @@ tsconfig.json                    - Strict TypeScript config
 
 ## 10. Common Gotchas
 
-1. `document.body` may not exist in `prime()` - use `document.documentElement`
-   or arm a `MutationObserver` watching `{ childList: true }` on `documentElement`.
-   `LayoutManager._applyFluidClass()` has a complete example of this pattern.
+1. `document.body` may no exist in `prime()` — use `document.documentElement`
+   or arm `MutationObserver` watching `{ childList: true }` on `documentElement`.
+   `LayoutManager._applyFluidClass()` has complete example.
 
-2. TinyMCE loads asynchronously - `DocEditor` and `DocManager` both use
-   `MutationObserver` to detect the toolbar/iframe injection rather than assuming
-   it is present at `DOMContentLoaded`.
+2. TinyMCE loads asynchronously — `DocEditor` + `DocManager` both use
+   `MutationObserver` to detect toolbar/iframe injection rather than assuming
+   present at `DOMContentLoaded`.
 
-3. `file-saver` is a named export - import as `import { saveAs } from 'file-saver'`
-   (not a default import).
+3. `file-saver` is named export — import as `import { saveAs } from 'file-saver'`
+   (not default).
 
-4. `vite-plugin-monkey` defaults to unminified output unless `build.minify` is
-   explicitly set in the returned Vite config. Keep `build.minify: 'esbuild'`
+4. `vite-plugin-monkey` defaults to unminified output unless `build.minify`
+   explicitly set in returned Vite config. Keep `build.minify: 'esbuild'`
    enabled for production builds or document-start logic loses parse-time races
-   against FFN's first paint.
+   against FFN first paint.
 
-5. `DocFetchService.refreshPrivateDoc` exists and uses different logic
-   (iframe form submission) than `_fetchDocPage`. They were deliberately
+5. `DocFetchService.refreshPrivateDoc` exists, uses different logic
+   (iframe form submission) than `_fetchDocPage`. Deliberately
    not unified.
 
-6. `SupportedFormats` vs `DocDownloadFormat` - keep them separate. `SupportedFormats`
-   is reader-facing (EPUB/MOBI/PDF/etc.). `DocDownloadFormat` is author doc export only.
-   They overlap on `HTML` and `MARKDOWN` but serve different contexts.
+6. `SupportedFormats` vs `DocDownloadFormat` — keep separate. `SupportedFormats`
+   reader-facing (EPUB/MOBI/PDF/etc.). `DocDownloadFormat` author doc export only.
+   Overlap on `HTML` + `MARKDOWN` but serve different contexts.
 
-7. `GM_registerMenuCommand` return type - returns `string | number`; varies by
-   Tampermonkey version. Store as `string | number | null` if you ever need to
-   unregister. The current `SettingsMenu.ts` does not store the return value.
+7. `GM_registerMenuCommand` return type — returns `string | number`; varies by
+   Tampermonkey version. Store as `string | number | null` if need to
+   unregister. Current `SettingsMenu.ts` no store return value.
 
-8. `enableFluidMode()` / `disableFluidMode()` on `LayoutManager` do not persist
-   the preference - they are imperative helpers for internal use. Only
-   `toggleFluidMode()` persists via `SettingsManager.set()`. If you add new
-   explicit enable/disable public calls, make sure to persist there too.
+8. `enableFluidMode()` / `disableFluidMode()` on `LayoutManager` no persist
+   preference — imperative helpers for internal use. Only
+   `toggleFluidMode()` persists via `SettingsManager.set()`. If add new
+   explicit enable/disable public calls, persist there too.
 
-9. `GM_addValueChangeListener` fires for same-tab changes in some TM builds -
-   the `!remote` guard in `SettingsManager._registerValueListeners` prevents
-   double-applying changes already handled by `set()`. Always include this guard
+9. `GM_addValueChangeListener` fires for same-tab changes in some TM builds —
+   `!remote` guard in `SettingsManager._registerValueListeners` prevents
+   double-applying changes already handled by `set()`. Always include guard
    when writing new `GM_addValueChangeListener` callbacks.
 
-10. `--ffne-ui-white` is a surface color that becomes dark in dark theme. Never
-    use it for text on colored backgrounds (modal headers, toasts, badges). Use
-    `--ffne-ui-text-on-accent` instead - it stays light across all themes.
+10. `--ffne-ui-white` is surface color, becomes dark in dark theme. Never
+    use for text on colored backgrounds (modal headers, toasts, badges). Use
+    `--ffne-ui-text-on-accent` instead — stays light across all themes.
 
 11. `CssScanner` skips `<style>` tags whose `id` starts with `ffne-`, `ffe-`, or
     `ffn-enhancements`. When adding new injected style tags, use one of these
-    prefixes to prevent the scanner from generating redundant overrides.
+    prefixes to prevent scanner generating redundant overrides.
 
-12. FFN's main CSS is cross-origin (CDN-served), so `CssScanner` cannot read
+12. FFN main CSS cross-origin (CDN-served), so `CssScanner` cannot read
     `cssRules` from those sheets. `native-overrides.css` provides fallback
     element-level overrides using `var(--ffne-*)` tokens. When FFN adds new
-    UI patterns not covered by these overrides, add rules there rather than
-    trying to expand the scanner's reach.
+    UI patterns not covered, add rules there rather than
+    expanding scanner reach.
 
 13. **GOTCHA: Scanner vs native-overrides injection order.** `_injectFfnOverrides`
     concatenates `[scannerCss, elementCss]`. Scanner preserves `!important` from
-    original rules. When scanner and native-overrides produce identical selectors
+    original rules. When scanner + native-overrides produce identical selectors
     with `!important` (e.g., `#gui_table1 tbody tr:hover td`), native-overrides
-    wins because it comes LAST. If you swap the order, scanner's mechanically-
-    remapped colors win and semantic tokens stop working. Native-overrides must
-    always be the final word.
+    wins because comes LAST. Swap order, scanner's mechanically-
+    remapped colors win + semantic tokens stop working. Native-overrides must
+    always be final word.
 
-14. `userscript.noframes` is intentional. TinyMCE editor iframes are themed from
-    the parent document via `iframe.contentDocument`, so do not build features
-    that depend on the userscript executing inside subframes.
+14. `userscript.noframes` intentional. TinyMCE editor iframes themed from
+    parent document via `iframe.contentDocument`, so no build features
+    depending on userscript executing inside subframes.
 
-15. **GOTCHA: Do NOT include `service_worker` in the Firefox manifest.** Firefox
+15. **GOTCHA: Do NOT include `service_worker` in Firefox manifest.** Firefox
     MV3 uses event pages (`background.scripts`). Firefox 121+ has experimental
-    `background.service_worker` support behind the
-    `extensions.backgroundServiceWorker.enabled` pref. When BOTH `scripts` and
-    `service_worker` keys are present, Firefox may prefer `service_worker`,
-    attempt to load the bundle as a real ServiceWorker, fail silently (no
-    `type: "module"`; uses `chrome.action.*` which is not on the SW scope on
-    Firefox), and never fall back to `scripts`. Result: `action.onClicked`
-    listener never registers and the toolbar icon click is a silent no-op.
+    `background.service_worker` support behind
+    `extensions.backgroundServiceWorker.enabled` pref. When BOTH `scripts` +
+    `service_worker` keys present, Firefox may prefer `service_worker`,
+    attempt to load bundle as real ServiceWorker, fail silently (no
+    `type: "module"`; uses `chrome.action.*` which not on SW scope on
+    Firefox), never fall back to `scripts`. Result: `action.onClicked`
+    listener never registers, toolbar icon click is silent no-op.
 
-    The Firefox manifest must contain ONLY `background.scripts` — no
+    Firefox manifest must contain ONLY `background.scripts` — no
     `service_worker`, no `type: "module"`. Module scripts execute deferred,
-    missing the wake-up event dispatch in event-page lifecycles. The bundled
-    `service-worker.js` has no imports/exports, so module mode is unnecessary.
+    missing wake-up event dispatch in event-page lifecycles. Bundled
+    `service-worker.js` has no imports/exports — module mode unnecessary.
 
-    Chrome's manifest retains `service_worker` + `type: "module"`. The
-    `patchManifest` helper in `vite.config.ts` handles the per-target split and
-    is exported for unit testing in `src/__tests__/viteConfig.test.ts`.
+    Chrome manifest retains `service_worker` + `type: "module"`.
+    `patchManifest` helper in `vite.config.ts` handles per-target split,
+    exported for unit testing in `src/__tests__/viteConfig.test.ts`.
 
     Register listeners against
-    `(globalThis.browser?.action ?? chrome.action).onClicked` so the binding
+    `(globalThis.browser?.action ?? chrome.action).onClicked` so binding
     works regardless of which namespace Firefox exposes first during
     event-page wake-up.
 
-16. **GOTCHA: `chrome.scripting.executeScript({ func })` does not confirm
-    receipt of `window.postMessage` from the injected closure.** The
-    `executeScript` promise resolves when the injected function *finishes
-    executing*, NOT when any `message` listener acknowledges the post. If the
-    content script is not loaded — for example, on Firefox MV3 where optional
-    host permissions have not been granted yet —
-    `window.postMessage` posts to a window with no `'message'` listener for the
-    expected type, the executeScript still resolves successfully, and the
-    service worker falsely reports the open-settings dispatch as successful.
+16. **GOTCHA: `chrome.scripting.executeScript({ func })` no confirm
+    receipt of `window.postMessage` from injected closure.**
+    `executeScript` promise resolves when injected function *finishes
+    executing*, NOT when `message` listener acks post. If
+    content script not loaded — e.g., Firefox MV3 where optional
+    host permissions not granted yet —
+    `window.postMessage` posts to window with no `'message'` listener for
+    expected type, executeScript still resolves successfully,
+    service worker falsely reports open-settings dispatch as successful.
 
-    Use `chrome.tabs.sendMessage` for any dispatch where you need to know
-    whether the content script actually received the message. sendMessage
-    rejects with "Receiving end does not exist" when no listener is registered,
-    which is the failure signal the dispatch chain in
-    `openSettingsInTab` relies on to trigger the inject + retry fallback. See
-    Section 2.1 for the full chain.
+    Use `chrome.tabs.sendMessage` for any dispatch needing to know
+    whether content script actually received message. sendMessage
+    rejects with "Receiving end does not exist" when no listener registered —
+    failure signal dispatch chain in
+    `openSettingsInTab` relies on to trigger inject + retry fallback. See
+    Section 2.1 for full chain.
 
 17. **GOTCHA: Use `optional_host_permissions`, NOT `host_permissions`, when
-    you need `chrome.permissions.request` to prompt the user.** Per MDN:
+    you need `chrome.permissions.request` to prompt user.** Per MDN:
     `permissions.request()` can ONLY request permissions/origins declared in
     `optional_permissions` / `optional_host_permissions`. On Firefox, calling
     `permissions.request({ origins: [<pattern in host_permissions>] })`
-    resolves false (or rejects) without showing a prompt — silently breaking
-    any first-run UX that depends on it.
+    resolves false (or rejects) without showing prompt — silently breaks
+    any first-run UX depending on it.
 
     This extension declares all FFN/AO3/fichub.net patterns under
-    `optional_host_permissions` so the service worker's `action.onClicked`
-    handler can prompt on first click. Side effect: Chrome no longer shows the
-    install-time "Read and change data on..." warning; users see the same
+    `optional_host_permissions` so service worker `action.onClicked`
+    handler can prompt on first click. Side effect: Chrome no longer shows
+    install-time "Read and change data on..." warning; users see same
     first-click prompt as Firefox. Tradeoff accepted — one consistent UX
     across browsers beats divergent flows.
 
     `content_scripts.matches` works against either `host_permissions` or
-    `optional_host_permissions` once the corresponding origin is granted —
+    `optional_host_permissions` once corresponding origin granted —
     no change needed there.
 
-    The drift test in `src/__tests__/contentScriptManifest.test.ts` reads
-    `manifest.optional_host_permissions` and asserts it matches
-    `REQUESTED_HOST_PATTERNS`. Keep them in sync when adding/removing hosts.
+    Drift test in `src/__tests__/contentScriptManifest.test.ts` reads
+    `manifest.optional_host_permissions`, asserts matches
+    `REQUESTED_HOST_PATTERNS`. Keep synced when adding/removing hosts.
 
 ---
 
 ## 11. Checklist: Adding a New Setting
 
-1. `src/enums/` - Add a new enum if the value is constrained (e.g., `MyEnum`).
+1. `src/enums/` - Add new enum if value constrained (e.g., `MyEnum`).
 2. `src/modules/SettingsManager.ts`:
    - Add field + type to `FFNSettings`.
    - Add default to `DEFAULTS`.
    - Add one-liner in `_loadAll()`: `_loadBool(key)` / `_loadEnum(key, EnumObj)` / `_loadPositiveNumber(key)`.
-   - `_registerValueListeners()` is automatic (iterates `Object.keys(DEFAULTS)`).
+   - `_registerValueListeners()` automatic (iterates `Object.keys(DEFAULTS)`).
 3. `src/modules/SettingsPage.ts`:
-   - If numeric: add the key to `NUMERIC_KEYS`.
-   - Add a `_buildXxxRow(...)` call in `_buildHTML()` under the appropriate section.
-   - Add a `SettingsManager.subscribe(key, ...)` call in `_registerSubscriptions()`
-     (numeric keys are handled automatically by the `NUMERIC_KEYS` forEach loop).
-4. Wire up consuming module(s) to call `SettingsManager.get('yourKey')` at
-   call time (not at init time), so changes take effect immediately without reload.
+   - If numeric: add key to `NUMERIC_KEYS`.
+   - Add `_buildXxxRow(...)` call in `_buildHTML()` under appropriate section.
+   - Add `SettingsManager.subscribe(key, ...)` call in `_registerSubscriptions()`
+     (numeric keys handled automatically by `NUMERIC_KEYS` forEach loop).
+4. Wire consuming module(s) to call `SettingsManager.get('yourKey')` at
+   call time (not init time) — changes take effect immediately, no reload.
    Use `SettingsManager.subscribe()` for live reactive updates.
-5. Add grants to `vite.config.ts` if new GM functions are needed.
+5. Add grants to `vite.config.ts` if new GM functions needed.
 
-`SettingsMenu.ts` does not need to change when new settings are added.
+`SettingsMenu.ts` no need change when new settings added.
 
 ---
 
@@ -866,9 +865,9 @@ tsconfig.json                    - Strict TypeScript config
 2. `src/delegates/` - Create `MyPageDelegate.ts` (spread `BaseDelegate`, implement
    relevant keys).
 3. `src/delegates/GlobalDelegate.ts` - Check if any new keys belong here instead.
-4. `src/modules/Core.ts` -> `setDelegate()` - add `else if` branch for the new path.
-5. `src/modules/MyPageModule.ts` - create the module (object literal, `MODULE_NAME`,
+4. `src/modules/Core.ts` -> `setDelegate()` - add `else if` branch for new path.
+5. `src/modules/MyPageModule.ts` - create module (object literal, `MODULE_NAME`,
    `init()`).
 6. `src/main.ts` - add routing branch calling `MyPageModule.init()`.
 
-*This file must be modified as new paradigms arise.*
+*Modify this file as new paradigms arise.*
