@@ -261,7 +261,8 @@ function _findOpfPath(zipEntries: Record<string, Uint8Array>): { opfPath: string
     if (!opfPathMatch) throw new Error("Invalid EPUB: Cannot find OPF path");
 
     const opfPath = opfPathMatch[1];
-    const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/')) : '';
+    const lastSlashIndex = opfPath.lastIndexOf('/');
+    const opfDir = lastSlashIndex === -1 ? '' : opfPath.substring(0, lastSlashIndex);
     return { opfPath, opfDir };
 }
 

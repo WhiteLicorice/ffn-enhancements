@@ -20,7 +20,7 @@ describe('manifest permissions', () => {
         ]);
     });
 
-    it('does not keep ficHub as an optional host permission', () => {
+    it('does not keep FicHub as an optional host permission', () => {
         expect(manifest.optional_host_permissions).toBeUndefined();
     });
 });
