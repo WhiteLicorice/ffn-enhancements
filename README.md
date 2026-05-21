@@ -116,7 +116,7 @@ Several Settings control how content is processed on export. These apply to sing
 
 ## Settings
 
-Open **FFN Enhancements Settings** by clicking the extension icon on any FFN page. Changes save immediately and sync across all open FanFiction.net tabs.
+Open **FFN Enhancements Settings** by clicking FFN's `.icon-kub-mobile` menu icon on any FFN page. Changes save immediately and sync across all open FanFiction.net tabs.
 
 | Setting | Description |
 |---|---|
@@ -154,6 +154,8 @@ Requires Firefox 140 or newer.
 4. Select `manifest.json` from the extracted extension folder.
 
 Temporary Firefox add-ons are removed when Firefox restarts. Use the signed AMO build once it is published.
+
+Firefox and Chrome now request FFN/AO3 host access at install so the content scripts can auto-run. FicHub access is requested later on first download.
 
 ### First-paint theming
 

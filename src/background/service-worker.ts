@@ -5,14 +5,18 @@ import type { BackgroundMessage, CrossOriginFetchMessage, CrossOriginFetchRespon
 
 console.log('FFN Enhancements service worker loaded.');
 
-browser.runtime.onMessage.addListener(async (message: BackgroundMessage, sender) => {
-    switch (message.type) {
+browser.runtime.onMessage.addListener(async (
+    message: unknown,
+    sender: browser.Runtime.MessageSender,
+): Promise<unknown> => {
+    const typedMessage = message as BackgroundMessage;
+    switch (typedMessage.type) {
         case MessageType.CROSS_ORIGIN_FETCH:
-            return handleCrossOriginFetch(message, sender);
+            return handleCrossOriginFetch(typedMessage, sender);
 
         case MessageType.OPEN_TAB:
             try {
-                await browser.tabs.create({ url: message.url, active: message.active ?? true });
+                await browser.tabs.create({ url: typedMessage.url, active: typedMessage.active ?? true });
                 return { ok: true };
             } catch (err) {
                 return { ok: false, error: getErrorMessage(err) };

@@ -7,7 +7,7 @@ const MODULE_NAME = 'SettingsIconHijacker';
 const ICON_SELECTOR = '.icon-kub-mobile';
 const HIJACK_ATTR = 'data-ffne-hijacked';
 const LABEL = 'FFN Enhancements settings';
-const OBSERVER_TIMEOUT_MS = 5_000;
+const OBSERVER_TIMEOUT_MS = 5000;
 
 let observer: MutationObserver | null = null;
 let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -58,7 +58,6 @@ function _bindIcon(icon: HTMLElement): void {
 
 function _attachAffordance(icon: HTMLElement): void {
     const wrapper = markFfneUiRoot(document.createElement('span'));
-    wrapper.style.cssText = 'position:relative;display:contents;';
     icon.insertAdjacentElement('afterend', wrapper);
 
     const shadow = wrapper.attachShadow({ mode: 'closed' });
@@ -105,7 +104,7 @@ function _attachAffordance(icon: HTMLElement): void {
 function _armObserver(): void {
     if (!observer) {
         observer = new MutationObserver(() => {
-            void _bindIcons();
+            _bindIcons();
         });
         observer.observe(document.documentElement, { childList: true, subtree: true });
     }

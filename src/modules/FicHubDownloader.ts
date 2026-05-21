@@ -9,6 +9,7 @@ import { FicHubMetadataSerializer } from '../serializers/FicHubMetadataSerialize
 import JSZip from 'jszip';
 import browser from 'webextension-polyfill';
 import { backgroundFetch } from '../platform/messaging';
+import { markFfneUiRoot } from '../utils/ffneUi';
 
 const MODULE_NAME = 'FicHubDownloader';
 const FICHUB_API_TIMEOUT_MS = 60_000;
@@ -17,6 +18,8 @@ const COVER_INJECTION_TIMEOUT_MS = 120_000;
 const EPUB_MIME_TYPE = 'application/epub+zip';
 const FICHUB_PERMISSION_ORIGIN = '*://fichub.net/*';
 const FICHUB_PERMISSION_MESSAGE = 'Allow access to fichub.net to enable downloads.';
+const FICHUB_PERMISSION_TOAST_ID = 'ffne-fichub-permission-toast';
+const FICHUB_PERMISSION_TOAST_TIMEOUT_MS = 4000;
 
 /**
  * Concrete implementation of the Downloader strategy using the FicHub API.
@@ -368,7 +371,34 @@ export async function _ensureFicHubPermission(): Promise<boolean> {
 
     const granted = await browser.permissions.request(permissions);
     if (!granted) {
-        alert(FICHUB_PERMISSION_MESSAGE);
+        _showPermissionToast(FICHUB_PERMISSION_MESSAGE);
     }
     return granted;
+}
+
+function _showPermissionToast(message: string): void {
+    const existing = document.getElementById(FICHUB_PERMISSION_TOAST_ID);
+    if (existing) existing.remove();
+
+    const toast = markFfneUiRoot(document.createElement('div'));
+    toast.id = FICHUB_PERMISSION_TOAST_ID;
+    toast.textContent = message;
+    toast.style.cssText = [
+        'position:fixed',
+        'right:16px',
+        'bottom:16px',
+        'z-index:2147483647',
+        'max-width:320px',
+        'padding:10px 12px',
+        'border-radius:8px',
+        'background:#8b1e1e',
+        'color:#fff',
+        'font:13px/1.4 system-ui,sans-serif',
+        'box-shadow:0 6px 18px rgba(0,0,0,.25)',
+    ].join(';');
+
+    document.body.appendChild(toast);
+    window.setTimeout(() => {
+        toast.remove();
+    }, FICHUB_PERMISSION_TOAST_TIMEOUT_MS);
 }

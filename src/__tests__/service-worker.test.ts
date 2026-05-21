@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import './__mocks__/browser';
 import { mockChromeRuntime, mockChromeTabs } from './__mocks__/browser';
 
+function getBrowserApi(): { runtime: { sendMessage(message: unknown): Promise<unknown> } } {
+    return (globalThis as unknown as { browser: { runtime: { sendMessage(message: unknown): Promise<unknown> } } }).browser;
+}
+
 describe('service worker', () => {
     beforeEach(async () => {
         vi.resetModules();
@@ -12,7 +16,7 @@ describe('service worker', () => {
     });
 
     it('proxies OPEN_TAB to browser.tabs.create', async () => {
-        const browserApi = globalThis.browser as typeof globalThis.browser;
+        const browserApi = getBrowserApi();
 
         const response = await browserApi.runtime.sendMessage({
             type: 'OPEN_TAB',
@@ -27,7 +31,7 @@ describe('service worker', () => {
     });
 
     it('returns text responses for CROSS_ORIGIN_FETCH', async () => {
-        const browserApi = globalThis.browser as typeof globalThis.browser;
+        const browserApi = getBrowserApi();
         const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', {
             status: 200,
             headers: { 'Content-Type': 'text/plain' },
@@ -49,7 +53,7 @@ describe('service worker', () => {
     });
 
     it('returns byte arrays for blob responses', async () => {
-        const browserApi = globalThis.browser as typeof globalThis.browser;
+        const browserApi = getBrowserApi();
         const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
             new Uint8Array([1, 2, 3]),
             { status: 200 },
