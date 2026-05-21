@@ -66,7 +66,7 @@ export const Ao3Bridge = {
                 void this._processPendingRequest();
             });
         } catch (err) {
-            Core.getLogger(this.MODULE_NAME, 'init')('chrome.storage.onChanged unavailable; heartbeat polling remains active.', err);
+            Core.getLogger(this.MODULE_NAME, 'init')('Extension storage change events unavailable; heartbeat polling remains active.', err);
         }
 
         this._heartbeatTimer = window.setInterval(() => {

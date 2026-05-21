@@ -14,7 +14,7 @@
  *
  * Phase 2 — init()
  * Runs after DOMContentLoaded. Full initialization is permitted here:
- * read storage, reconcile with chrome.storage, wire up event handlers,
+ * read storage, reconcile with extension storage, wire up event handlers,
  * replace prime-phase fallback styles with the full precision theme, etc.
  */
 export interface ISitewideModule {

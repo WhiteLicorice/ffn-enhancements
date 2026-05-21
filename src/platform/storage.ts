@@ -1,3 +1,5 @@
+import { extensionApi, type ExtensionStorageChanges } from './extensionApi';
+
 const STORAGE_PREFIX = 'ffne_';
 const _pendingLocalWrites = new Map<string, number>();
 const LOCAL_WRITE_GUARD_MS = 200;
@@ -59,7 +61,7 @@ export const platformStorage: PlatformStorage = {
         }
 
         _pendingLocalWrites.set(fk, Date.now());
-        await chrome.storage.local.set({ [fk]: value });
+        await extensionApi.storage.local.set({ [fk]: value });
     },
 
     async remove(key: string): Promise<void> {
@@ -70,11 +72,11 @@ export const platformStorage: PlatformStorage = {
             // localStorage unavailable.
         }
         _pendingLocalWrites.set(fk, Date.now());
-        await chrome.storage.local.remove(fk);
+        await extensionApi.storage.local.remove(fk);
     },
 
     async hydrateFromPersistentStorage(): Promise<Record<string, string | number | boolean>> {
-        const stored = await chrome.storage.local.get(null);
+        const stored = await extensionApi.storage.local.get(null);
         const hydrated: Record<string, string | number | boolean> = {};
 
         for (const [key, value] of Object.entries(stored)) {
@@ -98,7 +100,9 @@ export const platformStorage: PlatformStorage = {
     },
 
     onChanged(callback: (key: string, newValue: unknown, oldValue: unknown) => void): () => void {
-        const handler = (changes: Record<string, chrome.storage.StorageChange>) => {
+        const handler = (changes: ExtensionStorageChanges, areaName: string) => {
+            if (areaName !== 'local') return;
+
             _cleanStalePendingWrites();
             for (const [changedKey, change] of Object.entries(changes)) {
                 if (!changedKey.startsWith(STORAGE_PREFIX)) continue;
@@ -127,7 +131,7 @@ export const platformStorage: PlatformStorage = {
             }
         };
 
-        chrome.storage.onChanged.addListener(handler);
-        return () => chrome.storage.onChanged.removeListener(handler);
+        extensionApi.storage.onChanged.addListener(handler);
+        return () => extensionApi.storage.onChanged.removeListener(handler);
     },
 };

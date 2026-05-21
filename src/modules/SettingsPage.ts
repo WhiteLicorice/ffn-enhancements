@@ -62,8 +62,8 @@ let _unsubscribers: (() => void)[] = [];
  * **Settings are saved immediately on change** (no "Save" button). The flash
  * indicator ("✓") provides visual feedback per row.
  *
- * **Cross-tab sync:** `SettingsManager.subscribe()` fires via
- * `chrome.storage.onChanged` when another open FFN tab changes a value. The
+ * **Cross-tab sync:** `SettingsManager.subscribe()` fires via extension
+ * storage change events when another open FFN tab changes a value. The
  * UI controls update reactively. Subscriptions are cleaned up on `closeModal()`
  * to prevent accumulation across multiple open/close cycles.
  *
