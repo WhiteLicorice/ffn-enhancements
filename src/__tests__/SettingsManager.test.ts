@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { _parseStoredValue, SettingsManager } from '../modules/SettingsManager';
 import type { FFNSettings } from '../modules/SettingsManager';
 import { Theme } from '../enums/Theme';
-import { mockChromeStorage } from './__mocks__/chrome';
+import { mockChromeStorage } from './__mocks__/browser';
 import { platformStorage } from '../platform/storage';
 
 function populateStorage(entries: Record<string, string | number | boolean>): void {

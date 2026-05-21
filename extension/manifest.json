@@ -3,11 +3,13 @@
   "name": "FFN Enhancements",
   "version": "0.17.0",
   "description": "Modern enhancements for FanFiction.net",
-  "permissions": ["storage", "scripting", "activeTab"],
-  "optional_host_permissions": [
+  "permissions": ["storage"],
+  "host_permissions": [
     "*://www.fanfiction.net/*",
     "*://fanfiction.net/*",
-    "*://archiveofourown.org/*",
+    "*://archiveofourown.org/*"
+  ],
+  "optional_host_permissions": [
     "*://fichub.net/*"
   ],
   "background": {
@@ -44,9 +46,6 @@
       "all_frames": false
     }
   ],
-  "action": {
-    "default_title": "FFN Enhancements - Click to open Settings"
-  },
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
