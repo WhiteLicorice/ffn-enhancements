@@ -153,6 +153,20 @@ describe('platformStorage', () => {
             unsub();
         });
 
+        it('ignores changes from non-local storage areas', () => {
+            const calls: unknown[] = [];
+            const unsub = platformStorage.onChanged((key) => {
+                calls.push(key);
+            });
+
+            mockChromeStorage._emit({ ffne_theme: { oldValue: 'light', newValue: 'dark' } }, 'sync');
+
+            expect(calls).toHaveLength(0);
+            expect(localStorage.getItem('ffne_theme')).toBeNull();
+
+            unsub();
+        });
+
         it('unsubscribe stops receiving events', async () => {
             const calls: unknown[] = [];
             const unsub = platformStorage.onChanged((key) => {

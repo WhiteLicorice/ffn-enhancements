@@ -72,10 +72,14 @@ class MockStorageArea {
         this._listeners.length = 0;
     }
 
-    private _fireOnChanged(changes: Record<string, StorageChange>): void {
+    _emit(changes: Record<string, StorageChange>, areaName: string = 'local'): void {
         for (const listener of [...this._listeners]) {
-            listener(changes, 'local');
+            listener(changes, areaName);
         }
+    }
+
+    private _fireOnChanged(changes: Record<string, StorageChange>): void {
+        this._emit(changes, 'local');
     }
 }
 
