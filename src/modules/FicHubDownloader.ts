@@ -9,6 +9,7 @@ import { FicHubMetadataSerializer } from '../serializers/FicHubMetadataSerialize
 import JSZip from 'jszip';
 import { backgroundFetch } from '../platform/messaging';
 import { extensionApi } from '../platform/extensionApi';
+import { MessageType, type EnsureFicHubPermissionResponse } from '../background/message-types';
 import { markFfneUiRoot } from '../utils/ffneUi';
 
 const MODULE_NAME = 'FicHubDownloader';
@@ -16,7 +17,6 @@ const FICHUB_API_TIMEOUT_MS = 60_000;
 const FICHUB_FILE_TIMEOUT_MS = 120_000;
 const COVER_INJECTION_TIMEOUT_MS = 120_000;
 const EPUB_MIME_TYPE = 'application/epub+zip';
-const FICHUB_PERMISSION_ORIGIN = '*://fichub.net/*';
 const FICHUB_PERMISSION_MESSAGE = 'Allow access to fichub.net to enable downloads.';
 const FICHUB_PERMISSION_TOAST_ID = 'ffne-fichub-permission-toast';
 const FICHUB_PERMISSION_TOAST_TIMEOUT_MS = 4000;
@@ -364,16 +364,19 @@ export function _sanitizeFilename(name: string): string {
 }
 
 export async function _ensureFicHubPermission(): Promise<boolean> {
-    const permissions = { origins: [FICHUB_PERMISSION_ORIGIN] };
-    if (await extensionApi.permissions.contains(permissions)) {
-        return true;
+    try {
+        const response = await extensionApi.runtime.sendMessage<EnsureFicHubPermissionResponse>({
+            type: MessageType.ENSURE_FICHUB_PERMISSION,
+        });
+        if (response.ok && response.granted) {
+            return true;
+        }
+    } catch {
+        // The background page owns extension-only permission APIs.
     }
 
-    const granted = await extensionApi.permissions.request(permissions);
-    if (!granted) {
-        _showPermissionToast(FICHUB_PERMISSION_MESSAGE);
-    }
-    return granted;
+    _showPermissionToast(FICHUB_PERMISSION_MESSAGE);
+    return false;
 }
 
 function _showPermissionToast(message: string): void {

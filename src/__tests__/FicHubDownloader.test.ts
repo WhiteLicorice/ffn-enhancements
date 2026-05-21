@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import './__mocks__/browser';
-import { mockChromePermissions } from './__mocks__/browser';
+import { mockChromePermissions, mockChromeRuntime } from './__mocks__/browser';
+import { MessageType, type EnsureFicHubPermissionResponse } from '../background/message-types';
 import { _ensureFicHubPermission, _sanitizeFilename, _resolveFullPath, _findExistingCoverHref } from '../modules/FicHubDownloader';
 
 // ─── _sanitizeFilename ────────────────────────────────────────────────────
@@ -138,25 +139,52 @@ describe('_findExistingCoverHref', () => {
 
 describe('_ensureFicHubPermission', () => {
     beforeEach(() => {
+        mockChromeRuntime._reset();
         mockChromePermissions._reset();
         document.body.innerHTML = '';
     });
 
-    it('does not request permissions when already granted', async () => {
-        mockChromePermissions.state.grantedOrigins.add('*://fichub.net/*');
+    function installPermissionResponder(response: EnsureFicHubPermissionResponse): void {
+        const chromeApi = (globalThis as unknown as {
+            chrome: {
+                runtime: {
+                    onMessage: {
+                        addListener(listener: (
+                            message: unknown,
+                            sender: unknown,
+                            sendResponse: (response: unknown) => void,
+                        ) => unknown): void;
+                    };
+                };
+            };
+        }).chrome;
+
+        chromeApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+            if ((message as { type?: string }).type !== MessageType.ENSURE_FICHUB_PERMISSION) {
+                return undefined;
+            }
+            sendResponse(response);
+            return true;
+        });
+    }
+
+    it('asks the background context to ensure FicHub permission', async () => {
+        installPermissionResponder({ ok: true, granted: true });
 
         const granted = await _ensureFicHubPermission();
 
         expect(granted).toBe(true);
+        expect(document.getElementById('ffne-fichub-permission-toast')).toBeNull();
         expect(mockChromePermissions.state.requestCalls).toEqual([]);
     });
 
-    it('requests permissions through the extension API wrapper', async () => {
+    it('shows a denial toast when the background context cannot grant permission', async () => {
+        installPermissionResponder({ ok: true, granted: false });
+
         const granted = await _ensureFicHubPermission();
 
-        expect(granted).toBe(true);
-        expect(mockChromePermissions.state.requestCalls).toEqual([
-            { origins: ['*://fichub.net/*'] },
-        ]);
+        expect(granted).toBe(false);
+        expect(document.getElementById('ffne-fichub-permission-toast')?.textContent)
+            .toBe('Allow access to fichub.net to enable downloads.');
     });
 });

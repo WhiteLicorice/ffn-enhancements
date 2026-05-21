@@ -1,5 +1,10 @@
 import { MessageType } from './message-types';
-import type { BackgroundMessage, CrossOriginFetchMessage, CrossOriginFetchResponse } from './message-types';
+import type {
+    BackgroundMessage,
+    CrossOriginFetchMessage,
+    CrossOriginFetchResponse,
+    EnsureFicHubPermissionResponse,
+} from './message-types';
 import {
     extensionApi,
     type ExtensionRuntimeMessageListener,
@@ -7,6 +12,8 @@ import {
 } from '../platform/extensionApi';
 
 console.log('FFN Enhancements service worker loaded.');
+
+const FICHUB_PERMISSION_ORIGIN = '*://fichub.net/*';
 
 const onMessage: ExtensionRuntimeMessageListener = (message, sender, sendResponse) => {
     void handleMessage(message as BackgroundMessage, sender)
@@ -32,6 +39,9 @@ async function handleMessage(
             } catch (err) {
                 return { ok: false, error: getErrorMessage(err) };
             }
+
+        case MessageType.ENSURE_FICHUB_PERMISSION:
+            return ensureFicHubPermission();
 
         default:
             return { ok: false, error: 'Unknown message type' };
@@ -83,4 +93,23 @@ async function handleCrossOriginFetch(
 
 function getErrorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
+}
+
+async function ensureFicHubPermission(): Promise<EnsureFicHubPermissionResponse> {
+    const permissions = { origins: [FICHUB_PERMISSION_ORIGIN] };
+
+    try {
+        if (await extensionApi.permissions.contains(permissions)) {
+            return { ok: true, granted: true };
+        }
+
+        const granted = await extensionApi.permissions.request(permissions);
+        return { ok: true, granted };
+    } catch (err) {
+        return {
+            ok: false,
+            granted: false,
+            error: getErrorMessage(err),
+        };
+    }
 }
