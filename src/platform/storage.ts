@@ -101,6 +101,7 @@ export const platformStorage: PlatformStorage = {
 
     onChanged(callback: (key: string, newValue: unknown, oldValue: unknown) => void): () => void {
         const handler = (changes: ExtensionStorageChanges, areaName: string) => {
+            // platformStorage only mirrors extension local storage; ignore sync/managed areas.
             if (areaName !== 'local') return;
 
             _cleanStalePendingWrites();
