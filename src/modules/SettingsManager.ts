@@ -188,16 +188,16 @@ const _subscribers = new Map<string, Set<(newVal: unknown, oldVal: unknown) => v
  * SettingsManager
  * Central registry for all persistent extension settings.
  *
- * Uses `chrome.storage.local` for cross-session persistence + cross-tab sync
+ * Uses extension local storage for cross-session persistence + cross-tab sync
  * and `localStorage` for synchronous document-start reads.
  *
  * **Execution model:**
  * - Phase 1 (`prime`): Loads all settings from localStorage into the in-memory
- *   cache and registers `chrome.storage.onChanged` for cross-tab sync.
+ *   cache and registers extension storage change listeners for cross-tab sync.
  * - Phase 2 (`init`): No-op. Settings are already in cache.
  *
  * **Cross-tab sync:**
- * `chrome.storage.onChanged` fires when another tab changes a storage value.
+ * Extension storage change events fire when another tab changes a storage value.
  * The listener updates the in-memory cache and notifies all `subscribe()` callbacks.
  * Same-tab changes made via `set()` are guarded with a timestamp window in
  * `platformStorage` so subscribers are not double-notified.
@@ -245,7 +245,7 @@ export const SettingsManager: ISitewideModule & {
      * notifies all local subscribers.
      *
      * The write to localStorage is synchronous (immediate reads).
-     * The write to chrome.storage.local is async (persistence + cross-tab sync).
+     * The write to extension local storage is async (persistence + cross-tab sync).
      *
      * @param key - The setting key.
      * @param value - The new value.
@@ -253,7 +253,7 @@ export const SettingsManager: ISitewideModule & {
     async set<K extends keyof FFNSettings>(key: K, value: FFNSettings[K]): Promise<void> {
         const old = _cache[key];
         _cache[key] = value;
-        // platformStorage.set() writes to localStorage (sync) + chrome.storage (async).
+        // platformStorage.set() writes to localStorage (sync) + extension storage (async).
         await platformStorage.set(key, value as string | number | boolean);
         if (key === 'theme') {
             _mirrorThemeCache(_parseStoredValue('theme', value));
@@ -267,7 +267,7 @@ export const SettingsManager: ISitewideModule & {
      *
      * Fires for:
      * - Local changes made via `set()` (same tab)
-     * - Remote changes made in any other tab (via `chrome.storage.onChanged`)
+     * - Remote changes made in any other tab (via extension storage change events)
      *
      * @param key - The setting key to watch.
      * @param cb - Callback receiving the new value and the previous value.
@@ -345,7 +345,7 @@ function _loadEnum(key: keyof FFNSettings, enumObj: Record<string, string>): voi
 }
 
 /**
- * Registers a single chrome.storage.onChanged listener for cross-tab sync.
+ * Registers a single extension storage change listener for cross-tab sync.
  * Replaces the old per-key value-change listener approach.
  *
  * The local-write guard in platformStorage prevents double-firing for
@@ -361,7 +361,7 @@ function _registerOnChangedListener(): void {
         });
     } catch {
         FFNLogger.log(MODULE_NAME, '_registerOnChangedListener',
-            'chrome.storage.onChanged unavailable. Cross-tab sync disabled.');
+            'Extension storage change events unavailable. Cross-tab sync disabled.');
     }
 }
 
@@ -376,7 +376,7 @@ async function _hydrateFromPersistentStorage(): Promise<void> {
         }
     } catch {
         FFNLogger.log(MODULE_NAME, '_hydrateFromPersistentStorage',
-            'chrome.storage.local hydration unavailable. Using local mirror only.');
+            'Extension local storage hydration unavailable. Using local mirror only.');
     }
 }
 
@@ -397,7 +397,7 @@ function _applyParsedSetting<K extends keyof FFNSettings>(key: K, value: FFNSett
  *
  * Handles both:
  * - localStorage strings (JSON-encoded or raw)
- * - chrome.storage native types (boolean, number)
+ * - extension storage native types (boolean, number)
  */
 export function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unknown): FFNSettings[K] | undefined {
     const defaultVal = DEFAULTS[key];

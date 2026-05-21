@@ -1,4 +1,5 @@
 import type { CrossOriginFetchMessage, CrossOriginFetchResponse } from '../background/message-types';
+import { extensionApi } from './extensionApi';
 
 export interface FetchRequestOptions {
     url: string;
@@ -29,7 +30,7 @@ export async function backgroundFetch(options: FetchRequestOptions): Promise<Fet
     };
 
     try {
-        const response = await chrome.runtime.sendMessage(message) as CrossOriginFetchResponse;
+        const response = await extensionApi.runtime.sendMessage<CrossOriginFetchResponse>(message);
 
         if (options.responseType === 'blob' && Array.isArray(response.data)) {
             return {

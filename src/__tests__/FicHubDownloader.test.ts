@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { _sanitizeFilename, _resolveFullPath, _findExistingCoverHref } from '../modules/FicHubDownloader';
+import { beforeEach, describe, expect, it } from 'vitest';
+import './__mocks__/browser';
+import { mockChromePermissions } from './__mocks__/browser';
+import { _ensureFicHubPermission, _sanitizeFilename, _resolveFullPath, _findExistingCoverHref } from '../modules/FicHubDownloader';
 
 // ─── _sanitizeFilename ────────────────────────────────────────────────────
 
@@ -131,5 +133,30 @@ describe('_findExistingCoverHref', () => {
 </package>`;
         const doc = parser.parseFromString(xml, 'application/xml');
         expect(_findExistingCoverHref(doc)).toBe('images/cover.jpg');
+    });
+});
+
+describe('_ensureFicHubPermission', () => {
+    beforeEach(() => {
+        mockChromePermissions._reset();
+        document.body.innerHTML = '';
+    });
+
+    it('does not request permissions when already granted', async () => {
+        mockChromePermissions.state.grantedOrigins.add('*://fichub.net/*');
+
+        const granted = await _ensureFicHubPermission();
+
+        expect(granted).toBe(true);
+        expect(mockChromePermissions.state.requestCalls).toEqual([]);
+    });
+
+    it('requests permissions through the extension API wrapper', async () => {
+        const granted = await _ensureFicHubPermission();
+
+        expect(granted).toBe(true);
+        expect(mockChromePermissions.state.requestCalls).toEqual([
+            { origins: ['*://fichub.net/*'] },
+        ]);
     });
 });

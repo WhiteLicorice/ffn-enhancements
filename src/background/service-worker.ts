@@ -1,20 +1,33 @@
 import { MessageType } from './message-types';
 import type { BackgroundMessage, CrossOriginFetchMessage, CrossOriginFetchResponse } from './message-types';
+import {
+    extensionApi,
+    type ExtensionRuntimeMessageListener,
+    type ExtensionRuntimeMessageSender,
+} from '../platform/extensionApi';
 
 console.log('FFN Enhancements service worker loaded.');
 
-chrome.runtime.onMessage.addListener(async (
-    message: unknown,
-    sender: chrome.runtime.MessageSender,
-): Promise<unknown> => {
-    const typedMessage = message as BackgroundMessage;
-    switch (typedMessage.type) {
+const onMessage: ExtensionRuntimeMessageListener = (message, sender, sendResponse) => {
+    void handleMessage(message as BackgroundMessage, sender)
+        .then((response) => sendResponse(response))
+        .catch((err) => sendResponse({ ok: false, error: getErrorMessage(err) }));
+    return true;
+};
+
+extensionApi.runtime.onMessage.addListener(onMessage);
+
+async function handleMessage(
+    message: BackgroundMessage,
+    sender: ExtensionRuntimeMessageSender,
+): Promise<unknown> {
+    switch (message.type) {
         case MessageType.CROSS_ORIGIN_FETCH:
-            return handleCrossOriginFetch(typedMessage, sender);
+            return handleCrossOriginFetch(message, sender);
 
         case MessageType.OPEN_TAB:
             try {
-                await chrome.tabs.create({ url: typedMessage.url, active: typedMessage.active ?? true });
+                await extensionApi.tabs.create({ url: message.url, active: message.active ?? true });
                 return { ok: true };
             } catch (err) {
                 return { ok: false, error: getErrorMessage(err) };
@@ -23,11 +36,11 @@ chrome.runtime.onMessage.addListener(async (
         default:
             return { ok: false, error: 'Unknown message type' };
     }
-});
+}
 
 async function handleCrossOriginFetch(
     msg: CrossOriginFetchMessage,
-    _sender: chrome.runtime.MessageSender,
+    _sender: ExtensionRuntimeMessageSender,
 ): Promise<CrossOriginFetchResponse> {
     try {
         const controller = new AbortController();

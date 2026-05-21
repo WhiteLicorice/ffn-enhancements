@@ -21,10 +21,11 @@ import { getOutDir, patchManifest } from './scripts/manifest-utils.mjs';
 // entry bundle. No `chunks/` directory is emitted, no cross-bundle imports
 // exist, and content scripts execute under classic-script semantics.
 //
-// Browser APIs use `chrome.*` directly — no polyfill. Both Chrome and Firefox
-// ship the full `chrome.*` alias with Promise support in MV3 for the API
-// surface this extension uses. Non-ASCII safety: `esbuild.charset: 'ascii'`
-// plus `scripts/sanitize-dist.mjs` post-build scan.
+// Compatibility uses build-time manifest targeting plus a tiny runtime wrapper:
+// Chrome keeps `background.service_worker`, Firefox gets `background.scripts`,
+// and `src/platform/extensionApi.ts` prefers `browser.*` with callback-normalized
+// `chrome.*` fallback. Non-ASCII safety: `esbuild.charset: 'ascii'` plus
+// `scripts/sanitize-dist.mjs` post-build scan.
 //
 // Re-exports `patchManifest` for unit tests in `src/__tests__/viteConfig.test.ts`.
 

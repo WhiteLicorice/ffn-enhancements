@@ -8,6 +8,7 @@ import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer'
 import { FicHubMetadataSerializer } from '../serializers/FicHubMetadataSerializer';
 import JSZip from 'jszip';
 import { backgroundFetch } from '../platform/messaging';
+import { extensionApi } from '../platform/extensionApi';
 import { markFfneUiRoot } from '../utils/ffneUi';
 
 const MODULE_NAME = 'FicHubDownloader';
@@ -364,11 +365,11 @@ export function _sanitizeFilename(name: string): string {
 
 export async function _ensureFicHubPermission(): Promise<boolean> {
     const permissions = { origins: [FICHUB_PERMISSION_ORIGIN] };
-    if (await chrome.permissions.contains(permissions)) {
+    if (await extensionApi.permissions.contains(permissions)) {
         return true;
     }
 
-    const granted = await chrome.permissions.request(permissions);
+    const granted = await extensionApi.permissions.request(permissions);
     if (!granted) {
         _showPermissionToast(FICHUB_PERMISSION_MESSAGE);
     }

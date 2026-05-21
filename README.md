@@ -204,7 +204,7 @@ npm run dev      # rebuild extension files in watch mode
 npm run package  # build and zip both browser targets
 ```
 
-Chrome/Edge builds emit `dist-chrome/` with `background.service_worker`. Firefox builds emit `dist-firefox/` with `background.scripts`, because Firefox MV3 does not currently install service-worker backgrounds. CI sets `FFNE_VERSION` and `FFNE_BETA` to produce release ZIPs with the right manifest version metadata.
+Chrome/Edge builds emit `dist-chrome/` with `background.service_worker`. Firefox builds emit `dist-firefox/` with `background.scripts`, because Firefox MV3 does not currently install service-worker backgrounds. Runtime extension API calls are normalized through `src/platform/extensionApi.ts`, which prefers `browser.*` and falls back to callback-normalized `chrome.*`. CI sets `FFNE_VERSION` and `FFNE_BETA` to produce release ZIPs with the right manifest version metadata.
 
 ### Testing
 
