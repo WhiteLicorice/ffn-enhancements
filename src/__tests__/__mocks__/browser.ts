@@ -95,7 +95,7 @@ const tabsState = {
     createCalls: [] as Array<{ url?: string; active?: boolean }>,
 };
 
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+function isThenable(value: unknown): value is PromiseLike<unknown> {
     return typeof value === 'object'
         && value !== null
         && 'then' in value
@@ -105,7 +105,7 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
 async function dispatchRuntimeMessage(message: unknown): Promise<unknown> {
     for (const listener of [...runtimeMessageListeners]) {
         let sendResponseCalled = false;
-        let resolveResponse: (response: unknown) => void = () => undefined;
+        let resolveResponse!: (response: unknown) => void;
         const responsePromise = new Promise<unknown>((resolve) => {
             resolveResponse = resolve;
         });
@@ -119,7 +119,7 @@ async function dispatchRuntimeMessage(message: unknown): Promise<unknown> {
         if (result === true) {
             return responsePromise;
         }
-        if (isPromiseLike(result)) {
+        if (isThenable(result)) {
             return result;
         }
         if (result !== undefined) {
