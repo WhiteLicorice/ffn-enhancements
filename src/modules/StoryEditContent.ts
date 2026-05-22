@@ -15,6 +15,7 @@ import { runBulkOperation } from '../utils/runBulkOperation';
 import { markFfneUiRoot } from '../utils/ffneUi';
 import { injectStyleOnce } from '../utils/injectStyleOnce';
 import { SettingsManager } from './SettingsManager';
+import { h } from '../utils/dom';
 import storyEditContentStyles from '../styles/story-edit-content.css?raw';
 
 const BULK_REPLACE_BUTTON_ID = 'ffne-story-bulk-replace-btn';
@@ -43,15 +44,6 @@ function _parseFfnOptionName(value: string): string {
         .replace(/^\d+\.\s*/, '')
         .replace(/\s*\([\d,]+\)\s*$/, '')
         .trim();
-}
-
-function _escapeHtml(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
 }
 
 function _extractChapterNumber(label: string, fallbackNumber: number): number {
@@ -340,43 +332,41 @@ function _renderFailureTable(
 
     if (failures.length === 0) {
         container.hidden = true;
-        container.innerHTML = '';
+        container.replaceChildren();
         return;
     }
 
-    const rowsHtml = failures.map(failure => `
-        <tr>
-            <td>${_escapeHtml(failure.chapterLabel)}</td>
-            <td>${_escapeHtml(failure.docName)}</td>
-            <td>${_escapeHtml(failure.reason)}</td>
-        </tr>
-    `).join('');
-
-    const retryHtml = onRetry
-        ? `<div class="ffne-story-bulk-retry-wrap"><button type="button" id="ffne-story-bulk-retry" class="ffne-story-bulk-btn">Retry Failed</button></div>`
-        : '';
-
     container.hidden = false;
-    // eslint-disable-next-line no-unsanitized/property -- rowsHtml values all escaped via _escapeHtml
-    container.innerHTML = `
-        <div class="ffne-story-bulk-results-title">Failed Replacements</div>
-        <table class="ffne-story-bulk-table" contenteditable="false">
-            <thead>
-                <tr>
-                    <th>Chapter</th>
-                    <th>Source Doc</th>
-                    <th>Reason</th>
-                </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-        </table>
-        ${retryHtml}
-    `;
-
-    if (onRetry) {
-        container.querySelector<HTMLButtonElement>('#ffne-story-bulk-retry')
-            ?.addEventListener('click', onRetry);
+    const retryButton = onRetry
+        ? h('button', { type: 'button', id: 'ffne-story-bulk-retry', class: 'ffne-story-bulk-btn' }, 'Retry Failed')
+        : null;
+    if (retryButton && onRetry) {
+        retryButton.addEventListener('click', onRetry);
     }
+
+    const children: Array<string | Node> = [
+        h('div', { class: 'ffne-story-bulk-results-title' }, 'Failed Replacements'),
+        h('table', { class: 'ffne-story-bulk-table', contenteditable: 'false' },
+            h('thead', null,
+                h('tr', null,
+                    h('th', null, 'Chapter'),
+                    h('th', null, 'Source Doc'),
+                    h('th', null, 'Reason'),
+                ),
+            ),
+            h('tbody', null,
+                failures.map(failure => h('tr', null,
+                    h('td', null, failure.chapterLabel),
+                    h('td', null, failure.docName),
+                    h('td', null, failure.reason),
+                )),
+            ),
+        ),
+    ];
+    if (retryButton) {
+        children.push(h('div', { class: 'ffne-story-bulk-retry-wrap' }, retryButton));
+    }
+    container.replaceChildren(...children);
 }
 
 export const StoryEditContent = {
@@ -465,41 +455,40 @@ export const StoryEditContent = {
         const overlay = markFfneUiRoot(document.createElement('div'));
         overlay.id = BULK_REPLACE_MODAL_ID;
         overlay.className = 'ffne-story-bulk-overlay';
-        overlay.innerHTML = `
-            <div class="ffne-story-bulk-modal" role="dialog" aria-modal="true" aria-labelledby="ffne-story-bulk-title">
-                <div class="ffne-story-bulk-header">
-                    <h3 id="ffne-story-bulk-title">Bulk Replace Chapters</h3>
-                    <button type="button" class="ffne-story-bulk-close" aria-label="Close">x</button>
-                </div>
-                <div class="ffne-story-bulk-body">
-                    <div id="ffne-story-bulk-summary" class="ffne-story-bulk-summary"></div>
-                    <table class="ffne-story-bulk-table" contenteditable="false">
-                        <thead>
-                            <tr>
-                                <th>Chapter</th>
-                                <th>Source Doc</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="ffne-story-bulk-rows"></tbody>
-                    </table>
-                    <div id="ffne-story-bulk-results" class="ffne-story-bulk-results" hidden></div>
-                    <div class="ffne-story-bulk-footer">
-                        <span id="ffne-story-bulk-status" class="ffne-story-bulk-run-status"></span>
-                        <button type="button" id="ffne-story-bulk-start" class="ffne-story-bulk-btn">Run Bulk Replace</button>
-                        <button type="button" class="ffne-story-bulk-btn" data-ffne-action="close">Close</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        const rowsBody = overlay.querySelector<HTMLElement>('#ffne-story-bulk-rows');
-        const summary = overlay.querySelector<HTMLElement>('#ffne-story-bulk-summary');
-        const status = overlay.querySelector<HTMLElement>('#ffne-story-bulk-status');
-        const results = overlay.querySelector<HTMLElement>('#ffne-story-bulk-results');
-        const startButton = overlay.querySelector<HTMLButtonElement>('#ffne-story-bulk-start');
-
-        if (!rowsBody || !summary || !status || !results || !startButton || !this._state) return;
+        const closeButton = h('button', { type: 'button', class: 'ffne-story-bulk-close', 'aria-label': 'Close' }, '\u00d7');
+        const summary = h('div', { id: 'ffne-story-bulk-summary', class: 'ffne-story-bulk-summary' });
+        const rowsBody = h('tbody', { id: 'ffne-story-bulk-rows' });
+        const results = h('div', { id: 'ffne-story-bulk-results', class: 'ffne-story-bulk-results', hidden: true });
+        const status = h('span', { id: 'ffne-story-bulk-status', class: 'ffne-story-bulk-run-status' });
+        const startButton = h('button', { type: 'button', id: 'ffne-story-bulk-start', class: 'ffne-story-bulk-btn' }, 'Run Bulk Replace');
+        const footerCloseButton = h('button', { type: 'button', class: 'ffne-story-bulk-btn', 'data-ffne-action': 'close' }, 'Close');
+        overlay.appendChild(
+            h('div', { class: 'ffne-story-bulk-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ffne-story-bulk-title' },
+                h('div', { class: 'ffne-story-bulk-header' },
+                    h('h3', { id: 'ffne-story-bulk-title' }, 'Bulk Replace Chapters'),
+                    closeButton,
+                ),
+                h('div', { class: 'ffne-story-bulk-body' },
+                    summary,
+                    h('table', { class: 'ffne-story-bulk-table', contenteditable: 'false' },
+                        h('thead', null,
+                            h('tr', null,
+                                h('th', null, 'Chapter'),
+                                h('th', null, 'Source Doc'),
+                                h('th', null, 'Status'),
+                            ),
+                        ),
+                        rowsBody,
+                    ),
+                    results,
+                    h('div', { class: 'ffne-story-bulk-footer' },
+                        status,
+                        startButton,
+                        footerCloseButton,
+                    ),
+                ),
+            ),
+        );
 
         this._renderMappingRows(rowsBody, this._state.mappings, this._state.docs, () => {
             this._refreshPlan(summary, startButton);
@@ -524,10 +513,8 @@ export const StoryEditContent = {
             await this.runBulkReplace(e as MouseEvent, plan, status, results);
         });
 
-        overlay.querySelector<HTMLButtonElement>('.ffne-story-bulk-close')
-            ?.addEventListener('click', () => this.closeBulkReplaceModal());
-        overlay.querySelector<HTMLButtonElement>('[data-ffne-action="close"]')
-            ?.addEventListener('click', () => this.closeBulkReplaceModal());
+        closeButton.addEventListener('click', () => this.closeBulkReplaceModal());
+        footerCloseButton.addEventListener('click', () => this.closeBulkReplaceModal());
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) this.closeBulkReplaceModal();
         });
@@ -558,28 +545,23 @@ export const StoryEditContent = {
         docs: IStoryEditContentDoc[],
         onChange: () => void,
     ) {
-        const optionsHtml = docs.map(doc => `<option value="${_escapeHtml(doc.docId)}">${_escapeHtml(doc.docName)}</option>`).join('');
-        // eslint-disable-next-line no-unsanitized/property -- all user-visible values escaped via _escapeHtml; status/index are internal enums/numbers
-        body.innerHTML = mappings.map((mapping, index) => `
-            <tr data-row-index="${index}">
-                <td>${_escapeHtml(mapping.chapter.chapterLabel)}</td>
-                <td>
-                    <select class="ffne-story-bulk-select" data-row-index="${index}">
-                        <option value="">Skip this chapter</option>
-                        ${optionsHtml}
-                    </select>
-                </td>
-                <td data-ffne-status>${mapping.status}</td>
-            </tr>
-        `).join('');
-
-        body.querySelectorAll<HTMLTableRowElement>('tr[data-row-index]').forEach(row => {
-            const index = Number.parseInt(row.getAttribute('data-row-index') || '-1', 10);
-            if (Number.isInteger(index) && mappings[index]) {
-                mappings[index].modalRow = row;
-                this._renderRowStatus(mappings[index]);
-            }
+        const rows = mappings.map((mapping, index) => {
+            const select = h('select', { class: 'ffne-story-bulk-select', 'data-row-index': String(index) },
+                h('option', { value: '' }, 'Skip this chapter'),
+                docs.map(doc => h('option', { value: doc.docId }, doc.docName)),
+            );
+            select.value = mapping.selectedDocId;
+            const row = h('tr', { 'data-row-index': String(index) },
+                h('td', null, mapping.chapter.chapterLabel),
+                h('td', null, select),
+                h('td', { 'data-ffne-status': true }),
+            );
+            mapping.modalRow = row;
+            return row;
         });
+        body.replaceChildren(...rows);
+
+        mappings.forEach(mapping => this._renderRowStatus(mapping));
 
         body.querySelectorAll<HTMLSelectElement>('select[data-row-index]').forEach(select => {
             select.addEventListener('change', () => {
@@ -637,15 +619,20 @@ export const StoryEditContent = {
             ? 'ffne-story-bulk-summary ffne-story-bulk-error'
             : 'ffne-story-bulk-summary';
         summary.className = summaryClass;
-        // eslint-disable-next-line no-unsanitized/property -- interpolated values are numbers or static strings
-        summary.innerHTML = `
-            <div>
-                <strong>${plan.mappedCount}</strong> mapped,
-                <strong>${plan.skippedCount}</strong> skipped,
-                <strong>${plan.duplicateDocIds.length}</strong> duplicate mapping(s).
-            </div>
-            ${plan.hasBlockingErrors ? '<div>Each source doc can be used only once.</div>' : ''}
-        `;
+        const children: Array<string | Node> = [
+            h('div', null,
+                h('strong', null, String(plan.mappedCount)),
+                ' mapped, ',
+                h('strong', null, String(plan.skippedCount)),
+                ' skipped, ',
+                h('strong', null, String(plan.duplicateDocIds.length)),
+                ' duplicate mapping(s).',
+            ),
+        ];
+        if (plan.hasBlockingErrors) {
+            children.push(h('div', null, 'Each source doc can be used only once.'));
+        }
+        summary.replaceChildren(...children);
         startButton.disabled = plan.hasBlockingErrors || plan.mappedCount === 0;
         this._state.mappings.forEach(row => this._renderRowStatus(row));
     },

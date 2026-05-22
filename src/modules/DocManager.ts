@@ -18,6 +18,7 @@ import { markFfneUiRoot } from '../utils/ffneUi';
 import { injectStyleOnce } from '../utils/injectStyleOnce';
 import { blobToBytes, bytesToArrayBuffer, bytesToText, createZip, textToBytes, unzipBytes, type ZipFileEntry } from '../utils/zip';
 import { Ao3BridgeClient } from '../services/Ao3BridgeClient';
+import { h } from '../utils/dom';
 import {
     IAo3Chapter,
     IAo3MigrationFailure,
@@ -428,33 +429,30 @@ function _renderAo3MigrationFailures(
 
     if (failures.length === 0) {
         container.hidden = true;
-        container.innerHTML = '';
+        container.replaceChildren();
         return;
     }
 
-    const rowsHtml = failures.map(failure => `
-        <tr>
-            <td>${_escapeHtml(failure.sourceDoc)}</td>
-            <td>${_escapeHtml(failure.ao3Chapter)}</td>
-            <td>${_escapeHtml(failure.reason)}</td>
-        </tr>
-    `).join('');
-
     container.hidden = false;
-    // eslint-disable-next-line no-unsanitized/property -- rowsHtml values all escaped via _escapeHtml
-    container.innerHTML = `
-        <div class="ffne-dm-import-results-title">Failed AO3 Migrations</div>
-        <table class="ffne-dm-preview" contenteditable="false">
-            <thead>
-                <tr>
-                    <th>Source Doc</th>
-                    <th>AO3 Chapter</th>
-                    <th>Reason</th>
-                </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-        </table>
-    `;
+    container.replaceChildren(
+        h('div', { class: 'ffne-dm-import-results-title' }, 'Failed AO3 Migrations'),
+        h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
+            h('thead', null,
+                h('tr', null,
+                    h('th', null, 'Source Doc'),
+                    h('th', null, 'AO3 Chapter'),
+                    h('th', null, 'Reason'),
+                ),
+            ),
+            h('tbody', null,
+                failures.map(failure => h('tr', null,
+                    h('td', null, failure.sourceDoc),
+                    h('td', null, failure.ao3Chapter),
+                    h('td', null, failure.reason),
+                )),
+            ),
+        ),
+    );
 }
 
 function _renderBulkFailures(
@@ -467,41 +465,39 @@ function _renderBulkFailures(
 
     if (failures.length === 0) {
         container.hidden = true;
-        container.innerHTML = '';
+        container.replaceChildren();
         return;
     }
 
-    const rowsHtml = failures.map(failure => `
-        <tr>
-            <td>${_escapeHtml(failure.docName)}</td>
-            <td>${_escapeHtml(failure.reason)}</td>
-        </tr>
-    `).join('');
-
-    const retryHtml = onRetry
-        ? '<div class="ffne-dm-retry-wrap"><button type="button" class="ffne-dm-btn ffne-dm-retry-btn">Retry Failed</button></div>'
-        : '';
-
     container.hidden = false;
-    // eslint-disable-next-line no-unsanitized/property -- title is always a hardcoded literal at call sites; rowsHtml values escaped via _escapeHtml
-    container.innerHTML = `
-        <div class="ffne-dm-import-results-title">${title}</div>
-        <table class="ffne-dm-preview" contenteditable="false">
-            <thead>
-                <tr>
-                    <th>Document</th>
-                    <th>Reason</th>
-                </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-        </table>
-        ${retryHtml}
-    `;
-
-    if (onRetry) {
-        container.querySelector<HTMLButtonElement>('.ffne-dm-retry-btn')
-            ?.addEventListener('click', onRetry);
+    const retryButton = onRetry
+        ? h('button', { type: 'button', class: 'ffne-dm-btn ffne-dm-retry-btn' }, 'Retry Failed')
+        : null;
+    if (retryButton && onRetry) {
+        retryButton.addEventListener('click', onRetry);
     }
+
+    const children: Array<string | Node> = [
+        h('div', { class: 'ffne-dm-import-results-title' }, title),
+        h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
+            h('thead', null,
+                h('tr', null,
+                    h('th', null, 'Document'),
+                    h('th', null, 'Reason'),
+                ),
+            ),
+            h('tbody', null,
+                failures.map(failure => h('tr', null,
+                    h('td', null, failure.docName),
+                    h('td', null, failure.reason),
+                )),
+            ),
+        ),
+    ];
+    if (retryButton) {
+        children.push(h('div', { class: 'ffne-dm-retry-wrap' }, retryButton));
+    }
+    container.replaceChildren(...children);
 }
 
 function _buildBulkImportPlan(
@@ -840,33 +836,30 @@ function _renderBulkImportFailures(container: HTMLElement | null | undefined, fa
 
     if (failures.length === 0) {
         container.hidden = true;
-        container.innerHTML = '';
+        container.replaceChildren();
         return;
     }
 
-    const rowsHtml = failures.map(failure => `
-        <tr>
-            <td>${_escapeHtml(failure.docName)}</td>
-            <td>${_escapeHtml(failure.fileName)}</td>
-            <td>${_escapeHtml(failure.reason)}</td>
-        </tr>
-    `).join('');
-
     container.hidden = false;
-    // eslint-disable-next-line no-unsanitized/property -- rowsHtml values all escaped via _escapeHtml
-    container.innerHTML = `
-        <div class="ffne-dm-import-results-title">Failed Imports</div>
-        <table class="ffne-dm-preview" contenteditable="false">
-            <thead>
-                <tr>
-                    <th>Doc</th>
-                    <th>Selected File</th>
-                    <th>Reason</th>
-                </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-        </table>
-    `;
+    container.replaceChildren(
+        h('div', { class: 'ffne-dm-import-results-title' }, 'Failed Imports'),
+        h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
+            h('thead', null,
+                h('tr', null,
+                    h('th', null, 'Doc'),
+                    h('th', null, 'Selected File'),
+                    h('th', null, 'Reason'),
+                ),
+            ),
+            h('tbody', null,
+                failures.map(failure => h('tr', null,
+                    h('td', null, failure.docName),
+                    h('td', null, failure.fileName),
+                    h('td', null, failure.reason),
+                )),
+            ),
+        ),
+    );
 }
 
 function _readFileAsText(file: File): Promise<string> {
@@ -1028,20 +1021,16 @@ export const DocManager = {
 
         const drawer = markFfneUiRoot(document.createElement('div'));
         drawer.id = ADVANCED_DRAWER_ID;
-        drawer.innerHTML = `
-            <button
-                type="button"
-                class="ffne-dm-drawer-pull"
-                title="Open advanced document routines"
-                aria-label="Open advanced document routines"
-            >
-                <span class="ffne-dm-drawer-grabber" aria-hidden="true"></span>
-                <span class="ffne-dm-drawer-chevron" aria-hidden="true"></span>
-            </button>
-        `;
-
-        const button = drawer.querySelector<HTMLButtonElement>('button');
-        button?.addEventListener('click', () => this.openAdvancedRoutinesModal());
+        const button = h('button', {
+            type: 'button',
+            class: 'ffne-dm-drawer-pull',
+            title: 'Open advanced document routines',
+            'aria-label': 'Open advanced document routines',
+        },
+        h('span', { class: 'ffne-dm-drawer-grabber', 'aria-hidden': 'true' }),
+        h('span', { class: 'ffne-dm-drawer-chevron', 'aria-hidden': 'true' }));
+        button.addEventListener('click', () => this.openAdvancedRoutinesModal());
+        drawer.appendChild(button);
 
         document.body.appendChild(drawer);
         log('Advanced drawer injected.');
@@ -1059,79 +1048,75 @@ export const DocManager = {
         const overlay = markFfneUiRoot(document.createElement('div'));
         overlay.id = ADVANCED_MODAL_ID;
         overlay.className = 'ffne-dm-overlay';
-        overlay.innerHTML = `
-            <div class="ffne-dm-modal" role="dialog" aria-modal="true" aria-labelledby="ffne-dm-advanced-title">
-                <div class="ffne-dm-modal-header">
-                    <h3 id="ffne-dm-advanced-title">Advanced Routines</h3>
-                    <button type="button" class="ffne-dm-close" aria-label="Close">x</button>
-                </div>
-                <div class="ffne-dm-modal-body">
-                    <div class="ffne-dm-routines">
-                        <div class="ffne-dm-routine">
-                            <div class="ffne-dm-routine-header">
-                                <span class="ffne-dm-routine-title">Bulk Export</span>
-                                <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-export">Run</button>
-                            </div>
-                            <div class="ffne-dm-routine-status" data-ffne-status="bulk-export"></div>
-                            <div class="ffne-dm-import-results" data-ffne-results="bulk-export" hidden></div>
-                        </div>
-                        <div class="ffne-dm-routine">
-                            <div class="ffne-dm-routine-header">
-                                <span class="ffne-dm-routine-title">Bulk Refresh</span>
-                                <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-refresh">Run</button>
-                            </div>
-                            <div class="ffne-dm-routine-status" data-ffne-status="bulk-refresh"></div>
-                            <div class="ffne-dm-import-results" data-ffne-results="bulk-refresh" hidden></div>
-                        </div>
-                        <div class="ffne-dm-routine">
-                            <div class="ffne-dm-routine-header">
-                                <span class="ffne-dm-routine-title">Bulk Import</span>
-                                <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-import">Open</button>
-                            </div>
-                        </div>
-                        <div class="ffne-dm-routine">
-                            <div class="ffne-dm-routine-header">
-                                <span class="ffne-dm-routine-title">Bulk Migrate to AO3</span>
-                                <button type="button" class="ffne-dm-btn" data-ffne-action="bulk-migrate-ao3">Open</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
+        const closeButton = h('button', { type: 'button', class: 'ffne-dm-close', 'aria-label': 'Close' }, '\u00d7');
+        const bulkExportStatus = h('div', { class: 'ffne-dm-routine-status', 'data-ffne-status': 'bulk-export' });
+        const bulkExportResults = h('div', { class: 'ffne-dm-import-results', 'data-ffne-results': 'bulk-export', hidden: true });
+        const bulkRefreshStatus = h('div', { class: 'ffne-dm-routine-status', 'data-ffne-status': 'bulk-refresh' });
+        const bulkRefreshResults = h('div', { class: 'ffne-dm-import-results', 'data-ffne-results': 'bulk-refresh', hidden: true });
+        const bulkExportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-export' }, 'Run');
+        const bulkRefreshButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-refresh' }, 'Run');
+        const bulkImportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-import' }, 'Open');
+        const bulkMigrateButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-migrate-ao3' }, 'Open');
+        overlay.appendChild(
+            h('div', { class: 'ffne-dm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ffne-dm-advanced-title' },
+                h('div', { class: 'ffne-dm-modal-header' },
+                    h('h3', { id: 'ffne-dm-advanced-title' }, 'Advanced Routines'),
+                    closeButton,
+                ),
+                h('div', { class: 'ffne-dm-modal-body' },
+                    h('div', { class: 'ffne-dm-routines' },
+                        h('div', { class: 'ffne-dm-routine' },
+                            h('div', { class: 'ffne-dm-routine-header' },
+                                h('span', { class: 'ffne-dm-routine-title' }, 'Bulk Export'),
+                                bulkExportButton,
+                            ),
+                            bulkExportStatus,
+                            bulkExportResults,
+                        ),
+                        h('div', { class: 'ffne-dm-routine' },
+                            h('div', { class: 'ffne-dm-routine-header' },
+                                h('span', { class: 'ffne-dm-routine-title' }, 'Bulk Refresh'),
+                                bulkRefreshButton,
+                            ),
+                            bulkRefreshStatus,
+                            bulkRefreshResults,
+                        ),
+                        h('div', { class: 'ffne-dm-routine' },
+                            h('div', { class: 'ffne-dm-routine-header' },
+                                h('span', { class: 'ffne-dm-routine-title' }, 'Bulk Import'),
+                                bulkImportButton,
+                            ),
+                        ),
+                        h('div', { class: 'ffne-dm-routine' },
+                            h('div', { class: 'ffne-dm-routine-header' },
+                                h('span', { class: 'ffne-dm-routine-title' }, 'Bulk Migrate to AO3'),
+                                bulkMigrateButton,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        );
 
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) this.closeAdvancedRoutinesModal();
         });
 
-        overlay.querySelector<HTMLButtonElement>('.ffne-dm-close')
-            ?.addEventListener('click', () => this.closeAdvancedRoutinesModal());
-
-        overlay.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-export"]')
-            ?.addEventListener('click', (e) => {
-                const statusEl = overlay.querySelector<HTMLElement>('[data-ffne-status="bulk-export"]');
-                const resultsEl = overlay.querySelector<HTMLElement>('[data-ffne-results="bulk-export"]');
-                this.runBulkExport(e as MouseEvent, statusEl || undefined, resultsEl || undefined);
-            });
-
-        overlay.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-refresh"]')
-            ?.addEventListener('click', (e) => {
-                const statusEl = overlay.querySelector<HTMLElement>('[data-ffne-status="bulk-refresh"]');
-                const resultsEl = overlay.querySelector<HTMLElement>('[data-ffne-results="bulk-refresh"]');
-                this.runBulkRefresh(e as MouseEvent, statusEl || undefined, resultsEl || undefined);
-            });
-
-        overlay.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-import"]')
-            ?.addEventListener('click', () => {
-                this.closeAdvancedRoutinesModal();
-                this.openBulkImportModal();
-            });
-
-        overlay.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-migrate-ao3"]')
-            ?.addEventListener('click', () => {
-                this.closeAdvancedRoutinesModal();
-                this.openAo3MigrationModal();
-            });
+        closeButton.addEventListener('click', () => this.closeAdvancedRoutinesModal());
+        bulkExportButton.addEventListener('click', (e) => {
+            this.runBulkExport(e as MouseEvent, bulkExportStatus, bulkExportResults);
+        });
+        bulkRefreshButton.addEventListener('click', (e) => {
+            this.runBulkRefresh(e as MouseEvent, bulkRefreshStatus, bulkRefreshResults);
+        });
+        bulkImportButton.addEventListener('click', () => {
+            this.closeAdvancedRoutinesModal();
+            this.openBulkImportModal();
+        });
+        bulkMigrateButton.addEventListener('click', () => {
+            this.closeAdvancedRoutinesModal();
+            this.openAo3MigrationModal();
+        });
 
         this._advancedEscHandler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') this.closeAdvancedRoutinesModal();
@@ -1160,52 +1145,68 @@ export const DocManager = {
         const overlay = markFfneUiRoot(document.createElement('div'));
         overlay.id = IMPORT_MODAL_ID;
         overlay.className = 'ffne-dm-overlay';
-        overlay.innerHTML = `
-            <div class="ffne-dm-modal" role="dialog" aria-modal="true" aria-labelledby="ffne-dm-import-title">
-                <div class="ffne-dm-modal-header">
-                    <h3 id="ffne-dm-import-title">Bulk Import Markdown (.md)</h3>
-                    <button type="button" class="ffne-dm-close" aria-label="Close">x</button>
-                </div>
-                <div class="ffne-dm-modal-body">
-                    <div class="ffne-dm-import-controls">
-                        <div class="ffne-dm-form-row ffne-dm-field-row">
-                            <label for="ffne-dm-import-format">Format</label>
-                            <select id="ffne-dm-import-format" class="ffne-dm-input">
-                                <option value="markdown">Markdown (.md)</option>
-                                <option value="html">HTML (.html/.htm)</option>
-                                <option value="docx">DOCX (.docx)</option>
-                            </select>
-                        </div>
-                        <div class="ffne-dm-picker-group">
-                            <button type="button" id="ffne-dm-browse-folder" class="ffne-dm-btn">Browse Folder</button>
-                            <button type="button" id="ffne-dm-browse-files" class="ffne-dm-btn">Browse Files</button>
-                            <span id="ffne-dm-import-selection" class="ffne-dm-selection-label">No Markdown files selected.</span>
-                            <input id="ffne-dm-import-folder-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" webkitdirectory directory mozdirectory multiple>
-                            <input id="ffne-dm-import-files-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" multiple>
-                        </div>
-                        <button type="button" id="ffne-dm-import-start" class="ffne-dm-btn" disabled>Import</button>
-                    </div>
-                    <div id="ffne-dm-import-preview" class="ffne-dm-summary">Selected format: Markdown (.md). Select a folder or Markdown files.</div>
-                    <div id="ffne-dm-import-results" class="ffne-dm-import-results" hidden></div>
-                    <div class="ffne-dm-footer">
-                        <span id="ffne-dm-import-status" class="ffne-dm-run-status"></span>
-                        <button type="button" class="ffne-dm-btn" data-ffne-action="close-import">Close</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        const folderButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-browse-folder');
-        const filesButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-browse-files');
-        const folderInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-import-folder-input');
-        const filesInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-import-files-input');
-        const formatSelect = overlay.querySelector<HTMLSelectElement>('#ffne-dm-import-format');
-        const startButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-import-start');
-        const preview = overlay.querySelector<HTMLElement>('#ffne-dm-import-preview');
-        const status = overlay.querySelector<HTMLElement>('#ffne-dm-import-status');
-        const selection = overlay.querySelector<HTMLElement>('#ffne-dm-import-selection');
-        const results = overlay.querySelector<HTMLElement>('#ffne-dm-import-results');
-        const title = overlay.querySelector<HTMLElement>('#ffne-dm-import-title');
+        const closeButton = h('button', { type: 'button', class: 'ffne-dm-close', 'aria-label': 'Close' }, '\u00d7');
+        const title = h('h3', { id: 'ffne-dm-import-title' }, 'Bulk Import Markdown (.md)');
+        const formatSelect = h('select', { id: 'ffne-dm-import-format', class: 'ffne-dm-input' },
+            h('option', { value: 'markdown' }, 'Markdown (.md)'),
+            h('option', { value: 'html' }, 'HTML (.html/.htm)'),
+            h('option', { value: 'docx' }, 'DOCX (.docx)'),
+        );
+        const folderButton = h('button', { type: 'button', id: 'ffne-dm-browse-folder', class: 'ffne-dm-btn' }, 'Browse Folder');
+        const filesButton = h('button', { type: 'button', id: 'ffne-dm-browse-files', class: 'ffne-dm-btn' }, 'Browse Files');
+        const selection = h('span', { id: 'ffne-dm-import-selection', class: 'ffne-dm-selection-label' }, 'No Markdown files selected.');
+        const folderInput = h('input', {
+            id: 'ffne-dm-import-folder-input',
+            class: 'ffne-dm-file-input',
+            type: 'file',
+            accept: '.md,text/markdown',
+            webkitdirectory: true,
+            directory: true,
+            mozdirectory: true,
+            multiple: true,
+        });
+        const filesInput = h('input', {
+            id: 'ffne-dm-import-files-input',
+            class: 'ffne-dm-file-input',
+            type: 'file',
+            accept: '.md,text/markdown',
+            multiple: true,
+        });
+        const startButton = h('button', { type: 'button', id: 'ffne-dm-import-start', class: 'ffne-dm-btn', disabled: true }, 'Import');
+        const preview = h('div', { id: 'ffne-dm-import-preview', class: 'ffne-dm-summary' }, 'Selected format: Markdown (.md). Select a folder or Markdown files.');
+        const results = h('div', { id: 'ffne-dm-import-results', class: 'ffne-dm-import-results', hidden: true });
+        const status = h('span', { id: 'ffne-dm-import-status', class: 'ffne-dm-run-status' });
+        const closeImportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'close-import' }, 'Close');
+        overlay.appendChild(
+            h('div', { class: 'ffne-dm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ffne-dm-import-title' },
+                h('div', { class: 'ffne-dm-modal-header' },
+                    title,
+                    closeButton,
+                ),
+                h('div', { class: 'ffne-dm-modal-body' },
+                    h('div', { class: 'ffne-dm-import-controls' },
+                        h('div', { class: 'ffne-dm-form-row ffne-dm-field-row' },
+                            h('label', { for: 'ffne-dm-import-format' }, 'Format'),
+                            formatSelect,
+                        ),
+                        h('div', { class: 'ffne-dm-picker-group' },
+                            folderButton,
+                            filesButton,
+                            selection,
+                            folderInput,
+                            filesInput,
+                        ),
+                        startButton,
+                    ),
+                    preview,
+                    results,
+                    h('div', { class: 'ffne-dm-footer' },
+                        status,
+                        closeImportButton,
+                    ),
+                ),
+            ),
+        );
         let selectedFormat = 'markdown' as BulkImportFormat;
 
         if (folderInput) {
@@ -1255,31 +1256,29 @@ export const DocManager = {
             if (status) status.textContent = '';
         };
 
-        folderButton?.addEventListener('click', () => {
-            if (!folderInput) return;
+        folderButton.addEventListener('click', () => {
             folderInput.value = '';
             folderInput.click();
         });
 
-        filesButton?.addEventListener('click', () => {
-            if (!filesInput) return;
+        filesButton.addEventListener('click', () => {
             filesInput.value = '';
             filesInput.click();
         });
 
-        folderInput?.addEventListener('change', () => {
+        folderInput.addEventListener('change', () => {
             updateSelectedFiles(folderInput, 'Folder');
         });
 
-        filesInput?.addEventListener('change', () => {
+        filesInput.addEventListener('change', () => {
             updateSelectedFiles(filesInput, 'Files');
         });
 
-        formatSelect?.addEventListener('change', () => {
+        formatSelect.addEventListener('change', () => {
             resetSelectedFiles((formatSelect.value || 'markdown') as BulkImportFormat);
         });
 
-        startButton?.addEventListener('click', async (e) => {
+        startButton.addEventListener('click', async (e) => {
             const plan = this._bulkImportPlan;
             if (!plan || plan.hasBlockingErrors || plan.matchedCount === 0) return;
 
@@ -1292,10 +1291,8 @@ export const DocManager = {
             await this.runBulkImport(e as MouseEvent, plan, status || undefined, results || undefined);
         });
 
-        overlay.querySelector<HTMLButtonElement>('.ffne-dm-close')
-            ?.addEventListener('click', () => this.closeBulkImportModal());
-        overlay.querySelector<HTMLButtonElement>('[data-ffne-action="close-import"]')
-            ?.addEventListener('click', () => this.closeBulkImportModal());
+        closeButton.addEventListener('click', () => this.closeBulkImportModal());
+        closeImportButton.addEventListener('click', () => this.closeBulkImportModal());
 
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) this.closeBulkImportModal();
@@ -1334,65 +1331,76 @@ export const DocManager = {
         const overlay = markFfneUiRoot(document.createElement('div'));
         overlay.id = AO3_MODAL_ID;
         overlay.className = 'ffne-dm-overlay';
-        overlay.innerHTML = `
-            <div class="ffne-dm-modal ffne-dm-modal-wide" role="dialog" aria-modal="true" aria-labelledby="ffne-dm-ao3-title">
-                <div class="ffne-dm-modal-header">
-                    <h3 id="ffne-dm-ao3-title">Bulk Migrate to AO3</h3>
-                    <button type="button" class="ffne-dm-close" aria-label="Close">x</button>
-                </div>
-                <div class="ffne-dm-modal-body">
-                    <div class="ffne-dm-form-row">
-                        <input id="ffne-dm-ao3-work-url" class="ffne-dm-input" type="url" placeholder="https://archiveofourown.org/works/123456789/">
-                        <button type="button" id="ffne-dm-ao3-load" class="ffne-dm-btn">Load Chapters</button>
-                    </div>
-                    <label class="ffne-dm-checkbox">
-                        <input id="ffne-dm-ao3-linebreaks" type="checkbox">
-                        <span>Convert source line breaks for AO3</span>
-                    </label>
-                    <div class="ffne-dm-form-row ffne-dm-field-row">
-                        <label for="ffne-dm-ao3-strip-marker">Strip Out Notes (optional)</label>
-                        <input id="ffne-dm-ao3-strip-marker" class="ffne-dm-input" type="text" placeholder="Standalone line only, e.g. Notes:">
-                    </div>
-                    <div id="ffne-dm-ao3-summary" class="ffne-dm-summary ffne-dm-warning">
-                        Enter an AO3 work URL, then load chapters. AO3 may open in a foreground tab. Complete any browser check or sign-in there and keep that tab open until migration finishes.
-                    </div>
-                    <div id="ffne-dm-ao3-mappings"></div>
-                    <div id="ffne-dm-ao3-results" class="ffne-dm-import-results" hidden></div>
-                    <div class="ffne-dm-footer">
-                        <span id="ffne-dm-ao3-status" class="ffne-dm-run-status"></span>
-                        <button type="button" id="ffne-dm-ao3-start" class="ffne-dm-btn" disabled>Migrate</button>
-                        <button type="button" class="ffne-dm-btn" data-ffne-action="close-ao3">Close</button>
-                    </div>
-                </div>
-            </div>
-        `;
+        const closeButton = h('button', { type: 'button', class: 'ffne-dm-close', 'aria-label': 'Close' }, '\u00d7');
+        const workUrlInput = h('input', {
+            id: 'ffne-dm-ao3-work-url',
+            class: 'ffne-dm-input',
+            type: 'url',
+            placeholder: 'https://archiveofourown.org/works/123456789/',
+        });
+        const loadButton = h('button', { type: 'button', id: 'ffne-dm-ao3-load', class: 'ffne-dm-btn' }, 'Load Chapters');
+        const linebreakCheckbox = h('input', { id: 'ffne-dm-ao3-linebreaks', type: 'checkbox' });
+        const stripMarkerInput = h('input', {
+            id: 'ffne-dm-ao3-strip-marker',
+            class: 'ffne-dm-input',
+            type: 'text',
+            placeholder: 'Standalone line only, e.g. Notes:',
+        });
+        const summary = h(
+            'div',
+            { id: 'ffne-dm-ao3-summary', class: 'ffne-dm-summary ffne-dm-warning' },
+            'Enter an AO3 work URL, then load chapters. AO3 may open in a foreground tab. Complete any browser check or sign-in there and keep that tab open until migration finishes.',
+        );
+        const mappings = h('div', { id: 'ffne-dm-ao3-mappings' });
+        const results = h('div', { id: 'ffne-dm-ao3-results', class: 'ffne-dm-import-results', hidden: true });
+        const status = h('span', { id: 'ffne-dm-ao3-status', class: 'ffne-dm-run-status' });
+        const startButton = h('button', { type: 'button', id: 'ffne-dm-ao3-start', class: 'ffne-dm-btn', disabled: true }, 'Migrate');
+        const closeAo3Button = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'close-ao3' }, 'Close');
+        overlay.appendChild(
+            h('div', { class: 'ffne-dm-modal ffne-dm-modal-wide', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ffne-dm-ao3-title' },
+                h('div', { class: 'ffne-dm-modal-header' },
+                    h('h3', { id: 'ffne-dm-ao3-title' }, 'Bulk Migrate to AO3'),
+                    closeButton,
+                ),
+                h('div', { class: 'ffne-dm-modal-body' },
+                    h('div', { class: 'ffne-dm-form-row' },
+                        workUrlInput,
+                        loadButton,
+                    ),
+                    h('label', { class: 'ffne-dm-checkbox' },
+                        linebreakCheckbox,
+                        h('span', null, 'Convert source line breaks for AO3'),
+                    ),
+                    h('div', { class: 'ffne-dm-form-row ffne-dm-field-row' },
+                        h('label', { for: 'ffne-dm-ao3-strip-marker' }, 'Strip Out Notes (optional)'),
+                        stripMarkerInput,
+                    ),
+                    summary,
+                    mappings,
+                    results,
+                    h('div', { class: 'ffne-dm-footer' },
+                        status,
+                        startButton,
+                        closeAo3Button,
+                    ),
+                ),
+            ),
+        );
 
-        const workUrlInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-ao3-work-url');
-        const loadButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-ao3-load');
-        const linebreakCheckbox = overlay.querySelector<HTMLInputElement>('#ffne-dm-ao3-linebreaks');
-        const stripMarkerInput = overlay.querySelector<HTMLInputElement>('#ffne-dm-ao3-strip-marker');
-        const summary = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-summary');
-        const mappings = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-mappings');
-        const results = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-results');
-        const status = overlay.querySelector<HTMLElement>('#ffne-dm-ao3-status');
-        const startButton = overlay.querySelector<HTMLButtonElement>('#ffne-dm-ao3-start');
-
-        loadButton?.addEventListener('click', async () => {
-            const normalizedWorkUrl = Ao3BridgeClient.normalizeWorkUrl(workUrlInput?.value || '');
+        loadButton.addEventListener('click', async () => {
+            const normalizedWorkUrl = Ao3BridgeClient.normalizeWorkUrl(workUrlInput.value || '');
             if (!normalizedWorkUrl) {
-                log('AO3 chapter load blocked by invalid work URL.', { input: workUrlInput?.value || '' });
-                if (summary) {
-                    summary.className = 'ffne-dm-summary ffne-dm-error';
-                    summary.textContent = 'Enter a valid AO3 work URL.';
-                }
-                if (startButton) startButton.disabled = true;
-                if (mappings) mappings.innerHTML = '';
-                if (status) status.textContent = '';
+                log('AO3 chapter load blocked by invalid work URL.', { input: workUrlInput.value || '' });
+                summary.className = 'ffne-dm-summary ffne-dm-error';
+                summary.textContent = 'Enter a valid AO3 work URL.';
+                startButton.disabled = true;
+                mappings.replaceChildren();
+                status.textContent = '';
                 _renderAo3MigrationFailures(results, []);
                 return;
             }
 
-            if (status) status.textContent = 'Opening AO3 if needed and loading chapters...';
+            status.textContent = 'Opening AO3 if needed and loading chapters...';
             log('Loading AO3 chapter index.', { workUrl: normalizedWorkUrl });
             const response = await Ao3BridgeClient.fetchChapterIndex(normalizedWorkUrl);
             if (!response.ok) {
@@ -1400,13 +1408,11 @@ export const DocManager = {
                     workUrl: normalizedWorkUrl,
                     reason: response.reason,
                 });
-                if (summary) {
-                    summary.className = 'ffne-dm-summary ffne-dm-error';
-                    summary.textContent = response.reason || 'Could not load AO3 chapters.';
-                }
-                if (mappings) mappings.innerHTML = '';
-                if (startButton) startButton.disabled = true;
-                if (status) status.textContent = '';
+                summary.className = 'ffne-dm-summary ffne-dm-error';
+                summary.textContent = response.reason || 'Could not load AO3 chapters.';
+                mappings.replaceChildren();
+                startButton.disabled = true;
+                status.textContent = '';
                 _renderAo3MigrationFailures(results, []);
                 return;
             }
@@ -1417,34 +1423,34 @@ export const DocManager = {
                 chapters: response.chapters,
                 sourceItems,
                 rows: _createAo3MigrationRows(sourceItems, response.chapters),
-                convertLineBreaks: !!linebreakCheckbox?.checked,
-                stripNotesMarker: stripMarkerInput?.value.trim() || '',
+                convertLineBreaks: !!linebreakCheckbox.checked,
+                stripNotesMarker: stripMarkerInput.value.trim() || '',
             };
             log('AO3 chapter index loaded and migration rows prepared.', {
                 workUrl: normalizedWorkUrl,
                 chapterCount: response.chapters.length,
                 sourceDocCount: sourceItems.length,
-                convertLineBreaks: !!linebreakCheckbox?.checked,
-                stripNotesEnabled: !!stripMarkerInput?.value.trim(),
+                convertLineBreaks: !!linebreakCheckbox.checked,
+                stripNotesEnabled: !!stripMarkerInput.value.trim(),
             });
-            if (status) status.textContent = `Loaded ${response.chapters.length} AO3 chapter(s).`;
+            status.textContent = `Loaded ${response.chapters.length} AO3 chapter(s).`;
             _renderAo3MigrationFailures(results, []);
-            this._refreshAo3MigrationPreview(summary || null, mappings || null, startButton || null);
+            this._refreshAo3MigrationPreview(summary, mappings, startButton);
         });
 
-        linebreakCheckbox?.addEventListener('change', () => {
+        linebreakCheckbox.addEventListener('change', () => {
             if (!this._ao3MigrationState) return;
             this._ao3MigrationState.convertLineBreaks = !!linebreakCheckbox.checked;
-            this._refreshAo3MigrationPreview(summary || null, mappings || null, startButton || null);
+            this._refreshAo3MigrationPreview(summary, mappings, startButton);
         });
 
-        stripMarkerInput?.addEventListener('input', () => {
+        stripMarkerInput.addEventListener('input', () => {
             if (!this._ao3MigrationState) return;
             this._ao3MigrationState.stripNotesMarker = stripMarkerInput.value.trim();
-            this._refreshAo3MigrationPreview(summary || null, mappings || null, startButton || null);
+            this._refreshAo3MigrationPreview(summary, mappings, startButton);
         });
 
-        startButton?.addEventListener('click', async (e) => {
+        startButton.addEventListener('click', async (e) => {
             const plan = this._ao3MigrationState
                 ? _buildAo3MigrationPlan(
                     this._ao3MigrationState.normalizedWorkUrl,
@@ -1479,13 +1485,11 @@ export const DocManager = {
                 forceAo3HtmlCompatibility: true,
             });
             await this.runBulkAo3Migration(e as MouseEvent, plan, status || undefined, results || undefined);
-            this._refreshAo3MigrationPreview(summary || null, mappings || null, startButton || null);
+            this._refreshAo3MigrationPreview(summary, mappings, startButton);
         });
 
-        overlay.querySelector<HTMLButtonElement>('.ffne-dm-close')
-            ?.addEventListener('click', () => this.closeAo3MigrationModal());
-        overlay.querySelector<HTMLButtonElement>('[data-ffne-action="close-ao3"]')
-            ?.addEventListener('click', () => this.closeAo3MigrationModal());
+        closeButton.addEventListener('click', () => this.closeAo3MigrationModal());
+        closeAo3Button.addEventListener('click', () => this.closeAo3MigrationModal());
 
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) this.closeAo3MigrationModal();
@@ -1537,74 +1541,82 @@ export const DocManager = {
             ? 'ffne-dm-summary ffne-dm-error'
             : 'ffne-dm-summary';
         const visibleDuplicateLabels = duplicateLabels.slice(0, 6);
-        const duplicateHtml = duplicateLabels.length > 0
-            ? `<strong>Duplicate source docs:</strong> ${visibleDuplicateLabels.map(_escapeHtml).join(', ')}${duplicateLabels.length > visibleDuplicateLabels.length ? `, and ${duplicateLabels.length - visibleDuplicateLabels.length} more` : ''}`
-            : '';
+        const duplicateSummary = duplicateLabels.length > 0
+            ? h('div', { class: 'ffne-dm-summary-detail' },
+                h('strong', null, 'Duplicate source docs:'),
+                ' ',
+                visibleDuplicateLabels.join(', '),
+                duplicateLabels.length > visibleDuplicateLabels.length
+                    ? `, and ${duplicateLabels.length - visibleDuplicateLabels.length} more`
+                    : null,
+            )
+            : null;
 
         summaryEl.className = summaryClass;
-        // eslint-disable-next-line no-unsanitized/property -- interpolated values are numbers or escaped via _escapeHtml
-        summaryEl.innerHTML = `
-            <div>
-                <strong>${plan.chapters.length}</strong> AO3 chapter(s),
-                <strong>${state.sourceItems.length}</strong> source doc(s),
-                <strong>${plan.mappedCount}</strong> mapped,
-                <strong>${plan.skippedCount}</strong> skipped.
-            </div>
-            ${plan.stripNotesMarker ? `<div class="ffne-dm-summary-detail"><strong>Strip marker:</strong> ${_escapeHtml(plan.stripNotesMarker)}</div>` : ''}
-            ${duplicateHtml ? `<div class="ffne-dm-summary-detail">${duplicateHtml}</div>` : ''}
-        `;
+        const summaryChildren: Array<string | Node> = [
+            h('div', null,
+                h('strong', null, String(plan.chapters.length)),
+                ' AO3 chapter(s), ',
+                h('strong', null, String(state.sourceItems.length)),
+                ' source doc(s), ',
+                h('strong', null, String(plan.mappedCount)),
+                ' mapped, ',
+                h('strong', null, String(plan.skippedCount)),
+                ' skipped.',
+            ),
+        ];
+        if (plan.stripNotesMarker) {
+            summaryChildren.push(
+                h('div', { class: 'ffne-dm-summary-detail' },
+                    h('strong', null, 'Strip marker:'),
+                    ' ',
+                    plan.stripNotesMarker,
+                ),
+            );
+        }
+        if (duplicateSummary) {
+            summaryChildren.push(duplicateSummary);
+        }
+        summaryEl.replaceChildren(...summaryChildren);
 
-        const optionsHtml = state.sourceItems.map(item => `
-            <option value="${_escapeHtml(item.docId)}">${_escapeHtml(item.docName)}</option>
-        `).join('');
-        const rowsHtml = plan.rows.map((row, index) => `
-            <tr data-row-index="${index}">
-                <td>${_escapeHtml(row.chapter.label)}</td>
-                <td>
-                    <select class="ffne-dm-select" data-ffne-ao3-source="${index}">
-                        <option value="">Skip this AO3 chapter</option>
-                        ${optionsHtml}
-                    </select>
-                </td>
-                <td>${_escapeHtml(row.mappingSource)}</td>
-                <td class="ffne-dm-status-${row.status}">${_escapeHtml(row.status)}</td>
-            </tr>
-        `).join('');
-
-        const tableBodyHtml = plan.rows.length > 0
-            ? rowsHtml
-            : '<tr><td colspan="4">No AO3 chapters found.</td></tr>';
-
-        // eslint-disable-next-line no-unsanitized/property -- rowsHtml values all escaped via _escapeHtml
-        mappingsEl.innerHTML = `
-            <div class="ffne-dm-preview-scroll">
-                <table class="ffne-dm-preview" contenteditable="false">
-                    <thead>
-                        <tr>
-                            <th>AO3 Chapter</th>
-                            <th>Source Doc</th>
-                            <th>Mapping Source</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>${tableBodyHtml}</tbody>
-                </table>
-            </div>
-        `;
-
-        plan.rows.forEach((row, index) => {
-            const rowEl = mappingsEl.querySelector<HTMLTableRowElement>(`tr[data-row-index="${index}"]`);
-            row.modalRow = rowEl;
-            const select = mappingsEl.querySelector<HTMLSelectElement>(`select[data-ffne-ao3-source="${index}"]`);
-            if (select) {
+        const rows = plan.rows.length > 0
+            ? plan.rows.map((row, index) => {
+                const select = h('select', { class: 'ffne-dm-select', 'data-ffne-ao3-source': String(index) },
+                    h('option', { value: '' }, 'Skip this AO3 chapter'),
+                    state.sourceItems.map(item => h('option', { value: item.docId }, item.docName)),
+                );
                 select.value = row.selectedSourceItem?.docId || '';
                 select.addEventListener('change', () => {
                     if (!this._ao3MigrationState) return;
                     _setManualAo3SourceSelection(this._ao3MigrationState.rows, this._ao3MigrationState.sourceItems, index, select.value);
                     this._refreshAo3MigrationPreview(summaryEl, mappingsEl, startButton);
                 });
-            }
-        });
+                const rowEl = h('tr', { 'data-row-index': String(index) },
+                    h('td', null, row.chapter.label),
+                    h('td', null, select),
+                    h('td', null, row.mappingSource),
+                    h('td', { class: `ffne-dm-status-${row.status}` }, row.status),
+                );
+                row.modalRow = rowEl;
+                return rowEl;
+            })
+            : [h('tr', null, h('td', { colspan: 4 }, 'No AO3 chapters found.'))];
+
+        mappingsEl.replaceChildren(
+            h('div', { class: 'ffne-dm-preview-scroll' },
+                h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
+                    h('thead', null,
+                        h('tr', null,
+                            h('th', null, 'AO3 Chapter'),
+                            h('th', null, 'Source Doc'),
+                            h('th', null, 'Mapping Source'),
+                            h('th', null, 'Status'),
+                        ),
+                    ),
+                    h('tbody', null, rows),
+                ),
+            ),
+        );
     },
 
     _renderBulkImportPreview: function (
@@ -1622,62 +1634,88 @@ export const DocManager = {
                 ? 'ffne-dm-summary ffne-dm-warning'
                 : 'ffne-dm-summary';
 
-        const blockedHtml = plan.blockedFiles.length > 0
-            ? `<div><strong>Blocked:</strong> ${plan.blockedFiles.map(_escapeHtml).join(', ')}</div>`
-            : '';
-        const duplicateHtml = plan.duplicateFileNames.length > 0
-            ? `<div><strong>Duplicates:</strong> ${plan.duplicateFileNames.map(_escapeHtml).join(', ')}</div>`
-            : '';
-        const duplicateDocHtml = plan.duplicateDocNames.length > 0
-            ? `<div><strong>Conflicting matches:</strong> ${plan.duplicateDocNames.map(_escapeHtml).join(', ')}</div>`
-            : '';
-        const ignoredHtml = plan.ignoredFiles.length > 0
-            ? `<div><strong>Ignored:</strong> ${plan.ignoredFiles.slice(0, 8).map(_escapeHtml).join(', ')}${plan.ignoredFiles.length > 8 ? '...' : ''}</div>`
-            : '';
-
-        const rowsHtml = plan.rows.map(row => `
-            <tr data-row-doc-id="${_escapeHtml(row.docId)}" data-row-file="${_escapeHtml(row.expectedFileName)}">
-                <td>${_escapeHtml(row.docName)}</td>
-                <td>${_escapeHtml(row.expectedFileName)}</td>
-                <td data-ffne-status></td>
-            </tr>
-        `).join('');
-
         preview.className = summaryClass;
-        // eslint-disable-next-line no-unsanitized/property -- interpolated values are numbers or escaped via _escapeHtml
-        preview.innerHTML = `
-            <div>
-                <strong>Format:</strong> ${_escapeHtml(formatOption.label)}
-            </div>
-            <div>
-                <strong>${plan.matchedCount}</strong> matched,
-                <strong>${plan.missingCount}</strong> missing in DocManager,
-                <strong>${plan.duplicateFileNames.length + plan.duplicateDocNames.length}</strong> duplicate,
-                <strong>${plan.ignoredFiles.length}</strong> ignored.
-            </div>
-            ${blockedHtml}
-            ${duplicateHtml}
-            ${duplicateDocHtml}
-            ${ignoredHtml}
-            <table class="ffne-dm-preview" contenteditable="false">
-                <thead>
-                    <tr>
-                        <th>Doc</th>
-                        <th>Selected File</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>${rowsHtml || `<tr><td colspan="3">No top-level ${_escapeHtml(formatOption.fileLabel)} files found.</td></tr>`}</tbody>
-            </table>
-        `;
+        const rows = plan.rows.length > 0
+            ? plan.rows.map(row => {
+                const rowEl = h('tr', { 'data-row-doc-id': row.docId, 'data-row-file': row.expectedFileName },
+                    h('td', null, row.docName),
+                    h('td', null, row.expectedFileName),
+                    h('td', { 'data-ffne-status': true }),
+                );
+                row.modalRow = rowEl;
+                return rowEl;
+            })
+            : [h('tr', null, h('td', { colspan: 3 }, `No top-level ${formatOption.fileLabel} files found.`))];
 
-        preview.querySelectorAll<HTMLTableRowElement>('tr[data-row-file]').forEach(rowEl => {
-            const expectedFileName = rowEl.getAttribute('data-row-file') || '';
-            const row = plan.rows.find(candidate => candidate.expectedFileName === expectedFileName);
-            if (!row) return;
-            row.modalRow = rowEl;
-            _renderBulkImportRowStatus(row);
-        });
+        const previewChildren: Array<string | Node> = [
+            h('div', null,
+                h('strong', null, 'Format:'),
+                ' ',
+                formatOption.label,
+            ),
+            h('div', null,
+                h('strong', null, String(plan.matchedCount)),
+                ' matched, ',
+                h('strong', null, String(plan.missingCount)),
+                ' missing in DocManager, ',
+                h('strong', null, String(plan.duplicateFileNames.length + plan.duplicateDocNames.length)),
+                ' duplicate, ',
+                h('strong', null, String(plan.ignoredFiles.length)),
+                ' ignored.',
+            ),
+        ];
+        if (plan.blockedFiles.length > 0) {
+            previewChildren.push(
+                h('div', null,
+                    h('strong', null, 'Blocked:'),
+                    ' ',
+                    plan.blockedFiles.join(', '),
+                ),
+            );
+        }
+        if (plan.duplicateFileNames.length > 0) {
+            previewChildren.push(
+                h('div', null,
+                    h('strong', null, 'Duplicates:'),
+                    ' ',
+                    plan.duplicateFileNames.join(', '),
+                ),
+            );
+        }
+        if (plan.duplicateDocNames.length > 0) {
+            previewChildren.push(
+                h('div', null,
+                    h('strong', null, 'Conflicting matches:'),
+                    ' ',
+                    plan.duplicateDocNames.join(', '),
+                ),
+            );
+        }
+        if (plan.ignoredFiles.length > 0) {
+            previewChildren.push(
+                h('div', null,
+                    h('strong', null, 'Ignored:'),
+                    ' ',
+                    plan.ignoredFiles.slice(0, 8).join(', '),
+                    plan.ignoredFiles.length > 8 ? '...' : null,
+                ),
+            );
+        }
+        previewChildren.push(
+            h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
+                h('thead', null,
+                    h('tr', null,
+                        h('th', null, 'Doc'),
+                        h('th', null, 'Selected File'),
+                        h('th', null, 'Status'),
+                    ),
+                ),
+                h('tbody', null, rows),
+            ),
+        );
+        preview.replaceChildren(...previewChildren);
+
+        plan.rows.forEach(row => _renderBulkImportRowStatus(row));
     },
 
     /**

@@ -2,6 +2,7 @@ import { ISitewideModule } from '../interfaces/ISiteWideModule';
 import { markFfneUiRoot } from '../utils/ffneUi';
 import { FFNLogger } from './FFNLogger';
 import { SettingsPage } from './SettingsPage';
+import { h } from '../utils/dom';
 
 const MODULE_NAME = 'SettingsIconHijacker';
 const ICON_SELECTOR = '.icon-kub-mobile';
@@ -61,30 +62,26 @@ function _attachAffordance(icon: HTMLElement): void {
     icon.insertAdjacentElement('afterend', wrapper);
 
     const shadow = wrapper.attachShadow({ mode: 'closed' });
-    // eslint-disable-next-line no-unsanitized/property -- static CSS + LABEL is a module-level hardcoded constant
-    shadow.innerHTML = `
-        <style>
-            :host { all: initial; position: relative; display: contents; }
-            .tip {
-                position: fixed;
-                z-index: 2147483647;
-                padding: 4px 8px;
-                background: #222;
-                color: #fff;
-                font: 12px/1 system-ui, sans-serif;
-                border-radius: 4px;
-                opacity: 0;
-                pointer-events: none;
-                white-space: nowrap;
-                transform: translate(-50%, calc(-100% - 8px));
-                transition: opacity 120ms ease;
-            }
-        </style>
-        <span class="tip">${LABEL}</span>
+    const style = document.createElement('style');
+    style.textContent = `
+        :host { all: initial; position: relative; display: contents; }
+        .tip {
+            position: fixed;
+            z-index: 2147483647;
+            padding: 4px 8px;
+            background: #222;
+            color: #fff;
+            font: 12px/1 system-ui, sans-serif;
+            border-radius: 4px;
+            opacity: 0;
+            pointer-events: none;
+            white-space: nowrap;
+            transform: translate(-50%, calc(-100% - 8px));
+            transition: opacity 120ms ease;
+        }
     `;
-
-    const tip = shadow.querySelector('.tip');
-    if (!(tip instanceof HTMLElement)) return;
+    const tip = h('span', { class: 'tip' }, LABEL);
+    shadow.append(style, tip);
 
     const show = () => {
         const rect = icon.getBoundingClientRect();
