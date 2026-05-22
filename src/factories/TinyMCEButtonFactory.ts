@@ -8,11 +8,11 @@ export const TinyMCEButtonFactory = {
     /**
      * Creates a fully styled TinyMCE button element with a native-style tooltip.
      * @param ariaLabel - Text for accessibility and tooltip.
-     * @param htmlContent - The inner HTML (icon or text).
+     * @param iconNode - The icon or text node to render inside the button.
      * @param onClick - The click event handler.
      * @returns The constructed DOM Element ready for injection.
      */
-    create: function (ariaLabel: string, htmlContent: string, onClick: (e: MouseEvent) => void): HTMLElement {
+    create: function (ariaLabel: string, iconNode: HTMLElement, onClick: (e: MouseEvent) => void): HTMLElement {
         // 1. Container: Replicates the wrapper div structure
         const container = document.createElement('div');
         container.className = 'mce-widget mce-btn';
@@ -52,8 +52,7 @@ export const TinyMCEButtonFactory = {
             line-height: 20px; /* Crucial: Defines the vertical size of the button */
         `;
 
-        // eslint-disable-next-line no-unsanitized/property -- htmlContent is always a static icon span literal passed by callers
-        button.innerHTML = htmlContent;
+        button.appendChild(iconNode);
 
         button.onclick = (e) => {
             e.preventDefault();

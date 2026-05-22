@@ -12,6 +12,7 @@ import { DocIframeHandler } from './DocIframeHandler';
 import { applyExportTransforms } from '../utils/exportTransform';
 import { writeToClipboard } from '../utils/clipboard';
 import { markFfneUiRoot } from '../utils/ffneUi';
+import { h } from '../utils/dom';
 
 /**
  * Module responsible for enhancing the Document Editor page (`/docs/edit.php`).
@@ -109,7 +110,11 @@ export const DocEditor = {
             : format === DocDownloadFormat.HTML
                 ? 'Export Document (HTML)'
                 : 'Export Document (Markdown)';
-        const dlContent = '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">↓</span>';
+        const dlContent = h(
+            'span',
+            { style: 'font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;' },
+            '\u2193',
+        );
         const dlBtn = TinyMCEButtonFactory.create(
             exportTooltip,
             dlContent,
@@ -124,7 +129,11 @@ export const DocEditor = {
         const clipTooltip = this._clipTooltip(format);
         const clipBtn = TinyMCEButtonFactory.create(
             clipTooltip,
-            '<span style="font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;">' + '⧉' + '</span>',
+            h(
+                'span',
+                { style: 'font-size: 14px; font-weight: bold; font-family: Arial, sans-serif;' },
+                '\u29c9',
+            ),
             () => this.clipboardCurrentDoc()
         );
 
