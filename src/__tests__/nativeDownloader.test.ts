@@ -16,6 +16,7 @@ vi.mock('../utils/confirmDialog', () => ({
 
 import { EpubBuilder } from '../modules/EpubBuilder';
 import { Core } from '../modules/Core';
+import { StoryDelegate } from '../delegates/StoryDelegate';
 import { SettingsManager } from '../modules/SettingsManager';
 import {
     _fetchChapter,
@@ -52,8 +53,7 @@ describe('NativeDownloader retry flow', () => {
         fetchRequestTextMock.mockReset();
         buildMock.mockReset();
         confirmRetryDialogMock.mockReset();
-        window.history.replaceState({}, '', 'https://www.fanfiction.net/s/1/1/Test');
-        Core.setDelegate(window.location);
+        Core.activeDelegate = StoryDelegate;
         vi.spyOn(SettingsManager, 'get').mockImplementation((key) => {
             switch (key) {
                 case 'chapterFetchMaxRetries':
@@ -118,18 +118,21 @@ describe('NativeDownloader retry flow', () => {
                     return 0 as never;
             }
         });
+        const attempts = new Map<string, number>();
 
         fetchRequestTextMock.mockImplementation(async ({ url }) => {
             if (url.endsWith('/1/')) return okResponse(storyPageHtml('<p>One</p>'));
             if (url.endsWith('/2/')) {
-                const attempt = fetchRequestTextMock.mock.calls.filter(([args]) => args.url.endsWith('/2/')).length;
+                const attempt = (attempts.get(url) || 0) + 1;
+                attempts.set(url, attempt);
                 return attempt === 1
                     ? okResponse(missingStoryPageHtml())
                     : okResponse(storyPageHtml('<p>Two</p>'));
             }
             if (url.endsWith('/3/')) return okResponse(storyPageHtml('<p>Three</p>'));
             if (url.endsWith('/4/')) {
-                const attempt = fetchRequestTextMock.mock.calls.filter(([args]) => args.url.endsWith('/4/')).length;
+                const attempt = (attempts.get(url) || 0) + 1;
+                attempts.set(url, attempt);
                 return attempt === 1
                     ? {
                         ok: false,
