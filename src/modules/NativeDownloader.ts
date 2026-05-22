@@ -255,7 +255,7 @@ export async function _runScraper(
 
     // 5. Build
     if (onProgress) onProgress("Bundling EPUB...");
-    await EpubBuilder.build(finalMeta, chapters.filter((chapter): chapter is ChapterData => chapter !== null));
+    await EpubBuilder.build(finalMeta, chapters.filter(_isBuiltChapter));
 }
 
 interface ChapterOption {
@@ -321,11 +321,16 @@ function _sleep(delayMs: number): Promise<void> {
 }
 
 function _chapterTitle(chapterList: ChapterOption[], index: number, fallbackTitle?: string): string {
-    return chapterList[index]?.name || fallbackTitle || `Chapter ${index + 1}`;
+    const explicitTitle = chapterList[index]?.name || fallbackTitle;
+    return explicitTitle ?? `Chapter ${index + 1}`;
 }
 
 function _chapterErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+function _isBuiltChapter(chapter: ChapterData | null): chapter is ChapterData {
+    return chapter !== null;
 }
 
 function _fillMissingChapters(

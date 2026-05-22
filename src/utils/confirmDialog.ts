@@ -38,8 +38,9 @@ export function confirmRetryDialog(
     const list = document.createElement('ul');
     list.className = 'ffne-confirm-list';
     failedIndices.forEach((index, position) => {
+        const chapterLabel = `Chapter ${index + 1}`;
         const item = document.createElement('li');
-        item.textContent = `Chapter ${index + 1}: ${chapterNames[position] || `Chapter ${index + 1}`}`;
+        item.textContent = `${chapterLabel}: ${chapterNames[position] || chapterLabel}`;
         list.appendChild(item);
     });
     body.appendChild(list);
