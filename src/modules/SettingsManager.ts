@@ -99,14 +99,13 @@ export interface FFNSettings {
     fetchRetryBaseMs: number;
 
     /**
-     * Maximum time to wait for a hidden iframe to reach `readyState=complete`
-     * during document refresh (ms). Increase if docs fail to refresh on slow connections.
+     * Maximum time to wait for hidden iframe page loads in iframe-based routines (ms).
+     * Increase if iframe-backed actions fail on slow connections.
      */
     iframeLoadTimeoutMs: number;
 
     /**
-     * Maximum time to wait for the save confirmation panel to appear after clicking
-     * the Save button in the hidden iframe (ms).
+     * Maximum time to wait for FFN to return a hidden native-form save response (ms).
      */
     iframeSaveTimeoutMs: number;
 

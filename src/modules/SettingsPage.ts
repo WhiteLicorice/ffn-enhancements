@@ -266,14 +266,14 @@ function _buildModalHTML(): string {
                     _buildNumberRow(
                         'iframeLoadTimeoutMs',
                         'Iframe Load Timeout',
-                        'How long to wait for the hidden iframe to reach readyState="complete" during doc refresh before giving up.',
+                        'How long to wait for iframe-backed page loads before giving up.',
                         s.get('iframeLoadTimeoutMs'),
                         { min: 5000, max: 120000, step: 5000, unit: 'ms' }
                     ),
                     _buildNumberRow(
                         'iframeSaveTimeoutMs',
                         'Save Confirmation Timeout',
-                        'How long to wait for the save-success panel to appear after clicking Save in the hidden iframe.',
+                        'How long to wait for FFN to return a hidden native-form save response.',
                         s.get('iframeSaveTimeoutMs'),
                         { min: 1000, max: 60000, step: 1000, unit: 'ms' }
                     ),

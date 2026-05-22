@@ -222,6 +222,11 @@ export const DocFetchService = {
             }
         }
 
+        const bodyText = normalizeText(doc.body?.textContent || '');
+        if (/cloudflare|ddos\s+protection|checking\s+your\s+browser|just\s+a\s+moment/i.test(bodyText)) {
+            return 'FFN save request was blocked by a Cloudflare challenge. Open fanfiction.net in this browser, clear the challenge, then retry.';
+        }
+
         if (/please\s+log\s*in|login\s+required|not\s+authorized|authorization\s+required|sign\s+in/i.test(bodyText)) {
             return 'FFN returned a login or authorization page.';
         }
@@ -279,14 +284,21 @@ export const DocFetchService = {
         } catch {
             return { ok: false, reason: 'Private document save form action URL is invalid.' };
         }
+
         if (parsedActionUrl.protocol !== 'https:' || !FFN_DOC_HOSTS.has(parsedActionUrl.hostname) || parsedActionUrl.pathname !== '/docs/edit.php') {
             return { ok: false, reason: 'Private document save form action did not target FFN /docs/edit.php.' };
+        }
+
+        if (parsedActionUrl.hostname === 'fanfiction.net') {
+            parsedActionUrl.hostname = 'www.fanfiction.net';
         }
 
         const targetDocId = parsedActionUrl.searchParams.get('docid');
         if (targetDocId && targetDocId !== docId) {
             return { ok: false, reason: `Private document save target docid ${targetDocId} did not match requested docid ${docId}.` };
         }
+
+        const actionUrl = parsedActionUrl.href;
 
         const currentHtml = textarea.value || textarea.textContent || '';
         const submittedHtml = options.replacementHtml !== undefined ? options.replacementHtml : currentHtml;
