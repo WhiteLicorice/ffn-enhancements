@@ -7,11 +7,24 @@ import { ChapterData } from '../interfaces/ChapterData';
 import { Elements } from '../enums/Elements';
 import { LocalMetadataSerializer } from '../serializers/LocalMetadataSerializer';
 import { fetchRequestText, type FetchTextResponse } from '../utils/fetchRequest';
+import { SettingsManager } from './SettingsManager';
+import { confirmRetryDialog } from '../utils/confirmDialog';
 
 const MODULE_NAME = 'NativeDownloader';
-const CHAPTER_FETCH_MAX_RETRIES = 5;
-const CHAPTER_FETCH_TIMEOUT_MS = 30_000;
-const CHAPTER_RETRY_BASE_MS = 5_000;
+
+type ChapterFailureCode = 'content-validation' | 'request-failure';
+
+export class ChapterFetchError extends Error {
+    public readonly code: ChapterFailureCode;
+    public readonly chapterNum: number;
+
+    constructor(chapterNum: number, code: ChapterFailureCode, message: string) {
+        super(message);
+        this.name = 'ChapterFetchError';
+        this.code = code;
+        this.chapterNum = chapterNum;
+    }
+}
 
 /**
  * Fallback strategy that scrapes the content directly from the browser.
@@ -72,15 +85,18 @@ export async function _fetchChapter(
 ): Promise<string> {
     const url = _resolveChapterUrl(storyId, chapterRef);
     const log = Core.getLogger(MODULE_NAME, 'fetchChapter');
+    const maxRetries = SettingsManager.get('chapterFetchMaxRetries');
+    const timeoutMs = SettingsManager.get('chapterFetchTimeoutMs');
+    const retryBaseMs = SettingsManager.get('chapterRetryBaseMs');
 
-    for (let attempt = 1; attempt <= CHAPTER_FETCH_MAX_RETRIES + 1; attempt++) {
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
         const response = await fetchRequestText({
             method: 'GET',
             url,
             headers: {
                 Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             },
-            timeout: CHAPTER_FETCH_TIMEOUT_MS,
+            timeout: timeoutMs,
         });
 
         if (response.ok) {
@@ -88,22 +104,35 @@ export async function _fetchChapter(
             const contentEl = Core.getElement(Elements.STORY_TEXT, doc);
             if (contentEl) return contentEl.innerHTML;
 
-            throw new Error(`Chapter ${chapterNum} loaded, but the story text container was missing.`);
+            if (attempt <= maxRetries) {
+                const delay = _chapterRetryDelay(retryBaseMs, attempt);
+                const msg = `Chapter ${chapterNum} loaded but story container was missing. Retrying in ${delay / 1000}s...`;
+                log(msg);
+                if (onProgress) onProgress(msg);
+                await _sleep(delay);
+                continue;
+            }
+
+            throw new ChapterFetchError(
+                chapterNum,
+                'content-validation',
+                `Download aborted while fetching chapter ${chapterNum}: story container missing after ${maxRetries + 1} attempts.`
+            );
         }
 
-        if (_isRetryableChapterResponse(response) && attempt <= CHAPTER_FETCH_MAX_RETRIES) {
-            const delay = CHAPTER_RETRY_BASE_MS * Math.pow(2, attempt - 1);
+        if (_isRetryableChapterResponse(response) && attempt <= maxRetries) {
+            const delay = _chapterRetryDelay(retryBaseMs, attempt);
             const msg = _chapterRetryMessage(chapterNum, response, delay);
             log(msg);
             if (onProgress) onProgress(msg);
-            await new Promise(r => setTimeout(r, delay));
+            await _sleep(delay);
             continue;
         }
 
-        throw new Error(_chapterFailureMessage(chapterNum, response));
+        throw new ChapterFetchError(chapterNum, 'request-failure', _chapterFailureMessage(chapterNum, response));
     }
 
-    throw new Error(`Download aborted while fetching chapter ${chapterNum}.`);
+    throw new ChapterFetchError(chapterNum, 'request-failure', `Download aborted while fetching chapter ${chapterNum}.`);
 }
 
 export function _resolveChapterUrl(storyId: string, chapterRef: string | number): string {
@@ -139,7 +168,7 @@ function _chapterFailureMessage(chapterNum: number, response: FetchTextResponse)
 /**
  * The core scraping logic.
  */
-async function _runScraper(
+export async function _runScraper(
     storyId: string,
     storyUrl: string,
     localMetaSerializer: LocalMetadataSerializer,
@@ -166,36 +195,151 @@ async function _runScraper(
         chapterList = [{ id: '1', name: finalMeta.title }];
     }
 
-    const chapters: ChapterData[] = [];
+    const chapters: (ChapterData | null)[] = new Array(total).fill(null);
     log(`Starting scrape for ${total} chapters.`);
+    const pass1DelayMs = SettingsManager.get('chapterPass1DelayMs');
+    const cooldownMs = SettingsManager.get('chapterCooldownMs');
+    const pass2DelayMs = SettingsManager.get('chapterPass2DelayMs');
 
-    // 3. Fetch Loop
-    for (let i = 0; i < total; i++) {
-        const num = i + 1;
-        if (onProgress) onProgress(`Fetching ${num}/${total}...`);
+    // 3. Pass 1
+    let failedIndices = await _runChapterPass({
+        storyId,
+        chapterList,
+        chapters,
+        indices: Array.from({ length: total }, (_, index) => index),
+        passLabel: 'Pass 1',
+        delayMs: pass1DelayMs,
+        totalChapters: total,
+        onProgress,
+    });
+
+    // 4. Pass 2 and user-directed follow-up retries
+    if (failedIndices.length > 0) {
+        const cooldownMessage = `Pass 1 complete. ${failedIndices.length} chapters failed. Cooling down...`;
+        log(cooldownMessage);
+        if (onProgress) onProgress(cooldownMessage);
+        await _sleep(cooldownMs);
+    }
+
+    while (failedIndices.length > 0) {
+        failedIndices = await _runChapterPass({
+            storyId,
+            chapterList,
+            chapters,
+            indices: failedIndices,
+            passLabel: 'Pass 2',
+            delayMs: pass2DelayMs,
+            totalChapters: total,
+            onProgress,
+        });
+
+        if (failedIndices.length === 0) break;
+
+        const chapterNames = failedIndices.map(index => _chapterTitle(chapterList, index, finalMeta.title));
+        const choice = await confirmRetryDialog(failedIndices, chapterNames);
+
+        if (choice === 'retry') {
+            const retryMessage = `Retrying ${failedIndices.length} failed chapters again...`;
+            log(retryMessage);
+            if (onProgress) onProgress(retryMessage);
+            continue;
+        }
+
+        if (choice === 'build') {
+            _fillMissingChapters(chapters, failedIndices, chapterList, finalMeta.title);
+            break;
+        }
+
+        throw new Error('Download cancelled by user after retry exhaustion.');
+    }
+
+    // 5. Build
+    if (onProgress) onProgress("Bundling EPUB...");
+    await EpubBuilder.build(finalMeta, chapters.filter((chapter): chapter is ChapterData => chapter !== null));
+}
+
+interface ChapterOption {
+    id: string;
+    name: string;
+}
+
+interface ChapterPassOptions {
+    storyId: string;
+    chapterList: ChapterOption[];
+    chapters: (ChapterData | null)[];
+    indices: number[];
+    passLabel: string;
+    delayMs: number;
+    totalChapters: number;
+    onProgress?: CallableFunction;
+}
+
+async function _runChapterPass(options: ChapterPassOptions): Promise<number[]> {
+    const log = Core.getLogger(MODULE_NAME, 'runChapterPass');
+    const failedIndices: number[] = [];
+
+    for (let position = 0; position < options.indices.length; position++) {
+        const index = options.indices[position];
+        const chapterNum = index + 1;
+        const chapterRef = options.chapterList[index]?.id || String(chapterNum);
+        const progressLabel = options.passLabel === 'Pass 1'
+            ? `Fetching ${chapterNum}/${options.totalChapters}...`
+            : `Retrying ${position + 1}/${options.indices.length} (chapter ${chapterNum}/${options.totalChapters})...`;
+
+        if (options.onProgress) options.onProgress(progressLabel);
 
         try {
-            const chapterRef = chapterList[i]?.id || String(num);
-            const content = await _fetchChapter(storyId, chapterRef, num, onProgress);
-            log(`Fetched Chapter ${num}.`);
-            chapters.push({
-                title: chapterList[i]?.name || `Chapter ${num}`,
-                number: num,
-                content
-            });
-
-            if (i < total - 1) {
-                const delay = Math.floor(Math.random() * 1500) + 1500;
-                await new Promise(r => setTimeout(r, delay));
-            }
+            const content = await _fetchChapter(options.storyId, chapterRef, chapterNum, options.onProgress);
+            options.chapters[index] = {
+                title: _chapterTitle(options.chapterList, index),
+                number: chapterNum,
+                content,
+            };
+            log(`${options.passLabel} fetched chapter ${chapterNum}.`);
         } catch (e) {
-            log(`Failed to fetch chapter ${num}`, e);
-            const reason = e instanceof Error ? e.message : String(e);
-            throw new Error(`Failed to fetch chapter ${num}: ${reason}`);
+            failedIndices.push(index);
+            log(`${options.passLabel} failed for chapter ${chapterNum}`, e);
+            if (options.onProgress) {
+                options.onProgress(`${options.passLabel} failed for chapter ${chapterNum}. ${_chapterErrorMessage(e)}`);
+            }
+        }
+
+        if (position < options.indices.length - 1) {
+            await _sleep(options.delayMs);
         }
     }
 
-    // 4. Build
-    if (onProgress) onProgress("Bundling EPUB...");
-    await EpubBuilder.build(finalMeta, chapters);
+    return failedIndices;
+}
+
+function _chapterRetryDelay(baseMs: number, attempt: number): number {
+    return baseMs * Math.pow(2, attempt - 1);
+}
+
+function _sleep(delayMs: number): Promise<void> {
+    return new Promise(resolve => window.setTimeout(resolve, delayMs));
+}
+
+function _chapterTitle(chapterList: ChapterOption[], index: number, fallbackTitle?: string): string {
+    return chapterList[index]?.name || fallbackTitle || `Chapter ${index + 1}`;
+}
+
+function _chapterErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function _fillMissingChapters(
+    chapters: (ChapterData | null)[],
+    failedIndices: number[],
+    chapterList: ChapterOption[],
+    fallbackTitle: string
+): void {
+    for (const index of failedIndices) {
+        const chapterNum = index + 1;
+        chapters[index] = {
+            title: _chapterTitle(chapterList, index, fallbackTitle),
+            number: chapterNum,
+            content: `<p><em>Chapter ${chapterNum} could not be downloaded. Please retry the download.</em></p>`,
+        };
+    }
 }

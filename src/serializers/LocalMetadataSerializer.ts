@@ -4,6 +4,7 @@ import { Core } from '../modules/Core';
 import { Elements } from '../enums/Elements';
 import { IMetadataSerializer } from '../interfaces/IMetadataSerializer';
 import { StoryMetadata } from '../interfaces/StoryMetadata';
+import { backgroundFetch } from '../platform/messaging';
 
 /**
  * Serializer responsible for scraping metadata directly from the current FanFiction.net DOM.
@@ -92,10 +93,15 @@ export class LocalMetadataSerializer implements IMetadataSerializer {
         for (const res of resolutions) {
             try {
                 const targetUrl = baseUrl.replace(/\/75\/|\/150\/|\/180\//, res);
-                const imgResp = await fetch(targetUrl);
-                if (imgResp.ok) {
+                const imgResp = await backgroundFetch({
+                    url: targetUrl,
+                    method: 'GET',
+                    responseType: 'blob',
+                    timeout: 30_000,
+                });
+                if (imgResp.ok && imgResp.data instanceof Blob) {
                     log(`Successfully fetched ${res} resolution.`);
-                    return await imgResp.blob();
+                    return imgResp.data;
                 }
             } catch (e) {
                 // Continue to next resolution
@@ -104,8 +110,13 @@ export class LocalMetadataSerializer implements IMetadataSerializer {
 
         // Fallback to original src
         try {
-            const finalResp = await fetch(baseUrl);
-            if (finalResp.ok) return await finalResp.blob();
+            const finalResp = await backgroundFetch({
+                url: baseUrl,
+                method: 'GET',
+                responseType: 'blob',
+                timeout: 30_000,
+            });
+            if (finalResp.ok && finalResp.data instanceof Blob) return finalResp.data;
         } catch (e) {
             log('Final cover fallback failed.', e);
         }

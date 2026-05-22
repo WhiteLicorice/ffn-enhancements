@@ -69,4 +69,16 @@ describe('SettingsPage', () => {
         expect(text).not.toContain('after clicking Save in the hidden iframe');
         expect(text).not.toContain('readyState="complete" during doc refresh');
     });
+
+    it('shows the native downloader tuning controls under Advanced Settings', () => {
+        SettingsPage.openModal();
+
+        const retryInput = document.querySelector<HTMLInputElement>('[data-setting="chapterFetchMaxRetries"]');
+        const cooldownInput = document.querySelector<HTMLInputElement>('[data-setting="chapterCooldownMs"]');
+
+        expect(document.body.textContent).toContain('Native Downloader');
+        expect(document.body.textContent).toContain('Native Chapter Retry Limit');
+        expect(retryInput?.value).toBe('5');
+        expect(cooldownInput?.value).toBe('10000');
+    });
 });

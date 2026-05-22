@@ -279,3 +279,93 @@
 .ffne-toast-error {
     background-color: var(--ffne-semantic-toast-error);
 }
+
+.ffne-confirm-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483646;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: var(--ffne-shadow-overlay);
+}
+
+.ffne-confirm-dialog {
+    width: min(560px, 100%);
+    max-height: 90vh;
+    overflow: hidden;
+    border: 1px solid var(--ffne-ui-border-chrome);
+    border-radius: 6px;
+    background: var(--ffne-ui-white);
+    color: var(--ffne-ui-text-body);
+    box-shadow: 0 8px 32px var(--ffne-shadow-modal);
+    font: 13px/1.4 Verdana, Arial, sans-serif;
+}
+
+.ffne-confirm-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--ffne-ui-border);
+    background: var(--ffne-brand-bg);
+}
+
+.ffne-confirm-title {
+    margin: 0;
+    color: var(--ffne-brand-primary);
+    font-size: 16px;
+}
+
+.ffne-confirm-body {
+    padding: 16px;
+}
+
+.ffne-confirm-text {
+    margin: 0 0 12px;
+}
+
+.ffne-confirm-list {
+    margin: 0 0 16px;
+    padding-left: 20px;
+    max-height: 240px;
+    overflow: auto;
+}
+
+.ffne-confirm-list li + li {
+    margin-top: 6px;
+}
+
+.ffne-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ffne-confirm-btn {
+    border: 1px solid var(--ffne-ui-border);
+    border-radius: 4px;
+    background: var(--ffne-ui-card-bg);
+    color: var(--ffne-ui-text-body);
+    cursor: pointer;
+    padding: 8px 12px;
+}
+
+.ffne-confirm-btn:hover,
+.ffne-confirm-btn:focus {
+    border-color: var(--ffne-ui-border-chrome);
+    background: var(--ffne-brand-hover-bg);
+    color: var(--ffne-brand-hover-text);
+}
+
+.ffne-confirm-btn-primary {
+    border-color: var(--ffne-brand-primary);
+    background: var(--ffne-brand-primary);
+    color: var(--ffne-ui-text-on-accent);
+}
+
+.ffne-confirm-btn-primary:hover,
+.ffne-confirm-btn-primary:focus {
+    border-color: var(--ffne-brand-dark);
+    background: var(--ffne-brand-dark);
+    color: var(--ffne-ui-text-on-accent);
+}
