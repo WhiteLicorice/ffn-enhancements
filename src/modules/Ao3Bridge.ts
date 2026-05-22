@@ -58,9 +58,11 @@ export const Ao3Bridge = {
         this._initialized = true;
 
         this._injectPanel();
-        this._writeHeartbeat();
         this._setStatus('Waiting for FFN migration requests.', false);
 
+        // Register the change listener before hydrating so any FFN writes that
+        // land mid-hydration are still mirrored into AO3's localStorage by
+        // platformStorage.onChanged's side effect.
         try {
             platformStorage.onChanged(() => {
                 void this._processPendingRequest();
@@ -69,12 +71,27 @@ export const Ao3Bridge = {
             Core.getLogger(this.MODULE_NAME, 'init')('Extension storage change events unavailable; heartbeat polling remains active.', err);
         }
 
+        this._writeHeartbeat();
+
         this._heartbeatTimer = window.setInterval(() => {
             this._writeHeartbeat();
             void this._processPendingRequest();
         }, AO3_BRIDGE_HEARTBEAT_INTERVAL_MS);
 
-        void this._processPendingRequest();
+        // AO3's localStorage is per-origin and starts empty for FFNE-namespaced
+        // bridge keys; any request FFN already wrote lives only in
+        // chrome.storage.local until copied across. On FFN, SettingsManager
+        // does this hydration during prime(); on AO3 the bridge owns it.
+        // Without this step, _processPendingRequest reads null and the FFN
+        // modal hangs on "Opening Ao3..." until its timeout.
+        platformStorage
+            .hydrateFromPersistentStorage()
+            .catch((err) => {
+                Core.getLogger(this.MODULE_NAME, 'init')('Bridge state hydration failed.', err);
+            })
+            .finally(() => {
+                void this._processPendingRequest();
+            });
     },
 
     _writeHeartbeat(): void {

@@ -23,14 +23,15 @@ export function registerSitewideModules(hostname: string = window.location.hostn
         return;
     }
 
-    if (isAo3Host(hostname)) {
-        EarlyBoot.register(SettingsManager);
-        EarlyBoot.register(ThemeManager);
-    }
+    // AO3 intentionally registers no sitewide modules. Only Ao3Bridge runs
+    // (initialized directly in bootstrap()) — theming, layout, and settings
+    // sync are FFN-only concerns. Theme/layout CSS shipped via manifest is
+    // gated by `html.ffne-theme-*` / `.ffn-enhancements-fluid-mode` classes
+    // which are never applied on AO3, so the stylesheets stay dormant.
 }
 
 export function primeSitewideModules(hostname: string = window.location.hostname): void {
-    if (isFfnHost(hostname) || isAo3Host(hostname)) {
+    if (isFfnHost(hostname)) {
         EarlyBoot.prime();
     }
 }
@@ -42,7 +43,6 @@ export function bootstrap(locationLike: Pick<Location, 'pathname' | 'hostname' |
     Core.startup(locationLike);
 
     if (isAo3Host(hostname)) {
-        EarlyBoot.init();
         safeInit('Ao3Bridge', () => Ao3Bridge.init());
         return;
     }
