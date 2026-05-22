@@ -117,6 +117,13 @@ function hideFrame(frame: HTMLIFrameElement): void {
     frame.style.visibility = 'hidden';
 }
 
+function createFrameName(prefix: string): string {
+    const token = typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    return `${prefix}${token}`;
+}
+
 /**
  * Document fetch and save service for FFN private author documents.
  * Handles fetching doc pages, extracting content, and direct save submissions.
@@ -480,7 +487,7 @@ export const DocFetchService = {
             let settled = false;
             let timeoutId: number | null = null;
             const iframe = document.createElement('iframe');
-            iframe.name = `ffne_doc_save_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+            iframe.name = createFrameName('ffne_doc_save_');
             iframe.setAttribute('sandbox', 'allow-same-origin');
             hideFrame(iframe);
 
@@ -526,6 +533,7 @@ export const DocFetchService = {
 
                     const frameHref = iframe.contentWindow?.location.href || '';
                     const bodyText = normalizeText(responseDoc.body?.textContent || '');
+                    // Hidden iframes can emit an initial blank load before the POST response arrives.
                     if ((!frameHref || frameHref === 'about:blank') && !bodyText) return;
 
                     resolveOnce(this._verifyPrivateDocSaveResponse(
