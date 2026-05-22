@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../utils/fetchRequest', () => ({
     fetchRequestText: vi.fn(),
@@ -55,6 +55,38 @@ function makeEditPage(options: {
     `;
 }
 
+function getControlValues(
+    controls: Array<{ name: string; value: string; tagName: string }> | undefined,
+    name: string
+): string[] {
+    return (controls || []).filter(control => control.name === name).map(control => control.value);
+}
+
+function getControl(
+    controls: Array<{ name: string; value: string; tagName: string }> | undefined,
+    name: string
+) {
+    return (controls || []).find(control => control.name === name);
+}
+
+function writeFrameHtml(iframe: HTMLIFrameElement, html: string) {
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error('Missing iframe document');
+    doc.open();
+    doc.write(html);
+    doc.close();
+}
+
+function mockNativeSaveSubmission(
+    handler: (form: HTMLFormElement, iframe: HTMLIFrameElement) => void
+) {
+    return vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
+        const iframe = document.querySelector(`iframe[name="${this.target}"]`) as HTMLIFrameElement | null;
+        if (!iframe) throw new Error(`Missing iframe for target ${this.target}`);
+        handler(this, iframe);
+    });
+}
+
 describe('DocFetchService guard helpers', () => {
     it('returns trimmed editor textarea content when present', () => {
         const doc = new DOMParser().parseFromString(
@@ -99,6 +131,10 @@ describe('DocFetchService direct save helpers', () => {
         });
     });
 
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it('serializes FFN save controls and overwrites only bio for import', () => {
         const doc = new DOMParser().parseFromString(makeEditPage({
             extraControls: '<input type="radio" name="mode" value="html" checked>',
@@ -111,44 +147,69 @@ describe('DocFetchService direct save helpers', () => {
 
         expect(result.ok).toBe(true);
         expect(result.actionUrl).toBe('https://www.fanfiction.net/docs/edit.php?docid=123');
-        const params = new URLSearchParams(result.body);
-        expect(params.get('bio')).toBe('<p>Imported</p>');
-        expect(params.get('action')).toBe('save');
-        expect(params.get('docid')).toBe('123');
-        expect(params.get('selectdocid')).toBe('123');
-        expect(params.get('csrf')).toBe('token-123');
-        expect(params.get('keep')).toBe('yes');
-        expect(params.get('mode')).toBe('html');
-        expect(params.has('skip')).toBe(false);
+        expect(getControl(result.controls, 'bio')).toEqual({
+            name: 'bio',
+            value: '<p>Imported</p>',
+            tagName: 'textarea',
+        });
+        expect(getControlValues(result.controls, 'action')).toEqual(['save']);
+        expect(getControlValues(result.controls, 'docid')).toEqual(['123']);
+        expect(getControlValues(result.controls, 'selectdocid')).toEqual(['123']);
+        expect(getControlValues(result.controls, 'csrf')).toEqual(['token-123']);
+        expect(getControlValues(result.controls, 'keep')).toEqual(['yes']);
+        expect(getControlValues(result.controls, 'mode')).toEqual(['html']);
+        expect(getControlValues(result.controls, 'skip')).toEqual([]);
     });
 
-    it('posts through the service-worker fetch helper and never creates an iframe', async () => {
-        fetchRequestTextMock
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: makeEditPage(),
-            }))
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: '<div class="panel_success">Document successfully saved.</div>',
-            }));
-        const createElementSpy = vi.spyOn(document, 'createElement');
+    it('preserves the parsed editor HTML for refresh requests', () => {
+        const doc = new DOMParser().parseFromString(makeEditPage(), 'text/html');
+
+        const result = DocFetchService._buildPrivateDocSaveRequest(doc, 'https://www.fanfiction.net/docs/edit.php?docid=123', '123', {
+            operationLabel: 'REFRESH',
+        });
+
+        expect(result.ok).toBe(true);
+        expect(getControl(result.controls, 'bio')).toEqual({
+            name: 'bio',
+            value: 'Existing content',
+            tagName: 'textarea',
+        });
+    });
+
+    it('submits a native hidden form to a sandboxed iframe and avoids the old hidden editor path', async () => {
+        fetchRequestTextMock.mockResolvedValueOnce(makeFetchResponse({
+            responseText: makeEditPage(),
+        }));
+        const clickSpy = vi.spyOn(HTMLElement.prototype, 'click');
+        const intervalSpy = vi.spyOn(window, 'setInterval');
+        const submitSpy = mockNativeSaveSubmission((form, iframe) => {
+            expect(form.method).toBe('post');
+            expect(form.action).toBe('https://www.fanfiction.net/docs/edit.php?docid=123');
+            expect(form.target).toMatch(/^ffne_doc_save_/);
+            expect((form.elements.namedItem('bio') as HTMLTextAreaElement).value).toBe('Existing content');
+            expect((form.elements.namedItem('action') as HTMLInputElement).value).toBe('save');
+            expect((form.elements.namedItem('docid') as HTMLInputElement).value).toBe('123');
+            expect(iframe.getAttribute('sandbox')).toBe('allow-same-origin');
+            expect(iframe.getAttribute('sandbox')).not.toContain('allow-scripts');
+
+            writeFrameHtml(iframe, '<div class="panel_success">Document successfully saved.</div>');
+            iframe.dispatchEvent(new Event('load'));
+        });
 
         const result = await DocFetchService.refreshPrivateDoc('123', 'Doc Name');
 
         expect(result).toBe(true);
-        expect(fetchRequestTextMock).toHaveBeenNthCalledWith(1, {
+        expect(fetchRequestTextMock).toHaveBeenCalledTimes(1);
+        expect(fetchRequestTextMock).toHaveBeenCalledWith({
             method: 'GET',
             url: 'https://www.fanfiction.net/docs/edit.php?docid=123',
         });
-        expect(fetchRequestTextMock).toHaveBeenNthCalledWith(2, {
-            method: 'POST',
-            url: 'https://www.fanfiction.net/docs/edit.php?docid=123',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-            },
-            data: expect.any(String),
-            timeout: 4321,
-        });
-        expect(createElementSpy.mock.calls.some(([tag]) => tag === 'iframe')).toBe(false);
+        expect(fetchRequestTextMock.mock.calls.some(([request]) => request.method === 'POST')).toBe(false);
+        expect(submitSpy).toHaveBeenCalledTimes(1);
+        expect(clickSpy).not.toHaveBeenCalled();
+        expect(intervalSpy).not.toHaveBeenCalled();
+        expect(document.querySelector('iframe[name^="ffne_doc_save_"]')).toBeNull();
+        expect(document.querySelector('form[target^="ffne_doc_save_"]')).toBeNull();
     });
 
     it('aborts before POST when the fetched form belongs to the wrong doc', async () => {
@@ -187,8 +248,11 @@ describe('DocFetchService direct save helpers', () => {
 
         expect(result.ok).toBe(true);
         expect(result.actionUrl).toBe('https://www.fanfiction.net/docs/edit.php?docid=123');
-        const params = new URLSearchParams(result.body);
-        expect(params.get('bio')).toBe('Existing content');
+        expect(getControl(result.controls, 'bio')).toEqual({
+            name: 'bio',
+            value: 'Existing content',
+            tagName: 'textarea',
+        });
     });
 
     it('accepts either canonical FFN host for form actions', () => {
@@ -218,6 +282,22 @@ describe('DocFetchService direct save helpers', () => {
         expect(fetchRequestTextMock).toHaveBeenCalledTimes(1);
     });
 
+    it('aborts before submit when the editor textarea is missing', async () => {
+        fetchRequestTextMock.mockResolvedValueOnce(makeFetchResponse({
+            responseText: '<form name="docform"><input type="hidden" name="action" value="save"><input type="hidden" name="docid" value="123"></form>',
+        }));
+        const submitSpy = vi.spyOn(HTMLFormElement.prototype, 'submit');
+
+        const result = await DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '<p>Imported</p>');
+
+        expect(result).toEqual({
+            ok: false,
+            reason: 'Could not find the private document editor textarea.',
+        });
+        expect(fetchRequestTextMock).toHaveBeenCalledTimes(1);
+        expect(submitSpy).not.toHaveBeenCalled();
+    });
+
     it('aborts import before any fetch when replacement HTML is empty', async () => {
         const result = await DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '   ');
 
@@ -243,90 +323,100 @@ describe('DocFetchService direct save helpers', () => {
     });
 
     it('accepts an explicit FFN success response for refresh', async () => {
-        fetchRequestTextMock
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: makeEditPage(),
-            }))
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: '<div class="panel_success">Success! Document successfully saved.</div>',
-            }));
+        fetchRequestTextMock.mockResolvedValueOnce(makeFetchResponse({
+            responseText: makeEditPage(),
+        }));
+        mockNativeSaveSubmission((_form, iframe) => {
+            writeFrameHtml(iframe, '<div class="panel_success">Success! Document successfully saved.</div>');
+            iframe.dispatchEvent(new Event('load'));
+        });
 
         await expect(DocFetchService.refreshPrivateDoc('123', 'Doc Name')).resolves.toBe(true);
     });
 
     it('accepts mixed-case explicit success text for refresh', async () => {
-        fetchRequestTextMock
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: makeEditPage(),
-            }))
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: '<div class="panel_success">SuCcEsS</div>',
-            }));
+        fetchRequestTextMock.mockResolvedValueOnce(makeFetchResponse({
+            responseText: makeEditPage(),
+        }));
+        mockNativeSaveSubmission((_form, iframe) => {
+            writeFrameHtml(iframe, '<div class="panel_success">SuCcEsS</div>');
+            iframe.dispatchEvent(new Event('load'));
+        });
 
         await expect(DocFetchService.refreshPrivateDoc('123', 'Doc Name')).resolves.toBe(true);
     });
 
     it('accepts a clean refresh response with the same docid and non-empty textarea', async () => {
-        fetchRequestTextMock
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: makeEditPage({ textareaValue: 'Existing content' }),
-            }))
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: makeEditPage({ textareaValue: 'Existing content' }),
-            }));
+        fetchRequestTextMock.mockResolvedValueOnce(makeFetchResponse({
+            responseText: makeEditPage({ textareaValue: 'Existing content' }),
+        }));
+        mockNativeSaveSubmission((_form, iframe) => {
+            writeFrameHtml(iframe, makeEditPage({ textareaValue: 'Existing content' }));
+            iframe.dispatchEvent(new Event('load'));
+        });
 
         await expect(DocFetchService.refreshPrivateDoc('123', 'Doc Name')).resolves.toBe(true);
     });
 
     it('accepts an import response when the returned textarea matches the submitted HTML after normalization', async () => {
-        fetchRequestTextMock
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: makeEditPage(),
-            }))
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: makeEditPage({ textareaValue: '<p>Imported</p>\r\n<div>Body</div>' }),
-            }));
+        fetchRequestTextMock.mockResolvedValueOnce(makeFetchResponse({
+            responseText: makeEditPage(),
+        }));
+        mockNativeSaveSubmission((form, iframe) => {
+            expect((form.elements.namedItem('bio') as HTMLTextAreaElement).value).toBe('<p>Imported</p>\n<div>Body</div>');
+            writeFrameHtml(iframe, makeEditPage({ textareaValue: '<p>Imported</p>\r\n<div>Body</div>' }));
+            iframe.dispatchEvent(new Event('load'));
+        });
 
         const result = await DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '<p>Imported</p>\n<div>Body</div>');
 
         expect(result).toEqual({ ok: true, reason: undefined });
     });
 
-    it('fails safely on explicit auth or authorization responses without retrying', async () => {
-        fetchRequestTextMock
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: makeEditPage(),
-            }))
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: '<div class="panel_error">No permission.</div>',
-            }));
+    it('fails safely on invalid-auth iframe responses without retrying', async () => {
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 2 as never;
+                case 'fetchRetryBaseMs':
+                    return 0 as never;
+                case 'iframeSaveTimeoutMs':
+                    return 4321 as never;
+                default:
+                    return 0 as never;
+            }
+        });
+        fetchRequestTextMock.mockResolvedValueOnce(makeFetchResponse({
+            responseText: makeEditPage(),
+        }));
+        const submitSpy = mockNativeSaveSubmission((_form, iframe) => {
+            writeFrameHtml(iframe, '<body>Invalid Request / unable to authenticate</body>');
+            iframe.dispatchEvent(new Event('load'));
+        });
 
         const result = await DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '<p>Imported</p>');
 
         expect(result).toEqual({
             ok: false,
-            reason: 'No permission.',
+            reason: 'Invalid Request / unable to authenticate.',
         });
-        expect(fetchRequestTextMock).toHaveBeenCalledTimes(2);
+        expect(fetchRequestTextMock).toHaveBeenCalledTimes(1);
+        expect(submitSpy).toHaveBeenCalledTimes(1);
     });
 
-    it('fails safely on Cloudflare challenge responses without retrying', async () => {
-        fetchRequestTextMock
-            .mockResolvedValueOnce(makeFetchResponse({
-                responseText: makeEditPage(),
-            }))
-            .mockResolvedValueOnce(makeFetchResponse({
-                ok: false,
-                status: 403,
-                responseText: 'DDoS protection by Cloudflare',
-                isCfChallenge: true,
-            }));
+    it('fails safely on Cloudflare challenge edit responses without retrying', async () => {
+        fetchRequestTextMock.mockResolvedValueOnce(makeFetchResponse({
+            ok: false,
+            status: 403,
+            responseText: 'DDoS protection by Cloudflare',
+            isCfChallenge: true,
+        }));
 
         const result = await DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '<p>Imported</p>');
 
         expect(result.ok).toBe(false);
         expect(result.reason).toContain('Cloudflare');
-        expect(fetchRequestTextMock).toHaveBeenCalledTimes(2);
+        expect(fetchRequestTextMock).toHaveBeenCalledTimes(1);
     });
 
     it('retries import mismatch failures and returns the mismatch reason after retry exhaustion', async () => {
@@ -344,9 +434,11 @@ describe('DocFetchService direct save helpers', () => {
         });
         fetchRequestTextMock
             .mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage() }))
-            .mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage({ textareaValue: '<p>Wrong</p>' }) }))
-            .mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage() }))
-            .mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage({ textareaValue: '<p>Wrong</p>' }) }));
+            .mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage() }));
+        const submitSpy = mockNativeSaveSubmission((_form, iframe) => {
+            writeFrameHtml(iframe, makeEditPage({ textareaValue: '<p>Wrong</p>' }));
+            iframe.dispatchEvent(new Event('load'));
+        });
 
         const result = await DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '<p>Imported</p>');
 
@@ -354,42 +446,37 @@ describe('DocFetchService direct save helpers', () => {
             ok: false,
             reason: 'FFN returned editor content that did not match the imported HTML.',
         });
-        expect(fetchRequestTextMock).toHaveBeenCalledTimes(4);
+        expect(fetchRequestTextMock).toHaveBeenCalledTimes(2);
+        expect(submitSpy).toHaveBeenCalledTimes(2);
     });
 
-    it('retries timeout failures and returns the timeout reason after retry exhaustion', async () => {
+    it('cleans up the hidden form and iframe after response timeouts', async () => {
+        vi.useFakeTimers();
         vi.mocked(SettingsManager.get).mockImplementation((key) => {
             switch (key) {
                 case 'fetchMaxRetries':
-                    return 2 as never;
+                    return 1 as never;
                 case 'fetchRetryBaseMs':
                     return 0 as never;
                 case 'iframeSaveTimeoutMs':
-                    return 4321 as never;
+                    return 10 as never;
                 default:
                     return 0 as never;
             }
         });
-        fetchRequestTextMock
-            .mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage() }))
-            .mockResolvedValueOnce(makeFetchResponse({
-                ok: false,
-                status: 0,
-                reason: 'Request timed out.',
-            }))
-            .mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage() }))
-            .mockResolvedValueOnce(makeFetchResponse({
-                ok: false,
-                status: 0,
-                reason: 'Request timed out.',
-            }));
+        fetchRequestTextMock.mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage() }));
+        const submitSpy = mockNativeSaveSubmission(() => {});
 
-        const result = await DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '<p>Imported</p>');
+        const promise = DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '<p>Imported</p>');
+        await vi.advanceTimersByTimeAsync(10);
 
-        expect(result).toEqual({
+        await expect(promise).resolves.toEqual({
             ok: false,
             reason: 'Request timed out.',
         });
-        expect(fetchRequestTextMock).toHaveBeenCalledTimes(4);
+        expect(fetchRequestTextMock).toHaveBeenCalledTimes(1);
+        expect(submitSpy).toHaveBeenCalledTimes(1);
+        expect(document.querySelector('iframe[name^="ffne_doc_save_"]')).toBeNull();
+        expect(document.querySelector('form[target^="ffne_doc_save_"]')).toBeNull();
     });
 });
