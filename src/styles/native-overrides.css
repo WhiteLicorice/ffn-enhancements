@@ -303,7 +303,9 @@ html.__THEME_CLASS__ .z-top-container {
 }
 
 /* Navigation link containers */
-html.__THEME_CLASS__ .lc-wrapper {
+html.__THEME_CLASS__ .lc-wrapper,
+html.__THEME_CLASS__ .lc-left,
+html.__THEME_CLASS__ .lc-right {
     border-color: var(--ffne-ui-border) !important;
 }
 
@@ -421,6 +423,7 @@ html.__THEME_CLASS__ .panel_error {
 
 /* Navigation bar items */
 html.__THEME_CLASS__ .lc-left a,
+html.__THEME_CLASS__ .lc-right a,
 html.__THEME_CLASS__ .lc a {
     color: var(--ffne-ui-text-on-accent) !important;
 }

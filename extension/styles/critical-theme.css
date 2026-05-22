@@ -23,6 +23,15 @@ html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high
   color: var(--ffne-ui-text-body) !important;
 }
 
+/* ── Navigation Chrome (.zmenu / #zmenu / .lc-*) ──────────────────── */
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.zmenu, #zmenu) {
+  background-color: var(--ffne-ui-card-bg) !important;
+  border-color: var(--ffne-ui-border) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.lc-wrapper, .lc, .lc-left, .lc-right) {
+  border-color: var(--ffne-ui-border) !important;
+}
+
 /* ── Native FFN Element Overrides (dark/sepia/hc themes) ─────────── */
 html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.xcontrast, .xcontrast_outer, #l_main, #l_menu, #xcenter, #content_parent, .z-top-container, #review) {
   background-color: var(--ffne-ui-page-bg) !important;
@@ -45,7 +54,7 @@ html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(#top
   color: var(--ffne-ui-text-on-accent) !important;
   border-color: var(--ffne-ui-border) !important;
 }
-html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.menulink, .menulink a, .menulink small, .lc-left a, .lc a, .tcat b, .tcat a) {
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.menulink, .menulink a, .menulink small, .lc-left a, .lc a, .lc-right a, .tcat b, .tcat a) {
   color: var(--ffne-ui-text-on-accent) !important;
 }
 html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) #name_login a {
