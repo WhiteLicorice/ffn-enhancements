@@ -45,7 +45,6 @@ function normalizeUrlForComparison(value: string | undefined): string {
 }
 
 function appendSuccessfulControl(params: URLSearchParams, control: Element): void {
-    if (!(control instanceof HTMLElement)) return;
     if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) {
         return;
     }
@@ -55,7 +54,8 @@ function appendSuccessfulControl(params: URLSearchParams, control: Element): voi
 
     if (control instanceof HTMLInputElement) {
         const type = control.type.toLowerCase();
-        if (type === 'file' || type === 'reset' || type === 'button' || type === 'submit' || type === 'image') return;
+        const excludedTypes = new Set(['file', 'reset', 'button', 'submit', 'image']);
+        if (excludedTypes.has(type)) return;
         if ((type === 'checkbox' || type === 'radio') && !control.checked) return;
         params.append(name, control.value);
         return;
@@ -296,10 +296,6 @@ export const DocFetchService = {
         const form = this._getPrivateDocForm(doc, textarea);
         if (!form) {
             return { ok: false, reason: 'Could not find the private document save form.' };
-        }
-
-        if ((form.getAttribute('name') || '').trim() !== 'docform') {
-            return { ok: false, reason: 'Private document save form was not FFN docform.' };
         }
 
         const actionControl = form.querySelector<HTMLInputElement>('input[type="hidden"][name="action"]');
