@@ -279,6 +279,7 @@ function _themeIframe(frame: HTMLIFrameElement, definition: IThemeDefinition): v
             _applyFrameThemeClass(frameDocument, definition.name);
             _injectStaticNativeOverrides(definition, frameDocument, IFRAME_STATIC_OVERRIDE_STYLE_ID);
             _injectScannedFfnOverrides(definition, frameDocument, IFRAME_OVERRIDE_STYLE_ID);
+            frame.style.visibility = 'visible';
         } catch (e) {
             FFNLogger.log(MODULE_NAME, '_themeIframe', 'Could not theme TinyMCE iframe:', e as object);
         }

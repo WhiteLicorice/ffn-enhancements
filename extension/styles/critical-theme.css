@@ -120,3 +120,13 @@ html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) .panel_e
   border-color: var(--ffne-semantic-error-border) !important;
   color: var(--ffne-semantic-error-text) !important;
 }
+
+/* ── TinyMCE Iframe Anti-FOUC ─────────────────────────────────────── */
+/* FFN's tinymce3.css hard-codes `body { background-color: white; color: black; }`
+   inside editor iframes (#bio_ifr etc.). Parent-document CSS cannot reach into
+   iframe contentDocument, so we hide the iframe element itself until
+   ThemeManager._themeIframe injects token vars and reveals it. Light theme
+   already matches tinymce3.css defaults, so no hide needed there. */
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) iframe[id$="_ifr"] {
+  visibility: hidden;
+}
