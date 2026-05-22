@@ -24,8 +24,14 @@ interface PrivateDocSaveRequestBuildResult {
     ok: boolean;
     reason?: string;
     actionUrl?: string;
-    body?: string;
+    controls?: PrivateDocSaveControl[];
     submittedHtml?: string;
+}
+
+interface PrivateDocSaveControl {
+    name: string;
+    value: string;
+    tagName: 'input' | 'textarea';
 }
 
 const FFN_DOC_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
@@ -45,7 +51,12 @@ function normalizeUrlForComparison(value: string | undefined): string {
     }
 }
 
-function appendSuccessfulControl(params: URLSearchParams, control: Element): void {
+function appendSuccessfulControl(
+    controls: PrivateDocSaveControl[],
+    control: Element,
+    editorTextareaName: string,
+    submittedHtml: string
+): void {
     if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) {
         return;
     }
@@ -58,21 +69,59 @@ function appendSuccessfulControl(params: URLSearchParams, control: Element): voi
         const excludedTypes = new Set(['file', 'reset', 'button', 'submit', 'image']);
         if (excludedTypes.has(type)) return;
         if ((type === 'checkbox' || type === 'radio') && !control.checked) return;
-        params.append(name, control.value);
+        controls.push({ name, value: control.value, tagName: 'input' });
         return;
     }
 
     if (control instanceof HTMLTextAreaElement) {
-        params.append(name, control.value);
+        controls.push({
+            name,
+            value: name === editorTextareaName ? submittedHtml : control.value,
+            tagName: name === editorTextareaName ? 'textarea' : 'input',
+        });
         return;
     }
 
     if (control.multiple) {
-        Array.from(control.selectedOptions).forEach(option => params.append(name, option.value));
+        Array.from(control.selectedOptions).forEach(option => controls.push({ name, value: option.value, tagName: 'input' }));
         return;
     }
 
-    params.append(name, control.value);
+    controls.push({ name, value: control.value, tagName: 'input' });
+}
+
+function appendHiddenInput(form: HTMLFormElement, name: string, value: string): void {
+    const input = form.ownerDocument.createElement('input');
+    input.type = 'hidden';
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+}
+
+function appendHiddenTextarea(form: HTMLFormElement, name: string, value: string): void {
+    const textarea = form.ownerDocument.createElement('textarea');
+    textarea.name = name;
+    textarea.value = value;
+    textarea.hidden = true;
+    textarea.style.display = 'none';
+    form.appendChild(textarea);
+}
+
+function hideFrame(frame: HTMLIFrameElement): void {
+    frame.style.position = 'absolute';
+    frame.style.width = '1px';
+    frame.style.height = '1px';
+    frame.style.left = '-9999px';
+    frame.style.top = '-9999px';
+    frame.style.border = 'none';
+    frame.style.visibility = 'hidden';
+}
+
+function createFrameName(prefix: string): string {
+    const token = typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    return `${prefix}${token}`;
 }
 
 /**
@@ -231,6 +280,10 @@ export const DocFetchService = {
             return 'FFN returned a login or authorization page.';
         }
 
+        if (/invalid\s+request|unable\s+to\s+authenticate/i.test(bodyText)) {
+            return 'Invalid Request / unable to authenticate.';
+        }
+
         if (response?.status === 403) {
             return 'FFN denied access to the document request.';
         }
@@ -347,16 +400,13 @@ export const DocFetchService = {
             };
         }
 
-        const params = new URLSearchParams();
-        Array.from(form.elements).forEach(element => appendSuccessfulControl(params, element));
-        params.set(textareaName, submittedHtml);
-        params.set('action', 'save');
-        params.set('docid', docId);
+        const controls: PrivateDocSaveControl[] = [];
+        Array.from(form.elements).forEach(element => appendSuccessfulControl(controls, element, textareaName, submittedHtml));
 
         return {
             ok: true,
             actionUrl,
-            body: params.toString(),
+            controls,
             submittedHtml,
         };
     },
@@ -424,9 +474,127 @@ export const DocFetchService = {
         };
     },
 
+    _submitPrivateDocSaveRequest: function (
+        actionUrl: string,
+        controls: PrivateDocSaveControl[],
+        docId: string,
+        submittedHtml: string,
+        options: SavePrivateDocOptions
+    ): Promise<PrivateDocSaveAttemptResult> {
+        const log = Core.getLogger(this.MODULE_NAME, '_submitPrivateDocSaveRequest');
+
+        return new Promise<PrivateDocSaveAttemptResult>((resolve) => {
+            let settled = false;
+            let timeoutId: number | null = null;
+            const iframe = document.createElement('iframe');
+            iframe.name = createFrameName('ffne_doc_save_');
+            iframe.setAttribute('sandbox', 'allow-same-origin');
+            hideFrame(iframe);
+
+            const form = document.createElement('form');
+            form.method = 'post';
+            form.action = actionUrl;
+            form.target = iframe.name;
+            form.style.display = 'none';
+
+            controls.forEach(control => {
+                if (control.tagName === 'textarea') {
+                    appendHiddenTextarea(form, control.name, control.value);
+                    return;
+                }
+                appendHiddenInput(form, control.name, control.value);
+            });
+
+            const cleanup = () => {
+                if (timeoutId !== null) window.clearTimeout(timeoutId);
+                iframe.removeEventListener('load', onLoad);
+                form.remove();
+                iframe.remove();
+            };
+
+            const resolveOnce = (result: PrivateDocSaveAttemptResult) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(result);
+            };
+
+            const onLoad = () => {
+                try {
+                    const responseDoc = iframe.contentDocument;
+                    if (!responseDoc) {
+                        resolveOnce({
+                            ok: false,
+                            reason: 'Hidden save response frame was not readable.',
+                            retryable: true,
+                        });
+                        return;
+                    }
+
+                    const frameHref = iframe.contentWindow?.location.href || '';
+                    const bodyText = normalizeText(responseDoc.body?.textContent || '');
+                    // Hidden iframes can emit an initial blank load before the POST response arrives.
+                    if ((!frameHref || frameHref === 'about:blank') && !bodyText) return;
+
+                    resolveOnce(this._verifyPrivateDocSaveResponse(
+                        {
+                            ok: true,
+                            status: 200,
+                            responseText: responseDoc.documentElement?.outerHTML || responseDoc.body?.outerHTML || '',
+                            finalUrl: frameHref,
+                            isCfChallenge: false,
+                        },
+                        docId,
+                        submittedHtml,
+                        options
+                    ));
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : String(err);
+                    log('Could not inspect private document save response frame.', message);
+                    resolveOnce({
+                        ok: false,
+                        reason: `Could not inspect private document save response frame: ${message}`,
+                        retryable: true,
+                    });
+                }
+            };
+
+            try {
+                const mountPoint = document.body || document.documentElement;
+                if (!mountPoint) {
+                    resolveOnce({
+                        ok: false,
+                        reason: 'Could not mount the hidden save form.',
+                        retryable: false,
+                    });
+                    return;
+                }
+
+                iframe.addEventListener('load', onLoad);
+                mountPoint.append(iframe, form);
+                timeoutId = window.setTimeout(() => {
+                    resolveOnce({
+                        ok: false,
+                        reason: 'Request timed out.',
+                        retryable: true,
+                    });
+                }, SettingsManager.get('iframeSaveTimeoutMs'));
+                form.submit();
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                log('Could not submit private document save form.', message);
+                resolveOnce({
+                    ok: false,
+                    reason: `Could not submit private document save form: ${message}`,
+                    retryable: true,
+                });
+            }
+        });
+    },
+
     /**
      * Refreshes a document by loading the edit form, preserving the existing HTML,
-     * and submitting the same FFN save payload through the service worker fetch path.
+     * and submitting the same FFN save payload through a native hidden form.
      */
     refreshPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<boolean> {
         const log = Core.getLogger(this.MODULE_NAME, 'refreshPrivateDoc');
@@ -571,24 +739,15 @@ export const DocFetchService = {
         }
 
         const request = this._buildPrivateDocSaveRequest(editDoc, editUrl, docId, options);
-        if (!request.ok || !request.actionUrl || request.body === undefined || request.submittedHtml === undefined) {
+        if (!request.ok || !request.actionUrl || request.submittedHtml === undefined) {
             return { ok: false, reason: request.reason || 'Could not build the private document save request.', retryable: false };
         }
 
-        log(`[${label}] Posting private document save payload for "${title}".`);
-        const saveResponse = await fetchRequestText({
-            method: 'POST',
-            url: request.actionUrl,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-            },
-            data: request.body,
-            timeout: SettingsManager.get('iframeSaveTimeoutMs'),
-        });
+        if (!request.controls?.length) {
+            return { ok: false, reason: 'Private document save form had no successful controls to submit.', retryable: false };
+        }
 
-        const saveTransportFailure = this._getPrivateDocTransportFailure(saveResponse, 'save request');
-        if (saveTransportFailure) return saveTransportFailure;
-
-        return this._verifyPrivateDocSaveResponse(saveResponse, docId, request.submittedHtml, options);
+        log(`[${label}] Submitting native private document save form for "${title}".`);
+        return this._submitPrivateDocSaveRequest(request.actionUrl, request.controls, docId, request.submittedHtml, options);
     },
 };
