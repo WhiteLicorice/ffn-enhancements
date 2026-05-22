@@ -36,11 +36,11 @@
     justify-content: center;
     gap: 3px;
     padding: 3px 0 4px;
-    border: 1px solid ThreeDShadow;
+    border: 1px solid var(--ffne-ui-border-chrome);
     border-bottom: 0;
     border-radius: 10px 10px 0 0;
-    background: ButtonFace;
-    color: ButtonText;
+    background: var(--ffne-ui-card-bg);
+    color: var(--ffne-ui-text-body);
     cursor: pointer;
     box-shadow: 0 -1px 6px var(--ffne-shadow-drawer);
 }
@@ -50,7 +50,7 @@
 }
 
 .ffne-dm-drawer-pull:focus-visible {
-    outline: 2px solid Highlight;
+    outline: 2px solid var(--ffne-brand-primary);
     outline-offset: 2px;
 }
 

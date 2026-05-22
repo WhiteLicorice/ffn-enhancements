@@ -114,14 +114,61 @@
     color: var(--ffne-brand-hover-text) !important;
 }
 
+/* Download modal: theme FFN Bootstrap structural elements excluded from CssScanner */
+[data-ffne-ui].modal {
+    background-color: var(--ffne-ui-white) !important;
+    border-color: var(--ffne-ui-border-chrome) !important;
+    box-shadow: 0 3px 18px var(--ffne-shadow-modal) !important;
+}
+
+[data-ffne-ui].modal .modal-header {
+    border-bottom-color: var(--ffne-ui-border) !important;
+    color: var(--ffne-ui-text-body) !important;
+}
+
+[data-ffne-ui].modal .close {
+    color: var(--ffne-ui-text-secondary) !important;
+    text-shadow: none !important;
+    opacity: 0.6 !important;
+}
+
+[data-ffne-ui].modal .close:hover {
+    color: var(--ffne-ui-text-body) !important;
+    opacity: 1 !important;
+}
+
+[data-ffne-ui].modal .modal-footer {
+    background-color: var(--ffne-ui-card-bg) !important;
+    border-top-color: var(--ffne-ui-border) !important;
+}
+
+[data-ffne-ui].modal .modal-footer .btn {
+    background-color: var(--ffne-ui-card-bg) !important;
+    background-image: none !important;
+    border-color: var(--ffne-ui-border) !important;
+    color: var(--ffne-ui-text-body) !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+}
+
+[data-ffne-ui].modal .modal-footer .btn:hover,
+[data-ffne-ui].modal .modal-footer .btn:focus {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    border-color: var(--ffne-ui-border-chrome) !important;
+    color: var(--ffne-brand-hover-text) !important;
+}
+
 .ffne-dl-modal-title {
     font-family: inherit;
+    color: var(--ffne-ui-text-body);
 }
 
 .ffne-dl-modal-body {
     text-align: center;
     min-height: 150px;
     font-family: Verdana, Arial, sans-serif;
+    background: var(--ffne-ui-white);
+    color: var(--ffne-ui-text-body);
 }
 
 .ffne-dl-modal-intro {
@@ -138,11 +185,25 @@
 .ffne-dl-source-btn {
     width: 140px;
     padding: 10px;
+    background-color: var(--ffne-ui-card-bg) !important;
+    background-image: none !important;
+    border-color: var(--ffne-ui-border) !important;
+    color: var(--ffne-ui-text-body) !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+}
+
+.ffne-dl-source-btn:hover,
+.ffne-dl-source-btn:focus {
+    background-color: var(--ffne-brand-hover-bg) !important;
+    border-color: var(--ffne-ui-border-chrome) !important;
+    color: var(--ffne-brand-hover-text) !important;
 }
 
 .ffne-dl-source-subtitle {
     font-size: 0.8em;
     font-weight: normal;
+    color: var(--ffne-ui-text-secondary);
 }
 
 .ffne-dl-note {
@@ -150,6 +211,9 @@
     margin: 0 20px;
     font-size: 0.9em;
     padding: 10px 15px;
+    color: var(--ffne-ui-text-body) !important;
+    background: var(--ffne-ui-info-bg) !important;
+    border: 1px solid var(--ffne-ui-border-brand-light) !important;
 }
 
 .ffne-dl-note-list {
