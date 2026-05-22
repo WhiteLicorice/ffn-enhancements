@@ -29,8 +29,14 @@ jobs:
       - name: Set version
         id: version
         run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          BETA_VERSION="0.17.0-beta.${{ github.run_number }}+${SHORT_SHA}"
+          MAJOR_MINOR=$(node -p "require('./package.json').version.split('.').slice(0,2).join('.')")
+          LAST_STABLE=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+          if [ -n "$LAST_STABLE" ]; then
+            PATCH=$(git rev-list "${LAST_STABLE}..HEAD" --count)
+          else
+            PATCH=${{ github.run_number }}
+          fi
+          BETA_VERSION="${MAJOR_MINOR}.${PATCH}"
           echo "version=${BETA_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Package extension
