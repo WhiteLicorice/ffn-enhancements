@@ -234,7 +234,7 @@ describe('DocFetchService direct save helpers', () => {
 
         const result = await DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '<p>Imported</p>\n<div>Body</div>');
 
-        expect(result).toEqual({ ok: true, retryable: false });
+        expect(result).toEqual({ ok: true, reason: undefined });
     });
 
     it('fails safely on explicit auth or authorization responses without retrying', async () => {
@@ -275,6 +275,18 @@ describe('DocFetchService direct save helpers', () => {
     });
 
     it('retries import mismatch failures and returns the mismatch reason after retry exhaustion', async () => {
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 2 as never;
+                case 'fetchRetryBaseMs':
+                    return 0 as never;
+                case 'iframeSaveTimeoutMs':
+                    return 4321 as never;
+                default:
+                    return 0 as never;
+            }
+        });
         fetchRequestTextMock
             .mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage() }))
             .mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage({ textareaValue: '<p>Wrong</p>' }) }))
@@ -291,6 +303,18 @@ describe('DocFetchService direct save helpers', () => {
     });
 
     it('retries timeout failures and returns the timeout reason after retry exhaustion', async () => {
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 2 as never;
+                case 'fetchRetryBaseMs':
+                    return 0 as never;
+                case 'iframeSaveTimeoutMs':
+                    return 4321 as never;
+                default:
+                    return 0 as never;
+            }
+        });
         fetchRequestTextMock
             .mockResolvedValueOnce(makeFetchResponse({ responseText: makeEditPage() }))
             .mockResolvedValueOnce(makeFetchResponse({

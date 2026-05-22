@@ -520,7 +520,10 @@ export const DocFetchService = {
                 return this.replacePrivateDocContentWithResult(docId, title, replacementHtml, attempt + 1);
             }
 
-            return saveResult;
+            return {
+                ok: saveResult.ok,
+                reason: saveResult.reason,
+            };
         } catch (err) {
             log('[IMPORT ERROR] Exception during import save:', err);
             console.error(`IMPORT FAILED for document ${docId}:`, err);
@@ -562,7 +565,7 @@ export const DocFetchService = {
             return { ok: false, reason: 'Replacement content is empty.', retryable: false };
         }
 
-        log(`[${label}] Fetching private document edit page.`);
+        log(`[${label}] Fetching private document edit page for "${title}".`);
         const editResponse = await fetchRequestText({
             method: 'GET',
             url: editUrl,
@@ -582,7 +585,7 @@ export const DocFetchService = {
             return { ok: false, reason: request.reason || 'Could not build the private document save request.', retryable: false };
         }
 
-        log(`[${label}] Posting private document save payload.`);
+        log(`[${label}] Posting private document save payload for "${title}".`);
         const saveResponse = await fetchRequestText({
             method: 'POST',
             url: request.actionUrl,
