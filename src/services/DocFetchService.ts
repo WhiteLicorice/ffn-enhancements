@@ -348,15 +348,19 @@ export const DocFetchService = {
             let saveTimer: number | null = null;
             let submitInterval: number | null = null;
 
-            const clearTimer = (timerId: number | null, clearFn: (id: number) => void) => {
-                if (timerId !== null) clearFn(timerId);
+            const clearIntervalIfSet = (timerId: number | null) => {
+                if (timerId !== null) window.clearInterval(timerId);
+            };
+
+            const clearTimeoutIfSet = (timerId: number | null) => {
+                if (timerId !== null) window.clearTimeout(timerId);
             };
 
             const removeIframe = () => {
-                clearTimer(checkInterval, window.clearInterval);
-                clearTimer(loadTimer, window.clearTimeout);
-                clearTimer(saveTimer, window.clearTimeout);
-                clearTimer(submitInterval, window.clearInterval);
+                clearIntervalIfSet(checkInterval);
+                clearTimeoutIfSet(loadTimer);
+                clearTimeoutIfSet(saveTimer);
+                clearIntervalIfSet(submitInterval);
                 window.removeEventListener('pagehide', onPageHide);
                 if (iframe.parentNode) {
                     iframe.parentNode.removeChild(iframe);
@@ -429,7 +433,7 @@ export const DocFetchService = {
                     const iframeDoc = iframe.contentDocument;
                     if (!iframeDoc || iframeDoc.readyState !== 'complete') return;
 
-                    clearTimer(checkInterval, window.clearInterval);
+                    clearIntervalIfSet(checkInterval);
                     checkInterval = null;
                     log(`[${label}] Page readyState complete, waiting for editor controls...`);
 
@@ -472,7 +476,7 @@ export const DocFetchService = {
                                 }
                             }
                         } catch {
-                            clearTimer(submitInterval, window.clearInterval);
+                            clearIntervalIfSet(submitInterval);
                             submitInterval = null;
                         }
                     }, 200);
@@ -488,7 +492,7 @@ export const DocFetchService = {
                         }
                     }, saveTimeout);
                 } catch (e) {
-                    clearTimer(checkInterval, window.clearInterval);
+                    clearIntervalIfSet(checkInterval);
                     checkInterval = null;
                     log(`[${label} ERROR] Lost access to iframe: ${e}`);
                     failOnce(`Lost access to the hidden editor: ${e}`);
