@@ -798,7 +798,7 @@ describe('DocManager bulk import execution', () => {
         const calls: Array<{ docId: string; title: string; html: string; }> = [];
         vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockImplementation(async (docId, title, html) => {
             calls.push({ docId, title, html });
-            if (docId === '101' && calls.filter(call => call.docId === '101').length === 1) {
+            if (docId === '101' && calls.filter(call => call.docId === '101').length <= 2) {
                 return { ok: false, reason: 'Invalid Request / unable to authenticate.' };
             }
             return { ok: true };
@@ -807,19 +807,19 @@ describe('DocManager bulk import execution', () => {
         await DocManager.runBulkImport(mockEvent(runButton), plan, status, results);
         await flushMicrotasks();
 
-        expect(calls.map(call => call.docId)).toEqual(['101', '102']);
+        expect(calls.map(call => call.docId)).toEqual(['101', '102', '101']);
         const retryButton = results.querySelector<HTMLButtonElement>('button');
         expect(retryButton?.textContent).toBe('Retry Failed');
 
         retryButton?.click();
-        for (let i = 0; i < 5 && calls.length < 3; i++) {
+        for (let i = 0; i < 5 && calls.length < 4; i++) {
             await new Promise(resolve => setTimeout(resolve, 0));
             await flushMicrotasks();
         }
 
-        expect(calls.map(call => call.docId)).toEqual(['101', '102', '101']);
+        expect(calls.map(call => call.docId)).toEqual(['101', '102', '101', '101']);
         expect(calls[0]?.html).toBe('<div>One</div>');
-        expect(calls[2]?.html).toBe('<div>One</div>');
+        expect(calls[3]?.html).toBe('<div>One</div>');
         expect(calls.filter(call => call.docId === '102')).toHaveLength(1);
     });
 

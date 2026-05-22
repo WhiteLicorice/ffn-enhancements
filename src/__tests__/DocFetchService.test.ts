@@ -28,7 +28,7 @@ function makeEditPage(options: {
     const actionAttribute = action === null ? '' : ` action="${action}"`;
 
     return `
-        <form name="docform"${actionAttribute}>
+        <form name="docform" method="post"${actionAttribute}>
             <textarea name="${textareaName}">${textareaValue}</textarea>
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="docid" value="${docId}">
@@ -69,7 +69,8 @@ function mockIframeFormSubmit(
     iframe: HTMLIFrameElement,
     handler: (form: HTMLFormElement, iframe: HTMLIFrameElement) => void,
 ) {
-    const framePrototype = iframe.contentWindow?.HTMLFormElement.prototype;
+    const frameWindow = iframe.contentWindow as (Window & typeof globalThis) | null;
+    const framePrototype = frameWindow?.HTMLFormElement.prototype;
     if (!framePrototype) throw new Error('Missing iframe form prototype');
     return vi.spyOn(framePrototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
         handler(this, iframe);
