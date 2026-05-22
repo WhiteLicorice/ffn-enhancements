@@ -34,7 +34,7 @@ export const StoryReader = {
         const log = Core.getLogger(this.MODULE_NAME, 'enableSelectableText');
 
         const style = document.createElement('style');
-        style.innerHTML = `
+        style.textContent = `
             #storytext, .storytext, p {
                 -webkit-user-select: text !important;
                 user-select: text !important;

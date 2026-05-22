@@ -106,6 +106,7 @@ export const SettingsPage = {
 
         const backdrop = markFfneUiRoot(document.createElement('div'));
         backdrop.id = MODAL_ID;
+        // eslint-disable-next-line no-unsanitized/property -- _buildModalHTML returns a static template with no user data
         backdrop.innerHTML = _buildModalHTML();
         document.body.appendChild(backdrop);
 

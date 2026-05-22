@@ -441,6 +441,7 @@ function _renderAo3MigrationFailures(
     `).join('');
 
     container.hidden = false;
+    // eslint-disable-next-line no-unsanitized/property -- rowsHtml values all escaped via _escapeHtml
     container.innerHTML = `
         <div class="ffne-dm-import-results-title">Failed AO3 Migrations</div>
         <table class="ffne-dm-preview" contenteditable="false">
@@ -482,6 +483,7 @@ function _renderBulkFailures(
         : '';
 
     container.hidden = false;
+    // eslint-disable-next-line no-unsanitized/property -- title is always a hardcoded literal at call sites; rowsHtml values escaped via _escapeHtml
     container.innerHTML = `
         <div class="ffne-dm-import-results-title">${title}</div>
         <table class="ffne-dm-preview" contenteditable="false">
@@ -851,6 +853,7 @@ function _renderBulkImportFailures(container: HTMLElement | null | undefined, fa
     `).join('');
 
     container.hidden = false;
+    // eslint-disable-next-line no-unsanitized/property -- rowsHtml values all escaped via _escapeHtml
     container.innerHTML = `
         <div class="ffne-dm-import-results-title">Failed Imports</div>
         <table class="ffne-dm-preview" contenteditable="false">
@@ -1539,6 +1542,7 @@ export const DocManager = {
             : '';
 
         summaryEl.className = summaryClass;
+        // eslint-disable-next-line no-unsanitized/property -- interpolated values are numbers or escaped via _escapeHtml
         summaryEl.innerHTML = `
             <div>
                 <strong>${plan.chapters.length}</strong> AO3 chapter(s),
@@ -1571,6 +1575,7 @@ export const DocManager = {
             ? rowsHtml
             : '<tr><td colspan="4">No AO3 chapters found.</td></tr>';
 
+        // eslint-disable-next-line no-unsanitized/property -- rowsHtml values all escaped via _escapeHtml
         mappingsEl.innerHTML = `
             <div class="ffne-dm-preview-scroll">
                 <table class="ffne-dm-preview" contenteditable="false">
@@ -1639,6 +1644,7 @@ export const DocManager = {
         `).join('');
 
         preview.className = summaryClass;
+        // eslint-disable-next-line no-unsanitized/property -- interpolated values are numbers or escaped via _escapeHtml
         preview.innerHTML = `
             <div>
                 <strong>Format:</strong> ${_escapeHtml(formatOption.label)}

@@ -61,6 +61,7 @@ function _attachAffordance(icon: HTMLElement): void {
     icon.insertAdjacentElement('afterend', wrapper);
 
     const shadow = wrapper.attachShadow({ mode: 'closed' });
+    // eslint-disable-next-line no-unsanitized/property -- static CSS + LABEL is a module-level hardcoded constant
     shadow.innerHTML = `
         <style>
             :host { all: initial; position: relative; display: contents; }

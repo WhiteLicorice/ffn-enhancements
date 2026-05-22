@@ -36,6 +36,7 @@ function copyTextFallback(text: string): boolean {
 function copyHtmlFallback(html: string): boolean {
     const div = document.createElement('div');
     div.contentEditable = 'true';
+    // eslint-disable-next-line no-unsanitized/property -- html is pre-sanitized via sanitizeEditorHtml before reaching this function
     div.innerHTML = html;
     div.style.position = 'fixed';
     div.style.left = '-9999px';

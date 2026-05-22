@@ -97,6 +97,7 @@ export const StoryDownloader = {
             </div>
         `;
 
+        // eslint-disable-next-line no-unsanitized/method -- modalHtml is a static template literal with no user data
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.modal = document.getElementById('ffe-download-modal');
         if (this.modal instanceof HTMLElement) {

@@ -357,6 +357,7 @@ function _renderFailureTable(
         : '';
 
     container.hidden = false;
+    // eslint-disable-next-line no-unsanitized/property -- rowsHtml values all escaped via _escapeHtml
     container.innerHTML = `
         <div class="ffne-story-bulk-results-title">Failed Replacements</div>
         <table class="ffne-story-bulk-table" contenteditable="false">
@@ -558,6 +559,7 @@ export const StoryEditContent = {
         onChange: () => void,
     ) {
         const optionsHtml = docs.map(doc => `<option value="${_escapeHtml(doc.docId)}">${_escapeHtml(doc.docName)}</option>`).join('');
+        // eslint-disable-next-line no-unsanitized/property -- all user-visible values escaped via _escapeHtml; status/index are internal enums/numbers
         body.innerHTML = mappings.map((mapping, index) => `
             <tr data-row-index="${index}">
                 <td>${_escapeHtml(mapping.chapter.chapterLabel)}</td>
@@ -635,6 +637,7 @@ export const StoryEditContent = {
             ? 'ffne-story-bulk-summary ffne-story-bulk-error'
             : 'ffne-story-bulk-summary';
         summary.className = summaryClass;
+        // eslint-disable-next-line no-unsanitized/property -- interpolated values are numbers or static strings
         summary.innerHTML = `
             <div>
                 <strong>${plan.mappedCount}</strong> mapped,
