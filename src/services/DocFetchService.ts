@@ -198,10 +198,8 @@ export const DocFetchService = {
     },
 
     _normalizeEditorHtmlForComparison: function (value: string): string {
-        const normalizedLineBreaks = value.replace(/\r\n?/g, '\n').trim();
-        const template = document.createElement('template');
-        template.innerHTML = normalizedLineBreaks;
-        return template.innerHTML
+        return value
+            .replace(/\r\n?/g, '\n')
             .replace(/\u00A0/g, ' ')
             .replace(/>\s+</g, '><')
             .replace(/\s+/g, ' ')
@@ -323,19 +321,13 @@ export const DocFetchService = {
             return { ok: false, reason: 'Private document save form did not include an action URL.' };
         }
 
-        let actionUrl: string;
-        try {
-            actionUrl = new URL(rawAction, requestUrl).href;
-        } catch {
-            return { ok: false, reason: 'Private document save form action URL is invalid.' };
-        }
-
         let parsedActionUrl: URL;
         try {
-            parsedActionUrl = new URL(actionUrl);
+            parsedActionUrl = new URL(rawAction, requestUrl);
         } catch {
             return { ok: false, reason: 'Private document save form action URL is invalid.' };
         }
+        const actionUrl = parsedActionUrl.href;
 
         if (parsedActionUrl.origin !== 'https://www.fanfiction.net' || parsedActionUrl.pathname !== '/docs/edit.php') {
             return { ok: false, reason: 'Private document save form action did not target FFN /docs/edit.php.' };

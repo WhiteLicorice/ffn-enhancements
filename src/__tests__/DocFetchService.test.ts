@@ -211,6 +211,18 @@ describe('DocFetchService direct save helpers', () => {
         await expect(DocFetchService.refreshPrivateDoc('123', 'Doc Name')).resolves.toBe(true);
     });
 
+    it('accepts mixed-case explicit success text for refresh', async () => {
+        fetchRequestTextMock
+            .mockResolvedValueOnce(makeFetchResponse({
+                responseText: makeEditPage(),
+            }))
+            .mockResolvedValueOnce(makeFetchResponse({
+                responseText: '<div class="panel_success">SuCcEsS</div>',
+            }));
+
+        await expect(DocFetchService.refreshPrivateDoc('123', 'Doc Name')).resolves.toBe(true);
+    });
+
     it('accepts a clean refresh response with the same docid and non-empty textarea', async () => {
         fetchRequestTextMock
             .mockResolvedValueOnce(makeFetchResponse({
