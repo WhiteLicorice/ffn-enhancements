@@ -126,6 +126,38 @@ export interface FFNSettings {
      * bulk export/refresh (ms). Longer than Pass 1 to be gentle on retries.
      */
     bulkRetryDelayMs: number;
+
+    /**
+     * Maximum retry attempts for a single native chapter fetch before the
+     * chapter is deferred to a later retry pass.
+     */
+    chapterFetchMaxRetries: number;
+
+    /**
+     * Base backoff duration between native chapter retry attempts (ms).
+     * Actual delay = base * 2^(attempt-1).
+     */
+    chapterRetryBaseMs: number;
+
+    /**
+     * Maximum time to wait for a single native chapter request (ms).
+     */
+    chapterFetchTimeoutMs: number;
+
+    /**
+     * Delay between chapter requests during Pass 1 of the native downloader (ms).
+     */
+    chapterPass1DelayMs: number;
+
+    /**
+     * Cool-down period between Pass 1 and Pass 2 of the native downloader (ms).
+     */
+    chapterCooldownMs: number;
+
+    /**
+     * Delay between chapter requests during Pass 2 of the native downloader (ms).
+     */
+    chapterPass2DelayMs: number;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -153,6 +185,12 @@ const DEFAULTS: FFNSettings = {
     bulkExportDelayMs: 1000,
     bulkCooldownMs: 5000,
     bulkRetryDelayMs: 3000,
+    chapterFetchMaxRetries: 5,
+    chapterRetryBaseMs: 5000,
+    chapterFetchTimeoutMs: 30000,
+    chapterPass1DelayMs: 2000,
+    chapterCooldownMs: 10000,
+    chapterPass2DelayMs: 4000,
 };
 
 /**
@@ -313,6 +351,12 @@ function _loadAll(): void {
     _loadPositiveNumber('bulkExportDelayMs');
     _loadPositiveNumber('bulkCooldownMs');
     _loadPositiveNumber('bulkRetryDelayMs');
+    _loadPositiveNumber('chapterFetchMaxRetries');
+    _loadPositiveNumber('chapterRetryBaseMs');
+    _loadPositiveNumber('chapterFetchTimeoutMs');
+    _loadPositiveNumber('chapterPass1DelayMs');
+    _loadPositiveNumber('chapterCooldownMs');
+    _loadPositiveNumber('chapterPass2DelayMs');
 }
 
 function _loadPositiveNumber(key: keyof FFNSettings): void {

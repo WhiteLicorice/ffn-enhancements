@@ -151,6 +151,8 @@ describe('_parseStoredValue — edge cases', () => {
             'scrollStep', 'fetchMaxRetries', 'fetchRetryBaseMs',
             'iframeLoadTimeoutMs', 'iframeSaveTimeoutMs',
             'bulkExportDelayMs', 'bulkCooldownMs', 'bulkRetryDelayMs',
+            'chapterFetchMaxRetries', 'chapterRetryBaseMs', 'chapterFetchTimeoutMs',
+            'chapterPass1DelayMs', 'chapterCooldownMs', 'chapterPass2DelayMs',
         ];
         for (const k of numKeys) {
             expect(_parseStoredValue(k, 100)).toBe(100);

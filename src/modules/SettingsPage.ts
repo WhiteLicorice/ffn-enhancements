@@ -42,6 +42,12 @@ const NUMERIC_KEYS: (keyof FFNSettings)[] = [
     'bulkExportDelayMs',
     'bulkCooldownMs',
     'bulkRetryDelayMs',
+    'chapterFetchMaxRetries',
+    'chapterRetryBaseMs',
+    'chapterFetchTimeoutMs',
+    'chapterPass1DelayMs',
+    'chapterCooldownMs',
+    'chapterPass2DelayMs',
 ];
 
 // ─── Module state ─────────────────────────────────────────────────────────────
@@ -297,6 +303,49 @@ function _buildModalHTML(): string {
                         'Pause between each document request in the retry pass of a bulk export or refresh.',
                         s.get('bulkRetryDelayMs'),
                         { min: 200, max: 15000, step: 200, unit: 'ms' }
+                    ),
+                    '<div class="ffne-settings-section-header">Native Downloader</div>',
+                    _buildNumberRow(
+                        'chapterFetchMaxRetries',
+                        'Native Chapter Retry Limit',
+                        'Maximum retry attempts inside a single native chapter fetch before the chapter is deferred to Pass 2.',
+                        s.get('chapterFetchMaxRetries'),
+                        { min: 1, max: 10, step: 1 }
+                    ),
+                    _buildNumberRow(
+                        'chapterRetryBaseMs',
+                        'Native Chapter Backoff Base',
+                        'Base delay between native chapter retries. Actual delay doubles each attempt.',
+                        s.get('chapterRetryBaseMs'),
+                        { min: 500, max: 30000, step: 500, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'chapterFetchTimeoutMs',
+                        'Native Chapter Timeout',
+                        'How long to wait for each native chapter request before treating it as failed.',
+                        s.get('chapterFetchTimeoutMs'),
+                        { min: 5000, max: 120000, step: 5000, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'chapterPass1DelayMs',
+                        'Native Delay (Pass 1)',
+                        'Pause between chapters during the first native scraping pass.',
+                        s.get('chapterPass1DelayMs'),
+                        { min: 200, max: 30000, step: 200, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'chapterCooldownMs',
+                        'Native Cool-Down',
+                        'Waiting period between Pass 1 and Pass 2 when native chapter scraping hits failures.',
+                        s.get('chapterCooldownMs'),
+                        { min: 1000, max: 60000, step: 1000, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'chapterPass2DelayMs',
+                        'Native Delay (Pass 2)',
+                        'Pause between chapters during each retry pass of the native downloader.',
+                        s.get('chapterPass2DelayMs'),
+                        { min: 200, max: 30000, step: 200, unit: 'ms' }
                     ),
                 ])}
             </div>

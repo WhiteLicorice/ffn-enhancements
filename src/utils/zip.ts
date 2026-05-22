@@ -15,6 +15,8 @@ export interface ZipFileEntry {
 }
 
 export async function blobToBytes(blob: Blob): Promise<Uint8Array> {
+    // Always materialize a fresh content-realm Uint8Array so downstream ZIP and
+    // XML code never receives a wrapped cross-realm view from browser APIs.
     return new Uint8Array(await blob.arrayBuffer());
 }
 
