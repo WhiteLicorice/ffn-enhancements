@@ -24,12 +24,22 @@ html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high
 }
 
 /* ── Navigation Chrome (.zmenu / #zmenu / .lc-*) ──────────────────── */
-html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.zmenu, #zmenu) {
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.zmenu, #zmenu) {
   background-color: var(--ffne-ui-card-bg) !important;
   border-color: var(--ffne-ui-border) !important;
 }
-html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.lc-wrapper, .lc, .lc-left, .lc-right) {
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.lc-wrapper, .lc, .lc-left, .lc-right) {
   border-color: var(--ffne-ui-border) !important;
+}
+/* FFN native CSS hard-codes background:#fff on .lc/.lc-left/.lc-right so they
+   punch through .lc-wrapper::after's horizontal divider line. Override bg to
+   page-bg so the punch-through effect works in dark/sepia/hc themes and no
+   white flashes before CssScanner runs at DOMContentLoaded. */
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.lc, .lc-left, .lc-right) {
+  background-color: var(--ffne-ui-page-bg) !important;
+}
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) .lc-wrapper::after {
+  border-top-color: var(--ffne-ui-border) !important;
 }
 
 /* ── Native FFN Element Overrides (dark/sepia/hc themes) ─────────── */
@@ -49,7 +59,7 @@ html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(a:li
 html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(a[href*="/u/"], a[href*="/u/"].xcontrast_txt, #profile_top a[href*="/r/"], #profile_top a[href*="/r/"] span, #profile_top a[href*="/reviews/"], #profile_top a[href*="/reviews/"] span) {
   color: var(--ffne-semantic-warning-text-dark) !important;
 }
-html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(#top, .tcat) {
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(#top, .tcat) {
   background-color: var(--ffne-brand-dark) !important;
   color: var(--ffne-ui-text-on-accent) !important;
   border-color: var(--ffne-ui-border) !important;
@@ -78,12 +88,12 @@ html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(th, 
 html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(tr:nth-child(even)>td, .table-striped tbody tr:nth-child(odd)>td, .table-striped tbody tr:nth-child(odd)>th) {
   background-color: var(--ffne-ui-card-bg) !important;
 }
-html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="image"]), select, textarea, #review_review) {
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="image"]), select, textarea, #review_review) {
   background-color: var(--ffne-ui-card-bg) !important;
   color: var(--ffne-ui-text-body) !important;
   border-color: var(--ffne-ui-border-input) !important;
 }
-html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(input[type="submit"], input[type="button"], button, .btn) {
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(input[type="submit"], input[type="button"], button, .btn) {
   background-color: var(--ffne-brand-bg) !important;
   background-image: none !important;
   color: var(--ffne-brand-text) !important;
