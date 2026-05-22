@@ -23,7 +23,7 @@ function makeFetchResponse(overrides: Partial<Awaited<ReturnType<typeof fetchReq
 
 function makeEditPage(options: {
     docId?: string;
-    action?: string;
+    action?: string | null;
     textareaName?: string;
     textareaValue?: string;
     extraControls?: string;
@@ -35,9 +35,10 @@ function makeEditPage(options: {
         textareaValue = 'Existing content',
         extraControls = '',
     } = options;
+    const actionAttribute = action === null ? '' : ` action="${action}"`;
 
     return `
-        <form name="docform" action="${action}">
+        <form name="docform"${actionAttribute}>
             <textarea name="${textareaName}">${textareaValue}</textarea>
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="docid" value="${docId}">
@@ -172,6 +173,48 @@ describe('DocFetchService direct save helpers', () => {
         const result = await DocFetchService.refreshPrivateDoc('123', 'Doc Name');
 
         expect(result).toBe(false);
+        expect(fetchRequestTextMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('defaults a missing form action to the fetched edit URL', () => {
+        const doc = new DOMParser().parseFromString(makeEditPage({
+            action: null,
+        }), 'text/html');
+
+        const result = DocFetchService._buildPrivateDocSaveRequest(doc, 'https://www.fanfiction.net/docs/edit.php?docid=123', '123', {
+            operationLabel: 'REFRESH',
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.actionUrl).toBe('https://www.fanfiction.net/docs/edit.php?docid=123');
+        const params = new URLSearchParams(result.body);
+        expect(params.get('bio')).toBe('Existing content');
+    });
+
+    it('accepts either canonical FFN host for form actions', () => {
+        const doc = new DOMParser().parseFromString(makeEditPage({
+            action: 'https://fanfiction.net/docs/edit.php?docid=123',
+        }), 'text/html');
+
+        const result = DocFetchService._buildPrivateDocSaveRequest(doc, 'https://www.fanfiction.net/docs/edit.php?docid=123', '123', {
+            operationLabel: 'REFRESH',
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.actionUrl).toBe('https://fanfiction.net/docs/edit.php?docid=123');
+    });
+
+    it('aborts before POST when the editor textarea has no name', async () => {
+        fetchRequestTextMock.mockResolvedValueOnce(makeFetchResponse({
+            responseText: makeEditPage({ textareaName: '' }),
+        }));
+
+        const result = await DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '<p>Imported</p>');
+
+        expect(result).toEqual({
+            ok: false,
+            reason: 'Private document editor textarea is missing a name.',
+        });
         expect(fetchRequestTextMock).toHaveBeenCalledTimes(1);
     });
 

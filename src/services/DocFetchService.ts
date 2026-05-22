@@ -2,7 +2,6 @@
 
 import { Core } from '../modules/Core';
 import { ContentParser } from './ContentParser';
-import { Elements } from '../enums/Elements';
 import { SettingsManager } from '../modules/SettingsManager';
 import { fetchWithBackoff } from '../utils/fetchWithBackoff';
 import { fetchRequestText, type FetchTextResponse } from '../utils/fetchRequest';
@@ -28,6 +27,8 @@ interface PrivateDocSaveRequestBuildResult {
     body?: string;
     submittedHtml?: string;
 }
+
+const FFN_DOC_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
 
 function normalizeText(value: string): string {
     return value.replace(/\s+/g, ' ').trim();
@@ -292,6 +293,10 @@ export const DocFetchService = {
         if (!textarea) {
             return { ok: false, reason: 'Could not find the private document editor textarea.' };
         }
+        const textareaName = textarea.name?.trim();
+        if (!textareaName) {
+            return { ok: false, reason: 'Private document editor textarea is missing a name.' };
+        }
 
         const form = this._getPrivateDocForm(doc, textarea);
         if (!form) {
@@ -313,19 +318,16 @@ export const DocFetchService = {
         }
 
         const rawAction = form.getAttribute('action')?.trim();
-        if (!rawAction) {
-            return { ok: false, reason: 'Private document save form did not include an action URL.' };
-        }
-
         let parsedActionUrl: URL;
         try {
-            parsedActionUrl = new URL(rawAction, requestUrl);
+            parsedActionUrl = new URL(rawAction || requestUrl, requestUrl);
+            parsedActionUrl.hash = '';
         } catch {
             return { ok: false, reason: 'Private document save form action URL is invalid.' };
         }
         const actionUrl = parsedActionUrl.href;
 
-        if (parsedActionUrl.origin !== 'https://www.fanfiction.net' || parsedActionUrl.pathname !== '/docs/edit.php') {
+        if (parsedActionUrl.protocol !== 'https:' || !FFN_DOC_HOSTS.has(parsedActionUrl.hostname) || parsedActionUrl.pathname !== '/docs/edit.php') {
             return { ok: false, reason: 'Private document save form action did not target FFN /docs/edit.php.' };
         }
 
@@ -347,7 +349,7 @@ export const DocFetchService = {
 
         const params = new URLSearchParams();
         Array.from(form.elements).forEach(element => appendSuccessfulControl(params, element));
-        params.set(textarea.name, submittedHtml);
+        params.set(textareaName, submittedHtml);
         params.set('action', 'save');
         params.set('docid', docId);
 
@@ -372,7 +374,7 @@ export const DocFetchService = {
             return { ok: false, reason: explicitFailure, retryable: false };
         }
 
-        const successPanel = Core.getElement(Elements.SUCCESS_PANEL, responseDoc);
+        const successPanel = responseDoc.querySelector<HTMLElement>('.panel_success');
         const successText = normalizeText(successPanel?.textContent || '');
         if (/successfully\s+saved|success/i.test(successText)) {
             return { ok: true, retryable: false };
