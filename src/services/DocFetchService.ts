@@ -24,6 +24,7 @@ interface PrivateDocSavePreparationResult {
     reason?: string;
     form?: HTMLFormElement;
     textarea?: HTMLTextAreaElement;
+    actionUrl?: string;
     submittedHtml?: string;
 }
 
@@ -222,11 +223,6 @@ export const DocFetchService = {
             }
         }
 
-        const bodyText = normalizeText(doc.body?.textContent || '');
-        if (/cloudflare|ddos\s+protection|checking\s+your\s+browser|just\s+a\s+moment/i.test(bodyText)) {
-            return 'FFN save request was blocked by a Cloudflare challenge. Open fanfiction.net in this browser, clear the challenge, then retry.';
-        }
-
         if (/please\s+log\s*in|login\s+required|not\s+authorized|authorization\s+required|sign\s+in/i.test(bodyText)) {
             return 'FFN returned a login or authorization page.';
         }
@@ -315,10 +311,15 @@ export const DocFetchService = {
             textarea.value = submittedHtml;
         }
 
+        form.method = 'post';
+        form.action = actionUrl;
+        form.target = '_self';
+
         return {
             ok: true,
             form,
             textarea,
+            actionUrl,
             submittedHtml,
         };
     },
@@ -423,6 +424,17 @@ export const DocFetchService = {
                 resolve(result);
             };
 
+            const armTimeout = (ms: number, reason: string) => {
+                if (timeoutId !== null) window.clearTimeout(timeoutId);
+                timeoutId = window.setTimeout(() => {
+                    resolveOnce({
+                        ok: false,
+                        reason,
+                        retryable: true,
+                    });
+                }, ms);
+            };
+
             const onLoad = () => {
                 try {
                     const frameWindow = iframe.contentWindow;
@@ -462,6 +474,7 @@ export const DocFetchService = {
 
                         submittedHtml = prepared.submittedHtml;
                         log(`[${options.operationLabel}] Submitting real edit-page save form for "${title}".`);
+                        armTimeout(SettingsManager.get('iframeSaveTimeoutMs'), 'Request timed out.');
                         prepared.form.submit();
                         return;
                     }
@@ -502,13 +515,7 @@ export const DocFetchService = {
 
                 iframe.addEventListener('load', onLoad);
                 mountPoint.append(iframe);
-                timeoutId = window.setTimeout(() => {
-                    resolveOnce({
-                        ok: false,
-                        reason: 'Request timed out.',
-                        retryable: true,
-                    });
-                }, SettingsManager.get('iframeSaveTimeoutMs'));
+                armTimeout(SettingsManager.get('iframeLoadTimeoutMs'), 'Edit page load timed out.');
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
                 log('Could not create hidden private document edit iframe.', message);
@@ -522,8 +529,8 @@ export const DocFetchService = {
     },
 
     /**
-     * Refreshes a document by loading the edit form, preserving the existing HTML,
-     * and submitting the same FFN save payload through a native hidden form.
+     * Refreshes a document by loading the edit page in a hidden no-script iframe,
+     * preserving the existing HTML, and submitting FFN's real save form.
      */
     refreshPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<boolean> {
         const log = Core.getLogger(this.MODULE_NAME, 'refreshPrivateDoc');
