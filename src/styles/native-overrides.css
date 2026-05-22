@@ -421,6 +421,34 @@ html.__THEME_CLASS__ .panel_error {
     color: var(--ffne-semantic-error-text) !important;
 }
 
+/* --- PM message bubbles ---
+   FFN injects inline <style> with hardcoded background colors:
+   .bubbledLeft  { background-color: #f7ed9f } (from you)
+   .bubbledRight { background-color: #e1ffa1 } (from someone else)
+   .bubbledNNormal / .bubbledNHigh use gradient backgrounds.
+   These hex values are in theme colorMaps so CssScanner remaps them,
+   but explicit !important overrides guarantee theming regardless. */
+html.__THEME_CLASS__ .bubbledLeft,
+html.__THEME_CLASS__ .bubbledRight,
+html.__THEME_CLASS__ .bubbledNNormal,
+html.__THEME_CLASS__ .bubbledNHigh {
+    border-color: var(--ffne-ui-border) !important;
+    color: var(--ffne-ui-text-body) !important;
+}
+
+html.__THEME_CLASS__ .bubbledLeft {
+    background-color: var(--ffne-brand-bg) !important;
+}
+
+html.__THEME_CLASS__ .bubbledRight {
+    background-color: var(--ffne-ui-card-bg) !important;
+}
+
+html.__THEME_CLASS__ .bubbledNNormal,
+html.__THEME_CLASS__ .bubbledNHigh {
+    background: var(--ffne-ui-card-bg) !important;
+}
+
 /* Navigation bar items */
 html.__THEME_CLASS__ .lc-left a,
 html.__THEME_CLASS__ .lc-right a,
