@@ -4,16 +4,16 @@ A suite of modern enhancements to FFN's old-school interface, for readers and wr
 
 ---
 
-## Release Channels
+## Release channels
 
-| Channel | Install Link | Updates |
+| Channel | Install link | Updates |
 |---|---|---|
 | **Stable Chrome/Edge** | [ffn-enhancements-chrome.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements-chrome.zip) | Manual trigger, tested |
 | **Stable Firefox** | [ffn-enhancements-firefox.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements-firefox.zip) | Manual trigger, tested |
 | **Beta Chrome/Edge** | [ffn-enhancements-chrome-beta.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements-chrome-beta.zip) | Every push to `main`, bleeding-edge |
 | **Beta Firefox** | [ffn-enhancements-firefox-beta.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements-firefox-beta.zip) | Every push to `main`, bleeding-edge |
 
-FFN Enhancements is now distributed as a native browser extension. Stable is cut manually and gets extra testing; beta is built straight from `main` on every push.
+FFN Enhancements is a native Manifest V3 browser extension. Stable is cut manually and gets extra testing. Beta is built straight from `main` on every push.
 
 ---
 
@@ -116,22 +116,22 @@ Several Settings control how content is processed on export. These apply to sing
 
 ## Settings
 
-Open **FFN Enhancements Settings** by clicking FFN's `.icon-kub-mobile` menu icon on any FFN page. Changes save immediately and sync across all open FanFiction.net tabs.
+Open **FFN Enhancements Settings** by clicking the phone icon in the FFN site header (top-left of any FFN page). Changes save immediately and sync across all open FanFiction.net tabs.
 
 | Setting | Description |
 |---|---|
 | Theme | System, Light, Dark, Sepia, or High Contrast |
 | Fluid Layout | Toggle full-width reading layout |
 | Download Format | Markdown, HTML, or DOCX for doc exports |
-| Convert Markdown on Paste | Auto-render Markdown pasted into the Doc Editor |
-| Convert HTML on Paste | Auto-render HTML source pasted into the Doc Editor |
-| Force Intercept All Pastes | Run detection even on rich-text clipboard data |
 | AO3 HTML Compatibility | Convert `text-align` style to `align` attribute on export |
 | Normalize HTML Paragraphs | Flatten multi-line paragraph content on export |
 | Append End Separator | Add format-specific separator to exported content |
-| Bulk Replace Autofill | Auto-map nearby numbered docs after manual source selection |
+| Convert Markdown on Paste | Auto-render Markdown pasted into the Doc Editor |
+| Convert HTML on Paste | Auto-render HTML source pasted into the Doc Editor |
+| Always Convert Pasted Text | Run detection even on rich-text clipboard data |
 | Keyboard Scroll Distance | Pixels scrolled per keypress on story pages |
-| Advanced | Fetch retry limits, iframe timeouts, bulk export/import delays |
+| Autofill in Bulk Replace | Auto-map nearby numbered docs after manual source selection |
+| Advanced | Doc fetch retry limits, iframe timeouts, bulk export delays, native chapter scraping delays |
 
 ---
 
@@ -146,8 +146,6 @@ Open **FFN Enhancements Settings** by clicking FFN's `.icon-kub-mobile` menu ico
 
 ### Firefox
 
-Requires Firefox 140 or newer.
-
 1. Download `ffn-enhancements-firefox.zip` from the latest release.
 2. Open `about:debugging#/runtime/this-firefox`.
 3. Choose **Load Temporary Add-on**.
@@ -155,7 +153,7 @@ Requires Firefox 140 or newer.
 
 Temporary Firefox add-ons are removed when Firefox restarts. Use the signed AMO build once it is published.
 
-Firefox and Chrome now request FFN/AO3 host access at install so the content scripts can auto-run. FicHub access is requested later on first download.
+All required host permissions (FFN, AO3, FicHub) are declared as required and granted at install. There is no first-click permissions prompt. It just works.
 
 ### First-paint theming
 
@@ -179,7 +177,7 @@ Store builds will auto-update after Chrome Web Store and AMO publishing is in pl
 
 ## Compatibility
 
-Tested on Edge and Firefox. Also runs on archiveofourown.org only for the AO3 migration bridge.
+Tested on Chrome, Edge, and Firefox. Also runs on archiveofourown.org for the AO3 migration bridge, but does nothing else.
 
 ---
 
@@ -204,7 +202,7 @@ npm run dev      # rebuild extension files in watch mode
 npm run package  # build and zip both browser targets
 ```
 
-Chrome/Edge builds emit `dist-chrome/` with `background.service_worker`. Firefox builds emit `dist-firefox/` with `background.scripts`, because Firefox MV3 does not currently install service-worker backgrounds. Runtime extension API calls are normalized through `src/platform/extensionApi.ts`, which prefers `browser.*` and falls back to callback-normalized `chrome.*`. CI sets `FFNE_VERSION` and `FFNE_BETA` to produce release ZIPs with the right manifest version metadata.
+Chrome/Edge builds emit `dist-chrome/` with a `background.service_worker` entry. Firefox builds emit `dist-firefox/` with `background.scripts`, because Firefox MV3 does not support service-worker backgrounds. Both targets use `chrome.*` APIs directly; both browsers expose the full `chrome.*` alias with Promise support in MV3 for everything this extension needs. CI sets `FFNE_VERSION` and `FFNE_BETA` to produce release ZIPs with the right manifest version metadata.
 
 ### Testing
 
@@ -221,6 +219,7 @@ Test files under `src/__tests__/`, matching `**/*.test.ts`:
 | `SimpleMarkdownParser.test.ts` | Markdown detection heuristic and HTML output |
 | `SettingsManager.test.ts` | Setting load, save, subscribe, cross-tab sync |
 | `SettingsPage.test.ts` | Settings modal HTML structure and control wiring |
+| `SettingsIconHijacker.test.ts` | FFN nav icon interception, click-to-modal binding, double-bind guard |
 | `EpubBuilder.test.ts` | EPUB ZIP structure and OPF/NCX XML validity |
 | `DocxBuilder.test.ts` | DOCX ZIP structure and OOXML document content |
 | `FicHubDownloader.test.ts` | FicHub API response parsing |
@@ -230,19 +229,19 @@ Test files under `src/__tests__/`, matching `**/*.test.ts`:
 | `StoryEditContent.test.ts` | Bulk Replace modal and mapping logic |
 | `clipboard.test.ts` | Clipboard write fallback chain (ClipboardItem, execCommand) |
 | `exportTransform.test.ts` | AO3 HTML compat, paragraph normalization, separator append, marker strip |
-| `Ao3Bridge.test.ts` | Bridge message serialization and heartbeat logic |
-| `Ao3Service.test.ts` | AO3 page interaction and chapter management |
-| `Ao3BridgeClient.test.ts` | FFN-side bridge client request/response handling |
 | `CssScanner.test.ts` | Runtime CSS scanner color remapping and caching |
 | `ThemeManager.test.ts` | Theme switching, token injection, and prelude integration |
 | `LayoutManager.test.ts` | Fluid mode class application and viewport meta injection |
 | `bootstrap.test.ts` | Route dispatch and module registration |
-| `criticalThemeRequire.test.ts` | Critical theme require payload size and encoding |
-| `themePrelude.test.ts` | Prelude guard conditions and localStorage fallback |
 | `UiOwnership.test.ts` | Injected style/UI element ID ownership and selector collision |
 | `htmlSanitizer.test.ts` | HTML sanitizer safety and tag allowlisting |
 | `runBulkOperation.test.ts` | Bulk operation retry and cooldown orchestration |
-| `jszip-lock.test.ts` | JSZip version pin and API compatibility |
+| `injectStyleOnce.test.ts` | Style injection ordering and document-start migration to head |
+| `viteConfig.test.ts` | Manifest patching for Chrome (service_worker) vs Firefox (scripts) |
+| `contentScriptManifest.test.ts` | Manifest host permission drift detection |
+| `service-worker.test.ts` | Service worker message routing (OPEN_TAB, CROSS_ORIGIN_FETCH) |
+| `zipAdapter.test.ts` | ZIP utility round-trip, deflate, and blob conversion |
+| `nativeDownloader.test.ts` | NativeDownloader retry flow, pass-2 fallback, and chapter order |
 
 ### CI / CD
 
@@ -256,7 +255,7 @@ Both workflows auto-generate categorized patch notes from conventional commit me
 To cut a stable release:
 1. Go to **Actions > Stable Release > Run workflow**.
 2. Enter the version (e.g. `0.16.0`).
-3. The workflow builds, tags `v0.16.0`, creates a GitHub Release, and uploads the script.
+3. The workflow builds, tags `v0.16.0`, creates a GitHub Release, and uploads the ZIPs.
 
 ### Commit messages
 
