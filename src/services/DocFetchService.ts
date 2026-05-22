@@ -4,7 +4,6 @@ import { Core } from '../modules/Core';
 import { ContentParser } from './ContentParser';
 import { SettingsManager } from '../modules/SettingsManager';
 import { fetchWithBackoff } from '../utils/fetchWithBackoff';
-import { fetchRequestText, type FetchTextResponse } from '../utils/fetchRequest';
 
 interface SavePrivateDocOptions {
     operationLabel: 'REFRESH' | 'IMPORT';
@@ -20,18 +19,12 @@ interface PrivateDocSaveAttemptResult extends PrivateDocSaveResult {
     retryable: boolean;
 }
 
-interface PrivateDocSaveRequestBuildResult {
+interface PrivateDocSavePreparationResult {
     ok: boolean;
     reason?: string;
-    actionUrl?: string;
-    controls?: PrivateDocSaveControl[];
+    form?: HTMLFormElement;
+    textarea?: HTMLTextAreaElement;
     submittedHtml?: string;
-}
-
-interface PrivateDocSaveControl {
-    name: string;
-    value: string;
-    tagName: 'input' | 'textarea';
 }
 
 const FFN_DOC_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
@@ -49,62 +42,6 @@ function normalizeUrlForComparison(value: string | undefined): string {
     } catch {
         return value.replace(/[?#].*$/, '').replace(/\/+$/, '');
     }
-}
-
-function appendSuccessfulControl(
-    controls: PrivateDocSaveControl[],
-    control: Element,
-    editorTextareaName: string,
-    submittedHtml: string
-): void {
-    if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) {
-        return;
-    }
-
-    const name = control.name?.trim();
-    if (!name || control.disabled) return;
-
-    if (control instanceof HTMLInputElement) {
-        const type = control.type.toLowerCase();
-        const excludedTypes = new Set(['file', 'reset', 'button', 'submit', 'image']);
-        if (excludedTypes.has(type)) return;
-        if ((type === 'checkbox' || type === 'radio') && !control.checked) return;
-        controls.push({ name, value: control.value, tagName: 'input' });
-        return;
-    }
-
-    if (control instanceof HTMLTextAreaElement) {
-        controls.push({
-            name,
-            value: name === editorTextareaName ? submittedHtml : control.value,
-            tagName: name === editorTextareaName ? 'textarea' : 'input',
-        });
-        return;
-    }
-
-    if (control.multiple) {
-        Array.from(control.selectedOptions).forEach(option => controls.push({ name, value: option.value, tagName: 'input' }));
-        return;
-    }
-
-    controls.push({ name, value: control.value, tagName: 'input' });
-}
-
-function appendHiddenInput(form: HTMLFormElement, name: string, value: string): void {
-    const input = form.ownerDocument.createElement('input');
-    input.type = 'hidden';
-    input.name = name;
-    input.value = value;
-    form.appendChild(input);
-}
-
-function appendHiddenTextarea(form: HTMLFormElement, name: string, value: string): void {
-    const textarea = form.ownerDocument.createElement('textarea');
-    textarea.name = name;
-    textarea.value = value;
-    textarea.hidden = true;
-    textarea.style.display = 'none';
-    form.appendChild(textarea);
 }
 
 function hideFrame(frame: HTMLIFrameElement): void {
@@ -258,9 +195,19 @@ export const DocFetchService = {
 
     _getPrivateDocExplicitFailureReason: function (
         doc: Document,
-        response?: Pick<FetchTextResponse, 'status' | 'isCfChallenge' | 'finalUrl'>
+        response?: {
+            status?: number;
+            isCfChallenge?: boolean;
+            finalUrl?: string;
+        }
     ): string | null {
-        if (response?.isCfChallenge) {
+        const bodyText = normalizeText(doc.body?.textContent || '');
+        const titleText = normalizeText(doc.title || '');
+        if (
+            response?.isCfChallenge
+            || /cloudflare|checking\s+your\s+browser|ddos\s+protection/i.test(bodyText)
+            || /cloudflare|just\s+a\s+moment/i.test(titleText)
+        ) {
             return 'FFN save request was blocked by a Cloudflare challenge. Open fanfiction.net in this browser, clear the challenge, then retry.';
         }
 
@@ -275,7 +222,6 @@ export const DocFetchService = {
             }
         }
 
-        const bodyText = normalizeText(doc.body?.textContent || '');
         if (/please\s+log\s*in|login\s+required|not\s+authorized|authorization\s+required|sign\s+in/i.test(bodyText)) {
             return 'FFN returned a login or authorization page.';
         }
@@ -291,57 +237,12 @@ export const DocFetchService = {
         return null;
     },
 
-    _getPrivateDocTransportFailure: function (
-        response: FetchTextResponse,
-        actionDescription: string
-    ): PrivateDocSaveAttemptResult | null {
-        if (response.isCfChallenge) {
-            return {
-                ok: false,
-                reason: 'FFN save request was blocked by a Cloudflare challenge. Open fanfiction.net in this browser, clear the challenge, then retry.',
-                retryable: false,
-            };
-        }
-
-        if (response.ok) return null;
-
-        if (response.status === 0) {
-            return {
-                ok: false,
-                reason: response.reason || `FFN ${actionDescription} failed before a response was received.`,
-                retryable: true,
-            };
-        }
-
-        if (response.status === 403) {
-            return {
-                ok: false,
-                reason: 'FFN denied access to the document request.',
-                retryable: false,
-            };
-        }
-
-        if (response.status >= 500) {
-            return {
-                ok: false,
-                reason: response.reason || `FFN ${actionDescription} failed with HTTP ${response.status}.`,
-                retryable: true,
-            };
-        }
-
-        return {
-            ok: false,
-            reason: response.reason || `FFN ${actionDescription} failed with HTTP ${response.status}.`,
-            retryable: false,
-        };
-    },
-
-    _buildPrivateDocSaveRequest: function (
+    _preparePrivateDocSaveForm: function (
         doc: Document,
         requestUrl: string,
         docId: string,
         options: SavePrivateDocOptions
-    ): PrivateDocSaveRequestBuildResult {
+    ): PrivateDocSavePreparationResult {
         const textarea = this._getEditorTextarea(doc);
         if (!textarea) {
             return { ok: false, reason: 'Could not find the private document editor textarea.' };
@@ -378,8 +279,6 @@ export const DocFetchService = {
         } catch {
             return { ok: false, reason: 'Private document save form action URL is invalid.' };
         }
-        const actionUrl = parsedActionUrl.href;
-
         if (parsedActionUrl.protocol !== 'https:' || !FFN_DOC_HOSTS.has(parsedActionUrl.hostname) || parsedActionUrl.pathname !== '/docs/edit.php') {
             return { ok: false, reason: 'Private document save form action did not target FFN /docs/edit.php.' };
         }
@@ -400,19 +299,26 @@ export const DocFetchService = {
             };
         }
 
-        const controls: PrivateDocSaveControl[] = [];
-        Array.from(form.elements).forEach(element => appendSuccessfulControl(controls, element, textareaName, submittedHtml));
+        if (options.replacementHtml !== undefined) {
+            textarea.value = submittedHtml;
+        }
 
         return {
             ok: true,
-            actionUrl,
-            controls,
+            form,
+            textarea,
             submittedHtml,
         };
     },
 
     _verifyPrivateDocSaveResponse: function (
-        response: FetchTextResponse,
+        response: {
+            ok: boolean;
+            status: number;
+            responseText: string;
+            finalUrl?: string;
+            isCfChallenge?: boolean;
+        },
         docId: string,
         submittedHtml: string,
         options: SavePrivateDocOptions
@@ -474,41 +380,27 @@ export const DocFetchService = {
         };
     },
 
-    _submitPrivateDocSaveRequest: function (
-        actionUrl: string,
-        controls: PrivateDocSaveControl[],
+    _submitPrivateDocSaveFrame: function (
+        editUrl: string,
         docId: string,
-        submittedHtml: string,
+        title: string,
         options: SavePrivateDocOptions
     ): Promise<PrivateDocSaveAttemptResult> {
-        const log = Core.getLogger(this.MODULE_NAME, '_submitPrivateDocSaveRequest');
+        const log = Core.getLogger(this.MODULE_NAME, '_submitPrivateDocSaveFrame');
 
         return new Promise<PrivateDocSaveAttemptResult>((resolve) => {
             let settled = false;
             let timeoutId: number | null = null;
+            let submittedHtml: string | undefined;
             const iframe = document.createElement('iframe');
             iframe.name = createFrameName('ffne_doc_save_');
-            iframe.setAttribute('sandbox', 'allow-same-origin');
+            iframe.setAttribute('sandbox', 'allow-same-origin allow-forms');
             hideFrame(iframe);
-
-            const form = document.createElement('form');
-            form.method = 'post';
-            form.action = actionUrl;
-            form.target = iframe.name;
-            form.style.display = 'none';
-
-            controls.forEach(control => {
-                if (control.tagName === 'textarea') {
-                    appendHiddenTextarea(form, control.name, control.value);
-                    return;
-                }
-                appendHiddenInput(form, control.name, control.value);
-            });
+            iframe.src = editUrl;
 
             const cleanup = () => {
                 if (timeoutId !== null) window.clearTimeout(timeoutId);
                 iframe.removeEventListener('load', onLoad);
-                form.remove();
                 iframe.remove();
             };
 
@@ -521,20 +413,46 @@ export const DocFetchService = {
 
             const onLoad = () => {
                 try {
+                    const frameWindow = iframe.contentWindow;
                     const responseDoc = iframe.contentDocument;
-                    if (!responseDoc) {
+                    if (!frameWindow || !responseDoc) {
                         resolveOnce({
                             ok: false,
-                            reason: 'Hidden save response frame was not readable.',
+                            reason: 'Hidden edit-page iframe was not readable.',
                             retryable: true,
                         });
                         return;
                     }
 
-                    const frameHref = iframe.contentWindow?.location.href || '';
+                    const currentHref = frameWindow.location.href || responseDoc.URL || '';
+                    const frameHref = currentHref && currentHref !== 'about:blank' ? currentHref : iframe.src || '';
                     const bodyText = normalizeText(responseDoc.body?.textContent || '');
-                    // Hidden iframes can emit an initial blank load before the POST response arrives.
                     if ((!frameHref || frameHref === 'about:blank') && !bodyText) return;
+
+                    if (submittedHtml === undefined) {
+                        const initialFailure = this._getPrivateDocExplicitFailureReason(responseDoc, {
+                            finalUrl: frameHref,
+                        });
+                        if (initialFailure) {
+                            resolveOnce({ ok: false, reason: initialFailure, retryable: false });
+                            return;
+                        }
+
+                        const prepared = this._preparePrivateDocSaveForm(responseDoc, frameHref || editUrl, docId, options);
+                        if (!prepared.ok || !prepared.form || prepared.submittedHtml === undefined) {
+                            resolveOnce({
+                                ok: false,
+                                reason: prepared.reason || 'Could not prepare the private document save form.',
+                                retryable: false,
+                            });
+                            return;
+                        }
+
+                        submittedHtml = prepared.submittedHtml;
+                        log(`[${options.operationLabel}] Submitting real edit-page save form for "${title}".`);
+                        prepared.form.submit();
+                        return;
+                    }
 
                     resolveOnce(this._verifyPrivateDocSaveResponse(
                         {
@@ -550,10 +468,10 @@ export const DocFetchService = {
                     ));
                 } catch (err) {
                     const message = err instanceof Error ? err.message : String(err);
-                    log('Could not inspect private document save response frame.', message);
+                    log('Could not inspect hidden private document edit frame.', message);
                     resolveOnce({
                         ok: false,
-                        reason: `Could not inspect private document save response frame: ${message}`,
+                        reason: `Could not inspect hidden private document edit frame: ${message}`,
                         retryable: true,
                     });
                 }
@@ -564,14 +482,14 @@ export const DocFetchService = {
                 if (!mountPoint) {
                     resolveOnce({
                         ok: false,
-                        reason: 'Could not mount the hidden save form.',
+                        reason: 'Could not mount the hidden edit-page iframe.',
                         retryable: false,
                     });
                     return;
                 }
 
                 iframe.addEventListener('load', onLoad);
-                mountPoint.append(iframe, form);
+                mountPoint.append(iframe);
                 timeoutId = window.setTimeout(() => {
                     resolveOnce({
                         ok: false,
@@ -579,13 +497,12 @@ export const DocFetchService = {
                         retryable: true,
                     });
                 }, SettingsManager.get('iframeSaveTimeoutMs'));
-                form.submit();
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
-                log('Could not submit private document save form.', message);
+                log('Could not create hidden private document edit iframe.', message);
                 resolveOnce({
                     ok: false,
-                    reason: `Could not submit private document save form: ${message}`,
+                    reason: `Could not create hidden private document edit iframe: ${message}`,
                     retryable: true,
                 });
             }
@@ -723,31 +640,7 @@ export const DocFetchService = {
             return { ok: false, reason: 'Replacement content is empty.', retryable: false };
         }
 
-        log(`[${label}] Fetching private document edit page for "${title}".`);
-        const editResponse = await fetchRequestText({
-            method: 'GET',
-            url: editUrl,
-        });
-
-        const editTransportFailure = this._getPrivateDocTransportFailure(editResponse, 'edit page request');
-        if (editTransportFailure) return editTransportFailure;
-
-        const editDoc = new DOMParser().parseFromString(editResponse.responseText, 'text/html');
-        const editFailure = this._getPrivateDocExplicitFailureReason(editDoc, editResponse);
-        if (editFailure) {
-            return { ok: false, reason: editFailure, retryable: false };
-        }
-
-        const request = this._buildPrivateDocSaveRequest(editDoc, editUrl, docId, options);
-        if (!request.ok || !request.actionUrl || request.submittedHtml === undefined) {
-            return { ok: false, reason: request.reason || 'Could not build the private document save request.', retryable: false };
-        }
-
-        if (!request.controls?.length) {
-            return { ok: false, reason: 'Private document save form had no successful controls to submit.', retryable: false };
-        }
-
-        log(`[${label}] Submitting native private document save form for "${title}".`);
-        return this._submitPrivateDocSaveRequest(request.actionUrl, request.controls, docId, request.submittedHtml, options);
+        log(`[${label}] Loading hidden private document edit frame for "${title}".`);
+        return this._submitPrivateDocSaveFrame(editUrl, docId, title, options);
     },
 };
