@@ -81,8 +81,8 @@ export const LayoutManager = {
 
         // Cross-tab sync: apply fluidMode changes made in any other tab immediately
         // (e.g., user toggles the setting in the settings page tab).
-        // SettingsManager.subscribe() fires for both local set() calls AND remote
-        // GM_addValueChangeListener events, but LayoutManager.toggleFluidMode()
+        // SettingsManager.subscribe() fires for both local set() calls and remote
+        // extension storage change events, but LayoutManager.toggleFluidMode()
         // already calls _setFluidMode + SettingsManager.set() for local changes,
         // so we guard with a value check to avoid redundant DOM work.
         SettingsManager.subscribe('fluidMode', (newVal) => {

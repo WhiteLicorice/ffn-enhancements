@@ -3,7 +3,7 @@ import { Elements } from '../enums/Elements';
 import { IAo3Chapter } from '../interfaces/IAo3Migration';
 import { buildAo3ChapterReaderUrl, isValidAo3Chapter } from '../interfaces/IAo3Bridge';
 import { Core } from '../modules/Core';
-import { gmRequestText } from '../utils/gmRequestText';
+import { fetchRequestText } from '../utils/fetchRequest';
 import { isCloudflareChallenge } from '../utils/cloudflareChallenge';
 
 export interface Ao3TextRequestOptions {
@@ -98,7 +98,7 @@ function appendControl(params: URLSearchParams, control: Element): void {
 export const Ao3Service = {
     MODULE_NAME: 'Ao3Service',
 
-    defaultRequester: gmRequestText as Ao3TextRequester,
+    defaultRequester: fetchRequestText as unknown as Ao3TextRequester,
 
     createSameOriginFetchRequester: function (): Ao3TextRequester {
         return async (options: Ao3TextRequestOptions): Promise<Ao3TextResponse> => {

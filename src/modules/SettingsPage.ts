@@ -42,6 +42,12 @@ const NUMERIC_KEYS: (keyof FFNSettings)[] = [
     'bulkExportDelayMs',
     'bulkCooldownMs',
     'bulkRetryDelayMs',
+    'chapterFetchMaxRetries',
+    'chapterRetryBaseMs',
+    'chapterFetchTimeoutMs',
+    'chapterPass1DelayMs',
+    'chapterCooldownMs',
+    'chapterPass2DelayMs',
 ];
 
 // ─── Module state ─────────────────────────────────────────────────────────────
@@ -53,7 +59,7 @@ let _unsubscribers: (() => void)[] = [];
 /**
  * SettingsPage
  * Renders the settings UI as a modal overlay on the current page.
- * Opened by SettingsMenu when the user clicks the Tampermonkey menu command.
+ * Opened by SettingsMenu when the user clicks the extension action.
  *
  * Because the modal runs in the same script context as all other modules,
  * it has direct access to GM storage via SettingsManager — no cross-tab
@@ -62,8 +68,8 @@ let _unsubscribers: (() => void)[] = [];
  * **Settings are saved immediately on change** (no "Save" button). The flash
  * indicator ("✓") provides visual feedback per row.
  *
- * **Cross-tab sync:** `SettingsManager.subscribe()` fires via
- * `GM_addValueChangeListener` when another open FFN tab changes a value. The
+ * **Cross-tab sync:** `SettingsManager.subscribe()` fires via extension
+ * storage change events when another open FFN tab changes a value. The
  * UI controls update reactively. Subscriptions are cleaned up on `closeModal()`
  * to prevent accumulation across multiple open/close cycles.
  *
@@ -266,14 +272,14 @@ function _buildModalHTML(): string {
                     _buildNumberRow(
                         'iframeLoadTimeoutMs',
                         'Iframe Load Timeout',
-                        'How long to wait for the hidden iframe to reach readyState="complete" during doc refresh before giving up.',
+                        'How long to wait for iframe-backed page loads before giving up.',
                         s.get('iframeLoadTimeoutMs'),
                         { min: 5000, max: 120000, step: 5000, unit: 'ms' }
                     ),
                     _buildNumberRow(
                         'iframeSaveTimeoutMs',
                         'Save Confirmation Timeout',
-                        'How long to wait for the save-success panel to appear after clicking Save in the hidden iframe.',
+                        'How long to wait for FFN to return a hidden native-form save response.',
                         s.get('iframeSaveTimeoutMs'),
                         { min: 1000, max: 60000, step: 1000, unit: 'ms' }
                     ),
@@ -297,6 +303,49 @@ function _buildModalHTML(): string {
                         'Pause between each document request in the retry pass of a bulk export or refresh.',
                         s.get('bulkRetryDelayMs'),
                         { min: 200, max: 15000, step: 200, unit: 'ms' }
+                    ),
+                    '<div class="ffne-settings-section-header">Native Downloader</div>',
+                    _buildNumberRow(
+                        'chapterFetchMaxRetries',
+                        'Native Chapter Retry Limit',
+                        'Maximum retry attempts inside a single native chapter fetch before the chapter is deferred to Pass 2.',
+                        s.get('chapterFetchMaxRetries'),
+                        { min: 1, max: 10, step: 1 }
+                    ),
+                    _buildNumberRow(
+                        'chapterRetryBaseMs',
+                        'Native Chapter Backoff Base',
+                        'Base delay between native chapter retries. Actual delay doubles each attempt.',
+                        s.get('chapterRetryBaseMs'),
+                        { min: 500, max: 30000, step: 500, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'chapterFetchTimeoutMs',
+                        'Native Chapter Timeout',
+                        'How long to wait for each native chapter request before treating it as failed.',
+                        s.get('chapterFetchTimeoutMs'),
+                        { min: 5000, max: 120000, step: 5000, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'chapterPass1DelayMs',
+                        'Native Delay (Pass 1)',
+                        'Pause between chapters during the first native scraping pass.',
+                        s.get('chapterPass1DelayMs'),
+                        { min: 200, max: 30000, step: 200, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'chapterCooldownMs',
+                        'Native Cool-Down',
+                        'Waiting period between Pass 1 and Pass 2 when native chapter scraping hits failures.',
+                        s.get('chapterCooldownMs'),
+                        { min: 1000, max: 60000, step: 1000, unit: 'ms' }
+                    ),
+                    _buildNumberRow(
+                        'chapterPass2DelayMs',
+                        'Native Delay (Pass 2)',
+                        'Pause between chapters during each retry pass of the native downloader.',
+                        s.get('chapterPass2DelayMs'),
+                        { min: 200, max: 30000, step: 200, unit: 'ms' }
                     ),
                 ])}
             </div>

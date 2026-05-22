@@ -46,7 +46,7 @@ export const Core = {
 
     /**
      * Runs a callback when the DOM is fully loaded.
-     * Essential for userscripts running at 'document-start'.
+     * Essential for content scripts running at document_start.
      * @param callback - The function to execute once the DOM is ready.
      */
     onDomReady: function (callback: () => void) {

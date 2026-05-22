@@ -103,5 +103,8 @@ export const SepiaTheme: IThemeDefinition = {
         '#675c7c': '#6b5c5a',
         '#d6eeff': '#e8e4d4',
         '#d3ceb8': '#d4c8a0',
+        '#f7ed9f': '#e8d8a0',
+        '#e1ffa1': '#d8e8b0',
+        '#cdcdcd': '#d4c8a8',
     },
 };

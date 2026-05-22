@@ -1,4 +1,3 @@
-import { GM_setClipboard } from '$';
 import { sanitizeEditorHtml } from './htmlSanitizer';
 
 /**
@@ -64,9 +63,8 @@ function copyHtmlFallback(html: string): boolean {
  * Writes content to the system clipboard.
  *
  * Fallback chain (HTML):
- * 1. GM_setClipboard (Tampermonkey native — most reliable in userscript context)
- * 2. ClipboardItem API (modern browsers, writes both text/html + text/plain)
- * 3. contentEditable div + execCommand('copy') (legacy fallback)
+ * 1. ClipboardItem API (modern browsers, writes both text/html + text/plain)
+ * 2. contentEditable div + execCommand('copy') (legacy fallback)
  *
  * Fallback chain (plain text):
  * 1. navigator.clipboard.writeText()
@@ -80,17 +78,7 @@ export async function writeToClipboard(
 ): Promise<boolean> {
     if (isHtml) {
         const sanitizedHtml = sanitizeEditorHtml(content);
-        // 1. GM_setClipboard — Tampermonkey native, synchronous, works in sandbox.
-        if (typeof GM_setClipboard !== 'undefined') {
-            try {
-                GM_setClipboard(sanitizedHtml, 'html');
-                return true;
-            } catch {
-                // GM_setClipboard failed — fall through.
-            }
-        }
-
-        // 2. ClipboardItem API — writes both text/html and text/plain.
+        // 1. ClipboardItem API — writes both text/html and text/plain.
         try {
             const plainText = stripHtmlBasic(sanitizedHtml);
             await navigator.clipboard.write([

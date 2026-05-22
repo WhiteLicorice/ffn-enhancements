@@ -4,14 +4,16 @@ A suite of modern enhancements to FFN's old-school interface, for readers and wr
 
 ---
 
-## Release Channels
+## Release channels
 
-| Channel | Install Link | Updates |
+| Channel | Install link | Updates |
 |---|---|---|
-| **Stable** | [ffn-enhancements.user.js](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js) | Manual trigger, tested |
-| **Beta** | [ffn-enhancements.beta.user.js](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements.beta.user.js) | Every push to `main`, bleeding-edge |
+| **Stable Chrome/Edge** | [ffn-enhancements-chrome.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements-chrome.zip) | Manual trigger, tested |
+| **Stable Firefox** | [ffn-enhancements-firefox.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements-firefox.zip) | Manual trigger, tested |
+| **Beta Chrome/Edge** | [ffn-enhancements-chrome-beta.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements-chrome-beta.zip) | Every push to `main`, bleeding-edge |
+| **Beta Firefox** | [ffn-enhancements-firefox-beta.zip](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements-firefox-beta.zip) | Every push to `main`, bleeding-edge |
 
-Both channels auto-update through Tampermonkey. Install one or both — they have different names in the TM dashboard and won't collide. Beta is built straight from `main` on every push. Stable is cut manually and gets extra testing.
+FFN Enhancements is a native Manifest V3 browser extension. Stable is cut manually and gets extra testing. Beta is built straight from `main` on every push.
 
 ---
 
@@ -61,7 +63,7 @@ Clicking a story's cover image should open it full size. FFN's jQuery plugin is 
 
 Five themes: **System** (follows your OS), **Light**, **Dark**, **Sepia**, and **High Contrast**. Picking one restyles both the extension's own UI panels and FFN's native page elements. Switch in Settings. Changes apply instantly across all open FFN tabs.
 
-A critical theme prelude runs at `document-start` (before FFN's own CSS) to set background, text color, and color-scheme, preventing the white flash during page load. On Chromium and Firefox, Tampermonkey Beta's **Instant** inject mode minimizes the remaining injection-delay flash to near-zero. **If this is undesired, then just set theme to Light (default) in the settings and use [Dark Reader](https://darkreader.org/) for dark mode instead.**
+Theme token CSS is declared in the extension manifest, so the browser injects it before page content is rendered. A tiny `document_start` prelude only applies the saved theme class, which avoids the userscript-era white flash.
 
 ---
 
@@ -95,7 +97,7 @@ Writing in Markdown or raw HTML and pasting into FFN's TinyMCE editor? The exten
 
 ### Migrate stories to AO3
 
-The Doc Manager has an **AO3 Migration** tool. Pick a work URL on AO3, map FFN documents to AO3 chapters, and a cross-tab bridge pushes the content across. The bridge uses GM storage for communication between FFN and AO3 tabs. No server involved. Your data is safe. The migration modal shows progress as each chapter uploads. Failures get a summary you can copy.
+The Doc Manager has an **AO3 Migration** tool. Pick a work URL on AO3, map FFN documents to AO3 chapters, and a cross-tab bridge pushes the content across. The bridge uses extension storage for communication between FFN and AO3 tabs. No server involved. Your data is safe. The migration modal shows progress as each chapter uploads. Failures get a summary you can copy.
 
 ### Bulk Replace (Story Edit Content)
 
@@ -114,51 +116,50 @@ Several Settings control how content is processed on export. These apply to sing
 
 ## Settings
 
-Open **FFN Enhancements Settings** from your Tampermonkey/Violentmonkey menu on any FFN page. Changes save immediately and sync across all open FanFiction.net tabs.
+Open **FFN Enhancements Settings** by clicking the phone icon in the FFN site header (top-left of any FFN page). Changes save immediately and sync across all open FanFiction.net tabs.
 
 | Setting | Description |
 |---|---|
 | Theme | System, Light, Dark, Sepia, or High Contrast |
 | Fluid Layout | Toggle full-width reading layout |
 | Download Format | Markdown, HTML, or DOCX for doc exports |
-| Convert Markdown on Paste | Auto-render Markdown pasted into the Doc Editor |
-| Convert HTML on Paste | Auto-render HTML source pasted into the Doc Editor |
-| Force Intercept All Pastes | Run detection even on rich-text clipboard data |
 | AO3 HTML Compatibility | Convert `text-align` style to `align` attribute on export |
 | Normalize HTML Paragraphs | Flatten multi-line paragraph content on export |
 | Append End Separator | Add format-specific separator to exported content |
-| Bulk Replace Autofill | Auto-map nearby numbered docs after manual source selection |
+| Convert Markdown on Paste | Auto-render Markdown pasted into the Doc Editor |
+| Convert HTML on Paste | Auto-render HTML source pasted into the Doc Editor |
+| Always Convert Pasted Text | Run detection even on rich-text clipboard data |
 | Keyboard Scroll Distance | Pixels scrolled per keypress on story pages |
-| Advanced | Fetch retry limits, iframe timeouts, bulk export/import delays |
+| Autofill in Bulk Replace | Auto-map nearby numbered docs after manual source selection |
+| Advanced | Doc fetch retry limits, iframe timeouts, bulk export delays, native chapter scraping delays |
 
 ---
 
 ## Installation
 
-### Step 1: Install a userscript manager
+### Chrome / Edge / Brave
 
-For the best first-paint behavior and theme injection speed, use **Tampermonkey Beta**:
+1. Download `ffn-enhancements-chrome.zip` from the latest release.
+2. Extract the ZIP somewhere permanent.
+3. Open `chrome://extensions`, enable **Developer mode**, and choose **Load unpacked**.
+4. Select the extracted extension folder.
 
-- **Chrome / Brave:** [Tampermonkey Beta on the Chrome Web Store](https://chromewebstore.google.com/detail/tampermonkey-beta/gcalenpjmijncebpfijmoaglllgpjagf)
-- **Edge:** [Tampermonkey Beta on Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/tampermonkey-beta/fcmfnpggmnlmfebfghbfnillijihnkoh)
-- **Firefox:** [Tampermonkey](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/) or [Violentmonkey](https://addons.mozilla.org/en-US/firefox/addon/violentmonkey/)
-- **Safari:** [Userscripts](https://apps.apple.com/us/app/userscripts/id1463298887)
+### Firefox
 
-After installing Tampermonkey Beta on Chrome / Edge / Brave, open **Dashboard -> Settings**, set **Config Mode** to **Advanced**, then under **Experimental** set **Inject Mode** to **Instant**.
+1. Download `ffn-enhancements-firefox.zip` from the latest release.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Choose **Load Temporary Add-on**.
+4. Select `manifest.json` from the extracted extension folder.
 
-### Step 2: Install FFN Enhancements
+Temporary Firefox add-ons are removed when Firefox restarts. Use the signed AMO build once it is published.
 
-**Stable release:** [Click here to install](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest/download/ffn-enhancements.user.js).
+All required host permissions (FFN, AO3, FicHub) are declared as required and granted at install. There is no first-click permissions prompt. It just works.
 
-**Beta release:** [Click here to install](https://github.com/WhiteLicorice/ffn-enhancements/releases/download/beta/ffn-enhancements.beta.user.js).
+### First-paint theming
 
-Your userscript manager should prompt to confirm installation. If the link opens as code or downloads as a file, copy the text, open your userscript manager dashboard, create a new script, and paste it in.
+Critical theme and fluid-layout CSS are injected through `manifest.json` content-script CSS. The browser applies these files before the content scripts run, so saved non-light themes do not depend on JavaScript-injected `<style>` tags.
 
-### Theme Flash Limitation
-
-FFN Enhancements injects a compact theme prelude at `document-start`, but userscripts still run through the userscript manager's injection backend. On Chromium browsers, standard injection can briefly show FFN's native light page before the theme prelude lands. Tampermonkey Beta's **Instant** inject mode minimizes this flash, but a tiny first-paint flash may still be possible. A native browser extension would have stronger first-paint primitives than a userscript.
-
-### Step 3: Verify
+### Verify
 
 1. Go to any [FanFiction.net](https://www.fanfiction.net/j/0/2/0/) story.
 2. You should see a **Download** button next to **Follow/Favourite**. If you see it, the extension is running.
@@ -167,24 +168,22 @@ FFN Enhancements injects a compact theme prelude at `document-start`, but usersc
 
 ## Updating
 
-Both stable and beta channels auto-update through your userscript manager. Tampermonkey/Violentmonkey checks for updates periodically.
+Store builds will auto-update after Chrome Web Store and AMO publishing is in place. GitHub release ZIPs are updated by downloading the new ZIP and replacing the unpacked extension folder.
 
 - **Stable:** receives updates when a new version is cut manually. Safer, less frequent.
 - **Beta:** receives updates on every push to `main`. Bleeding-edge, may have rough edges.
-
-To force an update, open your userscript manager dashboard and click "Check for updates," or reinstall from the links above.
 
 ---
 
 ## Compatibility
 
-Tested on Edge and Firefox. Also runs on archiveofourown.org only for the AO3 migration bridge.
+Tested on Chrome, Edge, and Firefox. Also runs on archiveofourown.org for the AO3 migration bridge, but does nothing else.
 
 ---
 
 ## Development
 
-TypeScript, Vite, and `vite-plugin-monkey` bundle multiple modules into a single userscript. Tests use [Vitest](https://vitest.dev/) with a `jsdom` environment.
+TypeScript and Vite build the MV3 extension into target-specific output folders. Tests use [Vitest](https://vitest.dev/) with a `jsdom` environment.
 
 ### Setup
 
@@ -197,11 +196,13 @@ npm install
 ### Build
 
 ```bash
-npm run build    # tsc type-check + vite bundle -> dist/ffn-enhancements.user.js
-npm run dev      # vite dev server with hot reload (install the local URL into TM once)
+npm run build:chrome
+npm run build:firefox
+npm run dev      # rebuild extension files in watch mode
+npm run package  # build and zip both browser targets
 ```
 
-Local builds use version `0.0.0-dev` with no update URL pointing to production. CI sets `FFNE_VERSION` and `FFNE_BETA` environment variables to produce release artifacts with correct versioning and update URLs.
+Chrome/Edge builds emit `dist-chrome/` with a `background.service_worker` entry. Firefox builds emit `dist-firefox/` with `background.scripts`, because Firefox MV3 does not support service-worker backgrounds. Both targets use `chrome.*` APIs directly; both browsers expose the full `chrome.*` alias with Promise support in MV3 for everything this extension needs. CI sets `FFNE_VERSION` and `FFNE_BETA` to produce release ZIPs with the right manifest version metadata.
 
 ### Testing
 
@@ -218,6 +219,7 @@ Test files under `src/__tests__/`, matching `**/*.test.ts`:
 | `SimpleMarkdownParser.test.ts` | Markdown detection heuristic and HTML output |
 | `SettingsManager.test.ts` | Setting load, save, subscribe, cross-tab sync |
 | `SettingsPage.test.ts` | Settings modal HTML structure and control wiring |
+| `SettingsIconHijacker.test.ts` | FFN nav icon interception, click-to-modal binding, double-bind guard |
 | `EpubBuilder.test.ts` | EPUB ZIP structure and OPF/NCX XML validity |
 | `DocxBuilder.test.ts` | DOCX ZIP structure and OOXML document content |
 | `FicHubDownloader.test.ts` | FicHub API response parsing |
@@ -225,35 +227,35 @@ Test files under `src/__tests__/`, matching `**/*.test.ts`:
 | `DocFetchService.test.ts` | Doc page fetch and content extraction |
 | `DocIframeHandler.test.ts` | Paste listener attachment and Markdown/HTML detection |
 | `StoryEditContent.test.ts` | Bulk Replace modal and mapping logic |
-| `clipboard.test.ts` | Clipboard write fallback chain (GM_setClipboard, ClipboardItem, execCommand) |
+| `clipboard.test.ts` | Clipboard write fallback chain (ClipboardItem, execCommand) |
 | `exportTransform.test.ts` | AO3 HTML compat, paragraph normalization, separator append, marker strip |
-| `Ao3Bridge.test.ts` | Bridge message serialization and heartbeat logic |
-| `Ao3Service.test.ts` | AO3 page interaction and chapter management |
-| `Ao3BridgeClient.test.ts` | FFN-side bridge client request/response handling |
 | `CssScanner.test.ts` | Runtime CSS scanner color remapping and caching |
 | `ThemeManager.test.ts` | Theme switching, token injection, and prelude integration |
 | `LayoutManager.test.ts` | Fluid mode class application and viewport meta injection |
 | `bootstrap.test.ts` | Route dispatch and module registration |
-| `criticalThemeRequire.test.ts` | Critical theme require payload size and encoding |
-| `themePrelude.test.ts` | Prelude guard conditions and localStorage fallback |
 | `UiOwnership.test.ts` | Injected style/UI element ID ownership and selector collision |
 | `htmlSanitizer.test.ts` | HTML sanitizer safety and tag allowlisting |
 | `runBulkOperation.test.ts` | Bulk operation retry and cooldown orchestration |
-| `jszip-lock.test.ts` | JSZip version pin and API compatibility |
+| `injectStyleOnce.test.ts` | Style injection ordering and document-start migration to head |
+| `viteConfig.test.ts` | Manifest patching for Chrome (service_worker) vs Firefox (scripts) |
+| `contentScriptManifest.test.ts` | Manifest host permission drift detection |
+| `service-worker.test.ts` | Service worker message routing (OPEN_TAB, CROSS_ORIGIN_FETCH) |
+| `zipAdapter.test.ts` | ZIP utility round-trip, deflate, and blob conversion |
+| `nativeDownloader.test.ts` | NativeDownloader retry flow, pass-2 fallback, and chapter order |
 
 ### CI / CD
 
 | Workflow | Trigger | Output |
 |---|---|---|
-| `beta-release.yml` | Push to `main` | `ffn-enhancements.beta.user.js` attached to [beta release](https://github.com/WhiteLicorice/ffn-enhancements/releases/tag/beta) |
-| `stable-release.yml` | Manual (`workflow_dispatch`) | `ffn-enhancements.user.js` attached to new versioned release |
+| `beta-release.yml` | Push to `main` | Chrome/Edge and Firefox beta ZIPs attached to [beta release](https://github.com/WhiteLicorice/ffn-enhancements/releases/tag/beta) |
+| `stable-release.yml` | Manual (`workflow_dispatch`) | Chrome/Edge and Firefox ZIPs attached to new versioned release |
 
 Both workflows auto-generate categorized patch notes from conventional commit messages.
 
 To cut a stable release:
 1. Go to **Actions > Stable Release > Run workflow**.
 2. Enter the version (e.g. `0.16.0`).
-3. The workflow builds, tags `v0.16.0`, creates a GitHub Release, and uploads the script.
+3. The workflow builds, tags `v0.16.0`, creates a GitHub Release, and uploads the ZIPs.
 
 ### Commit messages
 
@@ -298,11 +300,11 @@ Example: `feat: add markdown export to doc manager`
 - [x] Settings menu with per-setting controls and cross-tab sync
 - [x] Clipboard copy from Doc Editor toolbar
 - [x] Bulk import Markdown/HTML/DOCX files into Doc Manager
-- [x] AO3 migration bridge (cross-tab, GM-storage IPC)
+- [x] AO3 migration bridge (cross-tab extension-storage IPC)
 - [x] Bulk Replace on Story Edit Content page
 - [x] Export transforms: AO3 HTML compat, paragraph normalization, end separator
 - [x] Site theme support with Light, Dark, Sepia, High Contrast, and System modes
 - [x] Critical theme prelude for FOUC prevention
-- [x] Automated beta releases on push to main
-- [x] Manual stable release pipeline with auto-generated patch notes
+- [x] Automated beta extension ZIP releases on push to main
+- [x] Manual stable extension ZIP release pipeline with auto-generated patch notes
 - [ ] Custom font settings sitewide (needs a `FontManager` module hooked into the `EarlyBoot` system)

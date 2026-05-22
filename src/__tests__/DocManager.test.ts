@@ -7,7 +7,7 @@ import { DocFetchService } from '../services/DocFetchService';
 import { SettingsManager } from '../modules/SettingsManager';
 import { Core } from '../modules/Core';
 import { DocManagerDelegate } from '../delegates/DocManagerDelegate';
-import JSZip from 'jszip';
+import { bytesToArrayBuffer, createZip, textToBytes, type ZipFileEntry } from '../utils/zip';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -71,21 +71,33 @@ async function makeDocxFile(
     relativePath: string,
     documentXml: string,
 ): Promise<File> {
-    const zip = new JSZip();
-    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8"?>
+    const entries: ZipFileEntry[] = [
+        {
+            path: '[Content_Types].xml',
+            data: textToBytes(`<?xml version="1.0" encoding="UTF-8"?>
         <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
             <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
             <Default Extension="xml" ContentType="application/xml"/>
             <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-        </Types>`);
-    zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8"?>
+        </Types>`),
+            options: { level: 0 },
+        },
+        {
+            path: '_rels/.rels',
+            data: textToBytes(`<?xml version="1.0" encoding="UTF-8"?>
         <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
             <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-        </Relationships>`);
-    zip.file('word/document.xml', documentXml);
-    const blob = await zip.generateAsync({
-        type: 'blob',
-        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        </Relationships>`),
+            options: { level: 0 },
+        },
+        {
+            path: 'word/document.xml',
+            data: textToBytes(documentXml),
+            options: { level: 0 },
+        },
+    ];
+    const blob = new Blob([bytesToArrayBuffer(createZip(entries))], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     });
     return makeFile(name, relativePath, blob, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 }
@@ -420,6 +432,8 @@ describe('DocManager bulk import modal', () => {
         expect(folderInput?.type).toBe('file');
         expect(folderInput?.multiple).toBe(true);
         expect(folderInput?.hasAttribute('webkitdirectory')).toBe(true);
+        expect(folderInput?.hasAttribute('directory')).toBe(true);
+        expect(folderInput?.hasAttribute('mozdirectory')).toBe(true);
         expect(folderInput?.accept).toBe('.md,text/markdown');
         expect(filesInput?.type).toBe('file');
         expect(filesInput?.multiple).toBe(true);
@@ -698,6 +712,115 @@ describe('DocManager bulk import execution', () => {
         expect(previewRow?.classList.contains('ffne-dm-row-failed')).toBe(true);
         expect(statusCell?.textContent).toBe('Failed');
         expect(results.innerHTML).toContain('Save rejected.');
+    });
+
+    it('surfaces guardrail failures without marking import rows successful', async () => {
+        mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
+        const item = makeItem('Doc Name', '101');
+        const plan = DocManager._buildBulkImportPlan(
+            [makeFile('Doc Name.md', 'Import/Doc Name.md', '**Bold**')],
+            [item],
+            'markdown',
+        );
+        const preview = document.createElement('div');
+        const startButton = makeBtn();
+        document.body.append(preview);
+        DocManager._renderBulkImportPreview(preview, startButton, plan);
+        const previewRow = preview.querySelector<HTMLTableRowElement>('tr[data-row-file]');
+        const statusCell = preview.querySelector<HTMLElement>('[data-ffne-status]');
+        const lifeSpy = vi.spyOn(DocManager, 'updateLifeColumn');
+        vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({
+            ok: false,
+            reason: 'Private document save form action did not target FFN /docs/edit.php.',
+        });
+
+        const { results } = await runBulkImportWithPlan(plan);
+
+        expect(previewRow?.classList.contains('ffne-dm-row-success')).toBe(false);
+        expect(previewRow?.classList.contains('ffne-dm-row-failed')).toBe(true);
+        expect(statusCell?.textContent).toBe('Failed');
+        expect(results.innerHTML).toContain('Private document save form action did not target FFN /docs/edit.php.');
+        expect(lifeSpy).not.toHaveBeenCalled();
+    });
+
+    it('leaves import rows failed on invalid-auth responses without updating Life', async () => {
+        mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
+        const item = makeItem('Doc Name', '101');
+        const plan = DocManager._buildBulkImportPlan(
+            [makeFile('Doc Name.md', 'Import/Doc Name.md', '**Bold**')],
+            [item],
+            'markdown',
+        );
+        const preview = document.createElement('div');
+        const startButton = makeBtn();
+        document.body.append(preview);
+        DocManager._renderBulkImportPreview(preview, startButton, plan);
+        const previewRow = preview.querySelector<HTMLTableRowElement>('tr[data-row-file]');
+        const statusCell = preview.querySelector<HTMLElement>('[data-ffne-status]');
+        const lifeSpy = vi.spyOn(DocManager, 'updateLifeColumn');
+        vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({
+            ok: false,
+            reason: 'Invalid Request / unable to authenticate.',
+        });
+
+        const { results } = await runBulkImportWithPlan(plan);
+
+        expect(previewRow?.classList.contains('ffne-dm-row-success')).toBe(false);
+        expect(previewRow?.classList.contains('ffne-dm-row-failed')).toBe(true);
+        expect(statusCell?.textContent).toBe('Failed');
+        expect(results.innerHTML).toContain('Invalid Request / unable to authenticate.');
+        expect(lifeSpy).not.toHaveBeenCalled();
+    });
+
+    it('retry failed resubmits only failed rows with the same converted payload', async () => {
+        mountDocManagerItems([
+            { docId: '101', docName: 'Doc One' },
+            { docId: '102', docName: 'Doc Two' },
+        ]);
+        const itemOne = makeItem('Doc One', '101');
+        const itemTwo = makeItem('Doc Two', '102');
+        const plan = DocManager._buildBulkImportPlan(
+            [
+                makeFile('Doc One.md', 'Import/Doc One.md', '# One'),
+                makeFile('Doc Two.md', 'Import/Doc Two.md', '# Two'),
+            ],
+            [itemOne, itemTwo],
+            'markdown',
+        );
+        const preview = document.createElement('div');
+        const startButton = makeBtn();
+        const status = document.createElement('div');
+        const results = document.createElement('div');
+        const runButton = makeBtn();
+        document.body.append(preview, status, results);
+        DocManager._renderBulkImportPreview(preview, startButton, plan);
+
+        const calls: Array<{ docId: string; title: string; html: string; }> = [];
+        vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockImplementation(async (docId, title, html) => {
+            calls.push({ docId, title, html });
+            if (docId === '101' && calls.filter(call => call.docId === '101').length <= 2) {
+                return { ok: false, reason: 'Invalid Request / unable to authenticate.' };
+            }
+            return { ok: true };
+        });
+
+        await DocManager.runBulkImport(mockEvent(runButton), plan, status, results);
+        await flushMicrotasks();
+
+        expect(calls.map(call => call.docId)).toEqual(['101', '102', '101']);
+        const retryButton = results.querySelector<HTMLButtonElement>('button');
+        expect(retryButton?.textContent).toBe('Retry Failed');
+
+        retryButton?.click();
+        for (let i = 0; i < 5 && calls.length < 4; i++) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            await flushMicrotasks();
+        }
+
+        expect(calls.map(call => call.docId)).toEqual(['101', '102', '101', '101']);
+        expect(calls[0]?.html).toBe('<div>One</div>');
+        expect(calls[3]?.html).toBe('<div>One</div>');
+        expect(calls.filter(call => call.docId === '102')).toHaveLength(1);
     });
 
     it('normalizes HTML before saving', async () => {

@@ -40,11 +40,11 @@ jobs:
             exit 1
           fi
 
-      - name: Build
+      - name: Package extension
         env:
           FFNE_BETA: 'false'
           FFNE_VERSION: ${{ inputs.version }}
-        run: npm run build
+        run: npm run package
 
       - name: Generate changelog
         id: changelog
@@ -83,7 +83,8 @@ jobs:
 
             echo ""
             echo "---"
-            echo "*Install: [ffn-enhancements.user.js](https://github.com/${{ github.repository }}/releases/latest/download/ffn-enhancements.user.js)*"
+            echo "*Install Chrome/Edge: [ffn-enhancements-chrome.zip](https://github.com/${{ github.repository }}/releases/latest/download/ffn-enhancements-chrome.zip)*"
+            echo "*Install Firefox: [ffn-enhancements-firefox.zip](https://github.com/${{ github.repository }}/releases/latest/download/ffn-enhancements-firefox.zip)*"
             echo CHANGELOG_EOF
           } >> $GITHUB_OUTPUT
 
@@ -99,4 +100,6 @@ jobs:
           name: v${{ inputs.version }}
           body: ${{ steps.changelog.outputs.content }}
           prerelease: ${{ inputs.prerelease }}
-          files: dist/ffn-enhancements.user.js
+          files: |
+            ffn-enhancements-chrome.zip
+            ffn-enhancements-firefox.zip

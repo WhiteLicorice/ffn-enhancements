@@ -1,10 +1,10 @@
 // modules/SettingsManager.ts
 
-import { GM_getValue, GM_setValue, GM_addValueChangeListener } from '$';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
 import { Theme } from '../enums/Theme';
 import { FFNLogger } from './FFNLogger';
 import { ISitewideModule } from '../interfaces/ISiteWideModule';
+import { platformStorage } from '../platform/storage';
 
 // ─── Settings Schema ──────────────────────────────────────────────────────────
 
@@ -15,8 +15,7 @@ import { ISitewideModule } from '../interfaces/ISiteWideModule';
  *   1. Add the field here with its type.
  *   2. Add its default to `DEFAULTS` below.
  *   3. Add one-liner in `_loadAll()`: `_loadBool(key)` / `_loadEnum(key, EnumObj)` / `_loadPositiveNumber(key)`.
- *   4. Add a GM_addValueChangeListener entry in `_registerValueListeners()`.
- *   5. Add a control row to `SettingsPage.ts`.
+ *   4. Add a control row to `SettingsPage.ts`.
  */
 export interface FFNSettings {
     /**
@@ -100,14 +99,13 @@ export interface FFNSettings {
     fetchRetryBaseMs: number;
 
     /**
-     * Maximum time to wait for a hidden iframe to reach `readyState=complete`
-     * during document refresh (ms). Increase if docs fail to refresh on slow connections.
+     * Maximum time to wait for hidden iframe page loads in iframe-based routines (ms).
+     * Increase if iframe-backed actions fail on slow connections.
      */
     iframeLoadTimeoutMs: number;
 
     /**
-     * Maximum time to wait for the save confirmation panel to appear after clicking
-     * the Save button in the hidden iframe (ms).
+     * Maximum time to wait for FFN to return a hidden native-form save response (ms).
      */
     iframeSaveTimeoutMs: number;
 
@@ -128,12 +126,44 @@ export interface FFNSettings {
      * bulk export/refresh (ms). Longer than Pass 1 to be gentle on retries.
      */
     bulkRetryDelayMs: number;
+
+    /**
+     * Maximum retry attempts for a single native chapter fetch before the
+     * chapter is deferred to a later retry pass.
+     */
+    chapterFetchMaxRetries: number;
+
+    /**
+     * Base backoff duration between native chapter retry attempts (ms).
+     * Actual delay = base * 2^(attempt-1).
+     */
+    chapterRetryBaseMs: number;
+
+    /**
+     * Maximum time to wait for a single native chapter request (ms).
+     */
+    chapterFetchTimeoutMs: number;
+
+    /**
+     * Delay between chapter requests during Pass 1 of the native downloader (ms).
+     */
+    chapterPass1DelayMs: number;
+
+    /**
+     * Cool-down period between Pass 1 and Pass 2 of the native downloader (ms).
+     */
+    chapterCooldownMs: number;
+
+    /**
+     * Delay between chapter requests during Pass 2 of the native downloader (ms).
+     */
+    chapterPass2DelayMs: number;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 
 /**
- * Applied when no persisted value is found in GM storage.
+ * Applied when no persisted value is found in storage.
  * Changing a default here only affects first-time users (or after storage is cleared).
  */
 const DEFAULTS: FFNSettings = {
@@ -155,6 +185,12 @@ const DEFAULTS: FFNSettings = {
     bulkExportDelayMs: 1000,
     bulkCooldownMs: 5000,
     bulkRetryDelayMs: 3000,
+    chapterFetchMaxRetries: 5,
+    chapterRetryBaseMs: 5000,
+    chapterFetchTimeoutMs: 30000,
+    chapterPass1DelayMs: 2000,
+    chapterCooldownMs: 10000,
+    chapterPass2DelayMs: 4000,
 };
 
 /**
@@ -168,25 +204,18 @@ const ENUM_SETTINGS: Partial<Record<keyof FFNSettings, Record<string, string>>> 
 
 // ─── Internal State ───────────────────────────────────────────────────────────
 
-/**
- * Prefix applied to all GM storage keys to avoid collisions with other userscripts.
- */
-const STORAGE_PREFIX = 'ffne_';
-const THEME_CACHE_KEY = 'ffne_theme_cache';
-
 const MODULE_NAME = 'SettingsManager';
 
 /**
  * In-memory cache. Populated by `_loadAll()` during prime().
- * All reads happen against this cache — never directly against GM storage —
+ * All reads happen against this cache — never directly against storage —
  * so they are synchronous and allocation-free.
  */
 let _cache: FFNSettings = { ...DEFAULTS };
 
 /**
  * Internal pub-sub registry for `subscribe()`.
- * Key = setting key string. Value = Set of raw callbacks typed as (unknown, unknown) => void.
- * Type safety is enforced in the public `subscribe()` API; internals use unknown.
+ * Key = setting key string. Value = Set of raw callbacks.
  */
 const _subscribers = new Map<string, Set<(newVal: unknown, oldVal: unknown) => void>>();
 
@@ -196,43 +225,25 @@ const _subscribers = new Map<string, Set<(newVal: unknown, oldVal: unknown) => v
  * SettingsManager
  * Central registry for all persistent extension settings.
  *
- * Uses `GM_getValue` / `GM_setValue` for cross-session persistence.
- * Tampermonkey's own storage survives browser restarts, is isolated to
- * this userscript, and participates in TM's built-in backup/export flow.
+ * Uses extension local storage for cross-session persistence + cross-tab sync
+ * and `localStorage` for synchronous document-start reads.
  *
  * **Execution model:**
- * - Phase 1 (`prime`): Loads all settings from GM storage into the in-memory
- *   cache and registers `GM_addValueChangeListener` entries for cross-tab sync.
- *   `GM_getValue` is synchronous in Tampermonkey, so this is safe to call at
- *   `document-start`. Running in Phase 1 means settings are available to ALL
- *   modules in both phases — including `LayoutManager.prime()` which needs
- *   `fluidMode` to prevent a Flash of Unstyled Content (FOUC).
+ * - Phase 1 (`prime`): Loads all settings from localStorage into the in-memory
+ *   cache and registers extension storage change listeners for cross-tab sync.
  * - Phase 2 (`init`): No-op. Settings are already in cache.
  *
  * **Cross-tab sync:**
- * `GM_addValueChangeListener` fires when another tab changes a GM storage value.
+ * Extension storage change events fire when another tab changes a storage value.
  * The listener updates the in-memory cache and notifies all `subscribe()` callbacks.
- * Same-tab changes made via `set()` skip the listener (remote=false guard) because
- * `set()` already updates the cache and calls subscribers directly.
+ * Same-tab changes made via `set()` are guarded with a timestamp window in
+ * `platformStorage` so subscribers are not double-notified.
  *
  * **Adding a new setting:** See `FFNSettings` interface above.
- *
- * **GOTCHA:** `GM_getValue` / `GM_setValue` are asynchronous in some non-TM
- * environments (e.g., Chrome MV3 extension runners). If you ever need to
- * support those, change `_loadAll()` and `set()` to return Promises and update
- * the callers accordingly.
- *
- * **GOTCHA:** `GM_addValueChangeListener` may also fire for same-tab changes
- * (remote=false) in some TM builds. The `!remote` guard in `_registerValueListeners`
- * prevents double-applying.
- *
- * **GOTCHA:** Do NOT import SettingsManager from LayoutManager unless you have
- * verified the EarlyBoot registration order in `main.ts`. SettingsManager MUST
- * be registered before LayoutManager for `prime()` sequencing to work.
  */
 export const SettingsManager: ISitewideModule & {
     get<K extends keyof FFNSettings>(key: K): FFNSettings[K];
-    set<K extends keyof FFNSettings>(key: K, value: FFNSettings[K]): void;
+    set<K extends keyof FFNSettings>(key: K, value: FFNSettings[K]): Promise<void>;
     subscribe<K extends keyof FFNSettings>(
         key: K,
         cb: (newVal: FFNSettings[K], oldVal: FFNSettings[K]) => void
@@ -241,13 +252,14 @@ export const SettingsManager: ISitewideModule & {
 
     /**
      * ISitewideModule Phase 1 — document-start.
-     * Loads all settings from GM storage and arms cross-tab value listeners.
+     * Loads all settings from localStorage and arms cross-tab value listeners.
      */
     prime(): void {
         _loadAll();
         _mirrorThemeCache(_cache.theme);
-        _registerValueListeners();
-        FFNLogger.log(MODULE_NAME, 'prime', 'Settings loaded; cross-tab listeners registered.');
+        _registerOnChangedListener();
+        void _hydrateFromPersistentStorage();
+        FFNLogger.log(MODULE_NAME, 'prime', 'Settings loaded; cross-tab listener registered.');
     },
 
     /**
@@ -259,24 +271,27 @@ export const SettingsManager: ISitewideModule & {
     /**
      * Reads a setting from the in-memory cache (synchronous).
      * @param key - The setting key.
-     * @returns The current value (from GM storage or the default).
+     * @returns The current value (from storage or the default).
      */
     get<K extends keyof FFNSettings>(key: K): FFNSettings[K] {
         return _cache[key];
     },
 
     /**
-     * Persists a setting to GM storage, updates the in-memory cache, and
+     * Persists a setting to storage, updates the in-memory cache, and
      * notifies all local subscribers.
+     *
+     * The write to localStorage is synchronous (immediate reads).
+     * The write to extension local storage is async (persistence + cross-tab sync).
+     *
      * @param key - The setting key.
      * @param value - The new value.
      */
-    set<K extends keyof FFNSettings>(key: K, value: FFNSettings[K]): void {
+    async set<K extends keyof FFNSettings>(key: K, value: FFNSettings[K]): Promise<void> {
         const old = _cache[key];
         _cache[key] = value;
-        // GM_setValue only accepts string | number | boolean.
-        // All FFNSettings values are one of those types.
-        GM_setValue(STORAGE_PREFIX + key, value as string | number | boolean);
+        // platformStorage.set() writes to localStorage (sync) + extension storage (async).
+        await platformStorage.set(key, value as string | number | boolean);
         if (key === 'theme') {
             _mirrorThemeCache(_parseStoredValue('theme', value));
         }
@@ -289,17 +304,11 @@ export const SettingsManager: ISitewideModule & {
      *
      * Fires for:
      * - Local changes made via `set()` (same tab)
-     * - Remote changes made in any other tab (via `GM_addValueChangeListener`)
+     * - Remote changes made in any other tab (via extension storage change events)
      *
      * @param key - The setting key to watch.
      * @param cb - Callback receiving the new value and the previous value.
      * @returns An unsubscribe function. Call it to remove the listener.
-     *
-     * @example
-     * const unsub = SettingsManager.subscribe('fluidMode', (newVal) => {
-     *     LayoutManager.setFluidMode(newVal);
-     * });
-     * // Later: unsub(); // remove listener
      */
     subscribe<K extends keyof FFNSettings>(
         key: K,
@@ -309,7 +318,6 @@ export const SettingsManager: ISitewideModule & {
         if (!_subscribers.has(k)) {
             _subscribers.set(k, new Set());
         }
-        // Internal storage uses unknown; type safety enforced by the generic signature above.
         const raw = cb as (newVal: unknown, oldVal: unknown) => void;
         _subscribers.get(k)!.add(raw);
         return () => { _subscribers.get(k)?.delete(raw); };
@@ -320,15 +328,10 @@ export const SettingsManager: ISitewideModule & {
 // ─── Internal Helpers ─────────────────────────────────────────────────────────
 
 /**
- * Reads every known setting from GM storage into the in-memory cache.
+ * Reads every known setting from localStorage into the in-memory cache.
  * Falls back to `DEFAULTS` for any key not found in storage.
- *
- * Uses generic type-dispatched helpers (_loadBool, _loadEnum, _loadPositiveNumber)
- * so adding a new setting usually needs just one line here + a DEFAULTS entry.
  */
 function _loadAll(): void {
-    // Start from defaults on every load so repeated prime() calls cannot retain
-    // stale values from earlier storage snapshots.
     _cache = { ...DEFAULTS };
     _loadEnum('docDownloadFormat', DocDownloadFormat);
     _loadEnum('theme', Theme);
@@ -348,92 +351,96 @@ function _loadAll(): void {
     _loadPositiveNumber('bulkExportDelayMs');
     _loadPositiveNumber('bulkCooldownMs');
     _loadPositiveNumber('bulkRetryDelayMs');
+    _loadPositiveNumber('chapterFetchMaxRetries');
+    _loadPositiveNumber('chapterRetryBaseMs');
+    _loadPositiveNumber('chapterFetchTimeoutMs');
+    _loadPositiveNumber('chapterPass1DelayMs');
+    _loadPositiveNumber('chapterCooldownMs');
+    _loadPositiveNumber('chapterPass2DelayMs');
 }
 
-/**
- * Loads a single numeric setting from GM storage into the cache.
- * Only keys whose FFNSettings value type is `number` should be passed here.
- * The cast is safe because we only call this for known numeric fields.
- */
 function _loadPositiveNumber(key: keyof FFNSettings): void {
-    const stored = GM_getValue(STORAGE_PREFIX + key) as number | undefined;
-    if (stored !== undefined) {
+    const stored = platformStorage.get(key);
+    if (stored !== null && typeof stored === 'number') {
         const n = Number(stored);
         if (Number.isFinite(n) && n > 0) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (_cache as Record<string, any>)[key] = n;
+            (_cache as unknown as Record<string, unknown>)[key] = n;
         }
     }
 }
 
-/**
- * Loads a single boolean setting from GM storage into the cache.
- * Falls back to `DEFAULTS.fluidMode` if no value is stored.
- */
 function _loadBool(key: keyof FFNSettings): void {
-    const stored = GM_getValue(STORAGE_PREFIX + key);
+    const stored = platformStorage.get(key);
     const parsed = _parseStoredValue(key, stored);
     if (parsed !== undefined) {
-        (_cache as Record<string, any>)[key] = parsed;
+        (_cache as unknown as Record<string, unknown>)[key] = parsed;
     }
 }
 
-/**
- * Loads a single string-enum setting from GM storage into the cache.
- * Validates the stored value against the enum's known values to guard
- * against stale or corrupt storage entries. Falls back to DEFAULTS on mismatch.
- */
 function _loadEnum(key: keyof FFNSettings, enumObj: Record<string, string>): void {
-    const stored = GM_getValue(STORAGE_PREFIX + key) as string | undefined;
-    if (stored !== undefined) {
+    const stored = platformStorage.get(key);
+    if (stored !== null && typeof stored === 'string') {
         const known = Object.values(enumObj) as string[];
         if (known.includes(stored)) {
-            (_cache as Record<string, any>)[key] = stored;
+            (_cache as unknown as Record<string, unknown>)[key] = stored;
         }
     }
 }
 
 /**
- * Registers `GM_addValueChangeListener` for every setting key so changes
- * made in other browser tabs are reflected in this tab's in-memory cache
- * and propagated to all `subscribe()` listeners.
+ * Registers a single extension storage change listener for cross-tab sync.
+ * Replaces the old per-key value-change listener approach.
  *
- * GOTCHA: In some TM versions the listener fires for same-tab changes too
- * (remote=false). We guard against this with `if (!remote) return` to avoid
- * double-applying updates already handled by `set()`.
+ * The local-write guard in platformStorage prevents double-firing for
+ * changes made by this tab's own set() calls.
  */
-function _registerValueListeners(): void {
-    (Object.keys(DEFAULTS) as (keyof FFNSettings)[]).forEach(key => {
-        try {
-            GM_addValueChangeListener(
-                STORAGE_PREFIX + key,
-                (_name: string, _oldRaw: unknown, newRaw: unknown, remote?: boolean) => {
-                    if (!remote) return; // already handled synchronously by set()
-                    const parsed = _parseStoredValue(key, newRaw);
-                    if (parsed !== undefined) {
-                        const old = _cache[key];
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        (_cache as Record<string, any>)[key] = parsed;
-                        if (key === 'theme') {
-                            _mirrorThemeCache(parsed as Theme | undefined);
-                        }
-                        _notifySubscribers(key, parsed as FFNSettings[typeof key], old);
-                    }
-                }
-            );
-        } catch {
-            // GM_addValueChangeListener unavailable in this environment.
-            // Cross-tab sync is disabled; local settings changes still work normally.
-            FFNLogger.log(MODULE_NAME, '_registerValueListeners',
-                `GM_addValueChangeListener unavailable for "${String(key)}". Cross-tab sync disabled.`);
+function _registerOnChangedListener(): void {
+    try {
+        platformStorage.onChanged((key, newRaw, _oldRaw) => {
+            const parsed = _parseStoredValue(key as keyof FFNSettings, newRaw);
+            if (parsed !== undefined) {
+                _applyParsedSetting(key as keyof FFNSettings, parsed);
+            }
+        });
+    } catch {
+        FFNLogger.log(MODULE_NAME, '_registerOnChangedListener',
+            'Extension storage change events unavailable. Cross-tab sync disabled.');
+    }
+}
+
+async function _hydrateFromPersistentStorage(): Promise<void> {
+    try {
+        const hydrated = await platformStorage.hydrateFromPersistentStorage();
+        for (const [key, raw] of Object.entries(hydrated)) {
+            const parsed = _parseStoredValue(key as keyof FFNSettings, raw);
+            if (parsed !== undefined) {
+                _applyParsedSetting(key as keyof FFNSettings, parsed);
+            }
         }
-    });
+    } catch {
+        FFNLogger.log(MODULE_NAME, '_hydrateFromPersistentStorage',
+            'Extension local storage hydration unavailable. Using local mirror only.');
+    }
+}
+
+function _applyParsedSetting<K extends keyof FFNSettings>(key: K, value: FFNSettings[K]): void {
+    const old = _cache[key];
+    if (old === value) return;
+
+    _cache[key] = value;
+    if (key === 'theme') {
+        _mirrorThemeCache(value as Theme);
+    }
+    _notifySubscribers(key, value, old);
 }
 
 /**
- * Parses a raw value from GM storage (received via GM_addValueChangeListener)
- * into the correct typed FFNSettings value.
+ * Parses a raw value from storage into the correct typed FFNSettings value.
  * Returns `undefined` if the raw value is invalid or corrupt.
+ *
+ * Handles both:
+ * - localStorage strings (JSON-encoded or raw)
+ * - extension storage native types (boolean, number)
  */
 export function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unknown): FFNSettings[K] | undefined {
     const defaultVal = DEFAULTS[key];
@@ -452,7 +459,6 @@ export function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unkn
     }
 
     if (typeof defaultVal === 'string') {
-        // Validate enum values to guard against stale/corrupt storage entries.
         const enumMap = ENUM_SETTINGS[key];
         if (enumMap) {
             const known = Object.values(enumMap) as string[];
@@ -466,24 +472,21 @@ export function _parseStoredValue<K extends keyof FFNSettings>(key: K, raw: unkn
 }
 
 /**
- * Mirrors the validated theme into localStorage so the earliest prelude can read it.
- * @param theme The validated theme value to cache for fallback reads.
- * @returns Nothing; localStorage failures are swallowed to avoid breaking startup.
+ * Mirrors the validated theme into localStorage so the prelude can read it
+ * synchronously at document-start (before SettingsManager.prime() runs).
  */
 function _mirrorThemeCache(theme: Theme | undefined): void {
     if (theme === undefined) return;
-
     try {
-        window.localStorage.setItem(THEME_CACHE_KEY, theme);
+        window.localStorage.setItem('ffne_theme_cache', theme);
     } catch {
-        FFNLogger.log(MODULE_NAME, '_mirrorThemeCache', 'localStorage unavailable; skipping theme cache mirror.');
+        // localStorage unavailable — non-fatal.
     }
 }
 
 /**
  * Calls all registered subscribers for `key` with the new and old values.
- * Errors in individual subscribers are caught and logged to prevent one
- * misbehaving subscriber from blocking others.
+ * Errors in individual subscribers are caught and logged.
  */
 function _notifySubscribers<K extends keyof FFNSettings>(
     key: K,

@@ -6,7 +6,6 @@ import { Elements } from '../enums/Elements';
 import { DocDownloadFormat } from '../enums/DocDownloadFormat';
 import { DocxBuilder } from './DocxBuilder';
 import { SettingsManager } from './SettingsManager';
-import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { DocIframeHandler } from './DocIframeHandler';
 import { IBulkOperationConfig, IBulkItem } from '../interfaces/IBulkOperationConfig';
@@ -17,6 +16,7 @@ import { SimpleMarkdownParser } from './SimpleMarkdownParser';
 import { runBulkOperation, AbortBulkOperation } from '../utils/runBulkOperation';
 import { markFfneUiRoot } from '../utils/ffneUi';
 import { injectStyleOnce } from '../utils/injectStyleOnce';
+import { blobToBytes, bytesToArrayBuffer, bytesToText, createZip, textToBytes, unzipBytes, type ZipFileEntry } from '../utils/zip';
 import { Ao3BridgeClient } from '../services/Ao3BridgeClient';
 import {
     IAo3Chapter,
@@ -196,6 +196,20 @@ function _getBulkImportDefaultSelection(format: BulkImportFormat): string {
 
 function _getBulkImportConfirmedLabel(format: BulkImportFormat): string {
     return _getBulkImportFormatOption(format).fileLabel;
+}
+
+function _configureDirectoryInput(input: HTMLInputElement): void {
+    // Chromium and modern Firefox expose the historical webkitdirectory name.
+    // Older Firefox builds used directory/mozdirectory experiments, so keep
+    // those harmless attributes too while retaining the multi-file fallback.
+    input.setAttribute('webkitdirectory', '');
+    input.setAttribute('directory', '');
+    input.setAttribute('mozdirectory', '');
+    try {
+        (input as HTMLInputElement & { webkitdirectory?: boolean }).webkitdirectory = true;
+    } catch {
+        // Some engines expose this as readonly or not at all.
+    }
 }
 
 function _escapeHtml(value: string): string {
@@ -775,8 +789,9 @@ function _readDocxRunHtml(run: Element): string {
 }
 
 async function _docxToImportHtml(file: File): Promise<string> {
-    const zip = await JSZip.loadAsync(await _readFileAsArrayBuffer(file));
-    const documentXml = await zip.file('word/document.xml')?.async('text') as string | undefined;
+    const zip = unzipBytes(new Uint8Array(await _readFileAsArrayBuffer(file)));
+    const documentXmlBytes = zip['word/document.xml'];
+    const documentXml = documentXmlBytes ? bytesToText(documentXmlBytes) : undefined;
     if (!documentXml) return '';
 
     const xml = new DOMParser().parseFromString(documentXml, 'application/xml');
@@ -1162,7 +1177,7 @@ export const DocManager = {
                             <button type="button" id="ffne-dm-browse-folder" class="ffne-dm-btn">Browse Folder</button>
                             <button type="button" id="ffne-dm-browse-files" class="ffne-dm-btn">Browse Files</button>
                             <span id="ffne-dm-import-selection" class="ffne-dm-selection-label">No Markdown files selected.</span>
-                            <input id="ffne-dm-import-folder-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" webkitdirectory multiple>
+                            <input id="ffne-dm-import-folder-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" webkitdirectory directory mozdirectory multiple>
                             <input id="ffne-dm-import-files-input" class="ffne-dm-file-input" type="file" accept=".md,text/markdown" multiple>
                         </div>
                         <button type="button" id="ffne-dm-import-start" class="ffne-dm-btn" disabled>Import</button>
@@ -1189,6 +1204,10 @@ export const DocManager = {
         const results = overlay.querySelector<HTMLElement>('#ffne-dm-import-results');
         const title = overlay.querySelector<HTMLElement>('#ffne-dm-import-title');
         let selectedFormat = 'markdown' as BulkImportFormat;
+
+        if (folderInput) {
+            _configureDirectoryInput(folderInput);
+        }
 
         const resetSelectedFiles = (format: BulkImportFormat) => {
             const formatOption = _getBulkImportFormatOption(format);
@@ -1789,7 +1808,7 @@ export const DocManager = {
     /**
      * Handles the export of a single document given a DocID.
      * The output format (Markdown or HTML) is read from SettingsManager at call time,
-     * so changes made via the Tampermonkey menu take effect on the next export.
+     * so settings changes take effect on the next export.
      * @param btnElement - The button clicked (for UI feedback).
      * @param docId - The FFN Document ID.
      * @param title - The title of the document.
@@ -1963,7 +1982,7 @@ export const DocManager = {
         const format = SettingsManager.get('docDownloadFormat');
         const btn = e.currentTarget as HTMLButtonElement;
         log(`Bulk export format: ${format}`);
-        const zip = new JSZip();
+        const zipEntries: ZipFileEntry[] = [];
         const failures: BulkSimpleFailure[] = [];
         const failedItems: IBulkItem[] = [];
 
@@ -1991,9 +2010,17 @@ export const DocManager = {
                         const transformed = applyExportTransforms(content, format);
                         if (format === DocDownloadFormat.DOCX) {
                             const docxBlob = await DocxBuilder.build(transformed, item.title);
-                            zip.file(`${item.title}.docx`, docxBlob, { date: new Date() });
+                            zipEntries.push({
+                                path: `${item.title}.docx`,
+                                data: await blobToBytes(docxBlob),
+                                options: { level: 0, mtime: new Date() },
+                            });
                         } else {
-                            zip.file(`${item.title}.${format}`, transformed, { date: new Date() });
+                            zipEntries.push({
+                                path: `${item.title}.${format}`,
+                                data: textToBytes(transformed),
+                                options: { level: 0, mtime: new Date() },
+                            });
                         }
                         return true;
                     }
@@ -2003,7 +2030,11 @@ export const DocManager = {
                 }
             },
             onPermanentFailure: (item) => {
-                zip.file(`ERROR_${item.title}.txt`, `Failed to retrieve content for DocID ${item.docId} after multiple attempts.`);
+                zipEntries.push({
+                    path: `ERROR_${item.title}.txt`,
+                    data: textToBytes(`Failed to retrieve content for DocID ${item.docId} after multiple attempts.`),
+                    options: { level: 0 },
+                });
                 failures.push({ docName: item.docName, reason: `Failed to retrieve content for DocID ${item.docId}.` });
                 failedItems.push(item);
             },
@@ -2012,7 +2043,7 @@ export const DocManager = {
                     btn.innerText = "Zipping...";
                     if (statusEl) statusEl.textContent = 'Zipping...';
                     log(`Zipping ${successCount} documents`);
-                    const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+                    const blob = new Blob([bytesToArrayBuffer(createZip(zipEntries))], { type: 'application/zip' });
                     const timestamp = new Date().toISOString().replace(/[:T.]/g, '-').slice(0, 19);
                     saveAs(blob, `ffn_${timestamp}.zip`);
                     btn.innerText = "Done";

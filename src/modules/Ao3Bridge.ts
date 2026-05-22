@@ -1,4 +1,4 @@
-import { GM_addValueChangeListener, GM_deleteValue, GM_getValue, GM_setValue } from '$';
+import { platformStorage } from '../platform/storage';
 import {
     AO3_BRIDGE_DEFAULT_TIMEOUT_MS,
     AO3_BRIDGE_HEARTBEAT_INTERVAL_MS,
@@ -29,7 +29,7 @@ function bridgeResultForError(request: Ao3BridgeRequest, reason: string): Ao3Bri
 }
 
 function hasResultForRequest(request: Ao3BridgeRequest): boolean {
-    const result = parseAo3BridgeResult(GM_getValue(AO3_BRIDGE_RESULT_KEY));
+    const result = parseAo3BridgeResult(platformStorage.get(AO3_BRIDGE_RESULT_KEY));
     return !!result && result.id === request.id && result.kind === request.kind;
 }
 
@@ -58,29 +58,46 @@ export const Ao3Bridge = {
         this._initialized = true;
 
         this._injectPanel();
-        this._writeHeartbeat();
         this._setStatus('Waiting for FFN migration requests.', false);
 
+        // Register the change listener before hydrating so any FFN writes that
+        // land mid-hydration are still mirrored into AO3's localStorage by
+        // platformStorage.onChanged's side effect.
         try {
-            GM_addValueChangeListener(AO3_BRIDGE_REQUEST_KEY, () => {
+            platformStorage.onChanged(() => {
                 void this._processPendingRequest();
             });
         } catch (err) {
-            Core.getLogger(this.MODULE_NAME, 'init')('GM_addValueChangeListener unavailable; heartbeat polling remains active.', err);
+            Core.getLogger(this.MODULE_NAME, 'init')('Extension storage change events unavailable; heartbeat polling remains active.', err);
         }
+
+        this._writeHeartbeat();
 
         this._heartbeatTimer = window.setInterval(() => {
             this._writeHeartbeat();
             void this._processPendingRequest();
         }, AO3_BRIDGE_HEARTBEAT_INTERVAL_MS);
 
-        void this._processPendingRequest();
+        // AO3's localStorage is per-origin and starts empty for FFNE-namespaced
+        // bridge keys; any request FFN already wrote lives only in
+        // chrome.storage.local until copied across. On FFN, SettingsManager
+        // does this hydration during prime(); on AO3 the bridge owns it.
+        // Without this step, _processPendingRequest reads null and the FFN
+        // modal hangs on "Opening Ao3..." until its timeout.
+        platformStorage
+            .hydrateFromPersistentStorage()
+            .catch((err) => {
+                Core.getLogger(this.MODULE_NAME, 'init')('Bridge state hydration failed.', err);
+            })
+            .finally(() => {
+                void this._processPendingRequest();
+            });
     },
 
     _writeHeartbeat(): void {
         // FFN uses this heartbeat to decide whether it can reuse an existing
         // AO3 bridge tab or needs to open AO3 in the foreground.
-        GM_setValue(AO3_BRIDGE_HEARTBEAT_KEY, serializeAo3BridgeHeartbeat({
+        platformStorage.set(AO3_BRIDGE_HEARTBEAT_KEY, serializeAo3BridgeHeartbeat({
             at: Date.now(),
             url: window.location.href,
             loggedIn: Ao3Service._isLoggedInDocument(document),
@@ -93,7 +110,7 @@ export const Ao3Bridge = {
 
     async _processPendingRequest(): Promise<void> {
         const log = Core.getLogger(this.MODULE_NAME, '_processPendingRequest');
-        const request = parseAo3BridgeRequest(GM_getValue(AO3_BRIDGE_REQUEST_KEY));
+        const request = parseAo3BridgeRequest(platformStorage.get(AO3_BRIDGE_REQUEST_KEY));
         if (!request) {
             this._setStatus('Waiting for FFN migration requests.', false);
             return;
@@ -106,8 +123,8 @@ export const Ao3Bridge = {
         const timestampFailure = invalidRequestTimestampReason(request, Date.now());
         if (timestampFailure) {
             const result = bridgeResultForError(request, timestampFailure);
-            GM_deleteValue(AO3_BRIDGE_REQUEST_KEY);
-            GM_setValue(AO3_BRIDGE_RESULT_KEY, serializeAo3BridgeResult(result));
+            platformStorage.remove(AO3_BRIDGE_REQUEST_KEY);
+            platformStorage.set(AO3_BRIDGE_RESULT_KEY, serializeAo3BridgeResult(result));
             this._lastHandledRequestId = request.id;
             this._setStatus(result.reason || 'AO3 bridge request timestamp was rejected.');
             log('Discarded AO3 bridge request with invalid timestamp.', {
@@ -133,7 +150,7 @@ export const Ao3Bridge = {
 
         try {
             const result = await this._handleRequest(request);
-            GM_setValue(AO3_BRIDGE_RESULT_KEY, serializeAo3BridgeResult(result));
+            platformStorage.set(AO3_BRIDGE_RESULT_KEY, serializeAo3BridgeResult(result));
             this._lastHandledRequestId = request.id;
             this._setStatus(result.ok
                 ? 'AO3 bridge request completed.'
@@ -146,7 +163,7 @@ export const Ao3Bridge = {
             });
         } catch (err) {
             const reason = err instanceof Error ? err.message : String(err);
-            GM_setValue(AO3_BRIDGE_RESULT_KEY, serializeAo3BridgeResult(
+            platformStorage.set(AO3_BRIDGE_RESULT_KEY, serializeAo3BridgeResult(
                 bridgeResultForError(request, `Unexpected AO3 bridge error: ${reason}`)
             ));
             this._lastHandledRequestId = request.id;

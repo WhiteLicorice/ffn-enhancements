@@ -1,0 +1,132 @@
+/* Critical theme CSS — browser chrome, page chrome, and native FFN element overrides.
+   Injected by browser at document-start before any HTML is parsed. Zero FOUC. */
+
+/* ── Color Scheme ─────────────────────────────────────────────────── */
+html.ffne-theme-light {
+  color-scheme: light !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) {
+  color-scheme: dark !important;
+}
+
+/* ── Page Chrome ──────────────────────────────────────────────────── */
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) {
+  background: var(--ffne-ui-page-bg) !important;
+  color: var(--ffne-ui-text-body) !important;
+}
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) body {
+  background-color: var(--ffne-ui-page-bg) !important;
+  color: var(--ffne-ui-text-body) !important;
+}
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(#content_wrapper, #content_wrapper_inner) {
+  background-color: var(--ffne-ui-page-bg) !important;
+  color: var(--ffne-ui-text-body) !important;
+}
+
+/* ── Navigation Chrome (.zmenu / #zmenu / .lc-*) ──────────────────── */
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.zmenu, #zmenu) {
+  background-color: var(--ffne-ui-card-bg) !important;
+  border-color: var(--ffne-ui-border) !important;
+}
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.lc-wrapper, .lc, .lc-left, .lc-right) {
+  border-color: var(--ffne-ui-border) !important;
+}
+/* FFN native CSS hard-codes background:#fff on .lc/.lc-left/.lc-right so they
+   punch through .lc-wrapper::after's horizontal divider line. Override bg to
+   page-bg so the punch-through effect works in dark/sepia/hc themes and no
+   white flashes before CssScanner runs at DOMContentLoaded. */
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.lc, .lc-left, .lc-right) {
+  background-color: var(--ffne-ui-page-bg) !important;
+}
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) .lc-wrapper::after {
+  border-top-color: var(--ffne-ui-border) !important;
+}
+
+/* ── Native FFN Element Overrides (dark/sepia/hc themes) ─────────── */
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.xcontrast, .xcontrast_outer, #l_main, #l_menu, #xcenter, #content_parent, .z-top-container, #review) {
+  background-color: var(--ffne-ui-page-bg) !important;
+  color: var(--ffne-ui-text-body) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.xcontrast_txt, #profile_top, #storytext, .storytext, #storytextp, p, li, label, span) {
+  color: var(--ffne-ui-text-body) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) .xgray {
+  color: var(--ffne-ui-text-secondary) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(a:link, a:visited) {
+  color: var(--ffne-brand-primary) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(a[href*="/u/"], a[href*="/u/"].xcontrast_txt, #profile_top a[href*="/r/"], #profile_top a[href*="/r/"] span, #profile_top a[href*="/reviews/"], #profile_top a[href*="/reviews/"] span) {
+  color: var(--ffne-semantic-warning-text-dark) !important;
+}
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(#top, .tcat) {
+  background-color: var(--ffne-brand-dark) !important;
+  color: var(--ffne-ui-text-on-accent) !important;
+  border-color: var(--ffne-ui-border) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(.menulink, .menulink a, .menulink small, .lc-left a, .lc a, .lc-right a, .tcat b, .tcat a) {
+  color: var(--ffne-ui-text-on-accent) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) #name_login a {
+  color: #ff9944 !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(table, #gui_table1, #gui_table2, .table, .table-bordered) {
+  background-color: var(--ffne-ui-white) !important;
+  color: var(--ffne-ui-text-body) !important;
+  border-color: var(--ffne-ui-border) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(td, #gui_table1 td, #gui_table2 td) {
+  background-color: var(--ffne-ui-white) !important;
+  color: var(--ffne-ui-text-body) !important;
+  border-color: var(--ffne-ui-border-light) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(th, #gui_table1 th, #gui_table2 th) {
+  background-color: var(--ffne-brand-bg) !important;
+  color: var(--ffne-ui-text-body) !important;
+  border-color: var(--ffne-ui-border-table) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(tr:nth-child(even)>td, .table-striped tbody tr:nth-child(odd)>td, .table-striped tbody tr:nth-child(odd)>th) {
+  background-color: var(--ffne-ui-card-bg) !important;
+}
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="image"]), select, textarea, #review_review) {
+  background-color: var(--ffne-ui-card-bg) !important;
+  color: var(--ffne-ui-text-body) !important;
+  border-color: var(--ffne-ui-border-input) !important;
+}
+html:is(.ffne-theme-light, .ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) :is(input[type="submit"], input[type="button"], button, .btn) {
+  background-color: var(--ffne-brand-bg) !important;
+  background-image: none !important;
+  color: var(--ffne-brand-text) !important;
+  border-color: var(--ffne-ui-border) !important;
+  text-shadow: none !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) .panel_normal {
+  background-color: var(--ffne-ui-card-bg) !important;
+  border-color: var(--ffne-ui-border) !important;
+  color: var(--ffne-ui-text-body) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) .panel_success {
+  background-color: var(--ffne-semantic-success-bg) !important;
+  border-color: var(--ffne-semantic-success-border) !important;
+  color: var(--ffne-semantic-success-text) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) .panel_warning {
+  background-color: var(--ffne-semantic-warning-bg) !important;
+  border-color: var(--ffne-semantic-warning-border) !important;
+  color: var(--ffne-semantic-warning-text) !important;
+}
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) .panel_error {
+  background-color: var(--ffne-semantic-error-bg) !important;
+  border-color: var(--ffne-semantic-error-border) !important;
+  color: var(--ffne-semantic-error-text) !important;
+}
+
+/* ── TinyMCE Iframe Anti-FOUC ─────────────────────────────────────── */
+/* FFN's tinymce3.css hard-codes `body { background-color: white; color: black; }`
+   inside editor iframes (#bio_ifr etc.). Parent-document CSS cannot reach into
+   iframe contentDocument, so we hide the iframe element itself until
+   ThemeManager._themeIframe injects token vars and reveals it. Light theme
+   already matches tinymce3.css defaults, so no hide needed there. */
+html:is(.ffne-theme-dark, .ffne-theme-sepia, .ffne-theme-high-contrast) iframe[id$="_ifr"] {
+  visibility: hidden;
+}

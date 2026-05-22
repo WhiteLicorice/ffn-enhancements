@@ -58,4 +58,27 @@ describe('SettingsPage', () => {
 
         expect(document.getElementById('ffne-settings-modal')?.getAttribute('data-ffne-ui')).toBe('');
     });
+
+    it('describes native-form save timing without old Save-button polling copy', () => {
+        SettingsPage.openModal();
+
+        const text = document.body.textContent || '';
+
+        expect(text).toContain('How long to wait for FFN to return a hidden native-form save response.');
+        expect(text).toContain('How long to wait for iframe-backed page loads before giving up.');
+        expect(text).not.toContain('after clicking Save in the hidden iframe');
+        expect(text).not.toContain('readyState="complete" during doc refresh');
+    });
+
+    it('shows the native downloader tuning controls under Advanced Settings', () => {
+        SettingsPage.openModal();
+
+        const retryInput = document.querySelector<HTMLInputElement>('[data-setting="chapterFetchMaxRetries"]');
+        const cooldownInput = document.querySelector<HTMLInputElement>('[data-setting="chapterCooldownMs"]');
+
+        expect(document.body.textContent).toContain('Native Downloader');
+        expect(document.body.textContent).toContain('Native Chapter Retry Limit');
+        expect(retryInput?.value).toBe('5');
+        expect(cooldownInput?.value).toBe('10000');
+    });
 });

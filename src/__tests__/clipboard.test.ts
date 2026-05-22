@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { GM_setClipboard } from '$';
 import { writeToClipboard } from '../utils/clipboard';
 
-// Mock ClipboardItem — not available in jsdom.
 class MockClipboardItem {
     items: Record<string, Blob>;
     constructor(items: Record<string, Blob>) {
@@ -16,7 +14,6 @@ describe('writeToClipboard', () => {
     const originalExecCommand = document.execCommand;
 
     beforeEach(() => {
-        vi.mocked(GM_setClipboard).mockReset();
         Object.defineProperty(globalThis.navigator, 'clipboard', {
             value: {
                 write: vi.fn().mockResolvedValue(undefined),
@@ -56,48 +53,24 @@ describe('writeToClipboard', () => {
         expect(result).toBe(false);
     });
 
-    // ── HTML — GM path (primary) ──
+    // ── HTML — ClipboardItem API (primary) ──
 
-    it('uses GM_setClipboard for HTML content', async () => {
-        // GM_setClipboard is mocked in the $ mock — synchronous, always succeeds.
+    it('writes sanitized HTML via ClipboardItem API', async () => {
         const result = await writeToClipboard('<p onclick="x()">Hello</p><script>alert(1)</script>', true);
         expect(result).toBe(true);
-        expect(GM_setClipboard).toHaveBeenCalledWith('<p>Hello</p>', 'html');
-        // GM path short-circuits — navigator.clipboard.write is NOT called.
-        expect(navigator.clipboard.write).not.toHaveBeenCalled();
+        expect(navigator.clipboard.write).toHaveBeenCalledTimes(1);
     });
 
-    it('skips ClipboardItem API when GM_setClipboard succeeds', async () => {
-        // Verify the GM path takes priority over ClipboardItem
-        const rejectWrite = vi.fn().mockRejectedValue(new Error('Would fail if called'));
-        Object.defineProperty(globalThis.navigator, 'clipboard', {
-            value: { write: rejectWrite, writeText: vi.fn() },
-            writable: true,
-            configurable: true,
-        });
-        const result = await writeToClipboard('<p>Hello</p>', true);
-        expect(result).toBe(true);
-        expect(rejectWrite).not.toHaveBeenCalled();
-    });
-
-    it('writes sanitized HTML and plain text through ClipboardItem when GM_setClipboard fails', async () => {
-        vi.mocked(GM_setClipboard).mockImplementation(() => {
-            throw new Error('GM clipboard unavailable');
-        });
-
+    it('sanitizes HTML and plain text through ClipboardItem', async () => {
         const result = await writeToClipboard('<p onclick="x()">Hello</p><iframe src="https://evil.test"></iframe>', true);
 
         expect(result).toBe(true);
-        expect(navigator.clipboard.write).toHaveBeenCalledTimes(1);
         const clipboardItem = (navigator.clipboard.write as ReturnType<typeof vi.fn>).mock.calls[0][0][0] as MockClipboardItem;
         await expect(clipboardItem.items['text/html'].text()).resolves.toBe('<p>Hello</p>');
         await expect(clipboardItem.items['text/plain'].text()).resolves.toBe('Hello');
     });
 
-    it('sanitizes HTML before the execCommand fallback path', async () => {
-        vi.mocked(GM_setClipboard).mockImplementation(() => {
-            throw new Error('GM clipboard unavailable');
-        });
+    it('falls back to execCommand when ClipboardItem fails', async () => {
         (navigator.clipboard.write as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Clipboard unavailable'));
 
         let capturedInnerHtml = '';
