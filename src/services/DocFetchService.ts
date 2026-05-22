@@ -5,6 +5,7 @@ import { ContentParser } from './ContentParser';
 import { Elements } from '../enums/Elements';
 import { SettingsManager } from '../modules/SettingsManager';
 import { fetchWithBackoff } from '../utils/fetchWithBackoff';
+import { fetchRequestText, type FetchTextResponse } from '../utils/fetchRequest';
 
 interface SavePrivateDocOptions {
     operationLabel: 'REFRESH' | 'IMPORT';
@@ -16,24 +17,66 @@ export interface PrivateDocSaveResult {
     reason?: string;
 }
 
-interface TinyMceEditorLike {
-    setContent?: (html: string) => void;
-    save?: () => void;
+interface PrivateDocSaveAttemptResult extends PrivateDocSaveResult {
+    retryable: boolean;
 }
 
-interface TinyMceLike {
-    get?: (id: string) => TinyMceEditorLike | null;
-    activeEditor?: TinyMceEditorLike | null;
+interface PrivateDocSaveRequestBuildResult {
+    ok: boolean;
+    reason?: string;
+    actionUrl?: string;
+    body?: string;
+    submittedHtml?: string;
 }
 
-interface HiddenEditorControls {
-    submitButton: HTMLElement;
-    textarea: HTMLTextAreaElement;
+function normalizeText(value: string): string {
+    return value.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeUrlForComparison(value: string | undefined): string {
+    if (!value) return '';
+    try {
+        const parsed = new URL(value, 'https://www.fanfiction.net');
+        parsed.hash = '';
+        return `${parsed.origin}${parsed.pathname}`;
+    } catch {
+        return value.replace(/[?#].*$/, '').replace(/\/+$/, '');
+    }
+}
+
+function appendSuccessfulControl(params: URLSearchParams, control: Element): void {
+    if (!(control instanceof HTMLElement)) return;
+    if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) {
+        return;
+    }
+
+    const name = control.name?.trim();
+    if (!name || control.disabled) return;
+
+    if (control instanceof HTMLInputElement) {
+        const type = control.type.toLowerCase();
+        if (type === 'file' || type === 'reset' || type === 'button' || type === 'submit' || type === 'image') return;
+        if ((type === 'checkbox' || type === 'radio') && !control.checked) return;
+        params.append(name, control.value);
+        return;
+    }
+
+    if (control instanceof HTMLTextAreaElement) {
+        params.append(name, control.value);
+        return;
+    }
+
+    if (control.multiple) {
+        Array.from(control.selectedOptions).forEach(option => params.append(name, option.value));
+        return;
+    }
+
+    params.append(name, control.value);
 }
 
 /**
- * Document fetch and refresh service for FFN private author documents.
- * Handles fetching doc pages, extracting content, and refreshing via hidden iframe.
+ * Document fetch and save service for FFN private author documents.
+ * Handles fetching doc pages, extracting content, and direct save submissions.
  */
 export const DocFetchService = {
     MODULE_NAME: 'DocFetchService',
@@ -148,81 +191,274 @@ export const DocFetchService = {
         return textareas.length === 1 ? textareas[0] : null;
     },
 
-    /**
-     * Locates the TinyMCE iframe associated with the backing editor textarea.
-     */
-    _getEditorIframe: function (doc: Document, textarea?: HTMLTextAreaElement): HTMLIFrameElement | null {
-        const selectors = ['#bio_ifr', '#webcontent_ifr'];
-        const editorKey = textarea?.id || textarea?.name;
-        if (editorKey && /^[A-Za-z0-9_-]+$/.test(editorKey)) {
-            selectors.unshift(`#${editorKey}_ifr`);
+    _getPrivateDocForm: function (doc: Document, textarea?: HTMLTextAreaElement | null): HTMLFormElement | null {
+        const candidate = textarea?.closest('form[name="docform"]');
+        if (candidate instanceof HTMLFormElement) return candidate;
+        return doc.querySelector<HTMLFormElement>('form[name="docform"]');
+    },
+
+    _normalizeEditorHtmlForComparison: function (value: string): string {
+        const normalizedLineBreaks = value.replace(/\r\n?/g, '\n').trim();
+        const template = document.createElement('template');
+        template.innerHTML = normalizedLineBreaks;
+        return template.innerHTML
+            .replace(/\u00A0/g, ' ')
+            .replace(/>\s+</g, '><')
+            .replace(/\s+/g, ' ')
+            .trim();
+    },
+
+    _getPrivateDocExplicitFailureReason: function (
+        doc: Document,
+        response?: Pick<FetchTextResponse, 'status' | 'isCfChallenge' | 'finalUrl'>
+    ): string | null {
+        if (response?.isCfChallenge) {
+            return 'FFN save request was blocked by a Cloudflare challenge. Open fanfiction.net in this browser, clear the challenge, then retry.';
         }
 
-        for (const selector of selectors) {
-            const frame = doc.querySelector<HTMLIFrameElement>(selector);
-            if (frame) return frame;
+        const errorPanel = doc.querySelector<HTMLElement>('.panel_error, .gui_error, .alert-error, .error');
+        const errorText = normalizeText(errorPanel?.textContent || '');
+        if (errorText) return errorText;
+
+        const finalUrlPath = normalizeUrlForComparison(response?.finalUrl);
+        if (finalUrlPath && !finalUrlPath.endsWith('/docs/edit.php')) {
+            if (/\/login\.php$/i.test(finalUrlPath)) {
+                return 'FFN returned a login or authorization page.';
+            }
         }
 
-        const editorFrames = Array.from(doc.querySelectorAll<HTMLIFrameElement>('iframe[id$="_ifr"]'));
-        return editorFrames.length === 1 ? editorFrames[0] : null;
+        const bodyText = normalizeText(doc.body?.textContent || '');
+        if (/please\s+log\s*in|login\s+required|not\s+authorized|authorization\s+required|sign\s+in/i.test(bodyText)) {
+            return 'FFN returned a login or authorization page.';
+        }
+
+        if (response?.status === 403) {
+            return 'FFN denied access to the document request.';
+        }
+
+        return null;
+    },
+
+    _getPrivateDocTransportFailure: function (
+        response: FetchTextResponse,
+        actionDescription: string
+    ): PrivateDocSaveAttemptResult | null {
+        if (response.isCfChallenge) {
+            return {
+                ok: false,
+                reason: 'FFN save request was blocked by a Cloudflare challenge. Open fanfiction.net in this browser, clear the challenge, then retry.',
+                retryable: false,
+            };
+        }
+
+        if (response.ok) return null;
+
+        if (response.status === 0) {
+            return {
+                ok: false,
+                reason: response.reason || `FFN ${actionDescription} failed before a response was received.`,
+                retryable: true,
+            };
+        }
+
+        if (response.status === 403) {
+            return {
+                ok: false,
+                reason: 'FFN denied access to the document request.',
+                retryable: false,
+            };
+        }
+
+        if (response.status >= 500) {
+            return {
+                ok: false,
+                reason: response.reason || `FFN ${actionDescription} failed with HTTP ${response.status}.`,
+                retryable: true,
+            };
+        }
+
+        return {
+            ok: false,
+            reason: response.reason || `FFN ${actionDescription} failed with HTTP ${response.status}.`,
+            retryable: false,
+        };
+    },
+
+    _buildPrivateDocSaveRequest: function (
+        doc: Document,
+        requestUrl: string,
+        docId: string,
+        options: SavePrivateDocOptions
+    ): PrivateDocSaveRequestBuildResult {
+        const textarea = this._getEditorTextarea(doc);
+        if (!textarea) {
+            return { ok: false, reason: 'Could not find the private document editor textarea.' };
+        }
+
+        const form = this._getPrivateDocForm(doc, textarea);
+        if (!form) {
+            return { ok: false, reason: 'Could not find the private document save form.' };
+        }
+
+        if ((form.getAttribute('name') || '').trim() !== 'docform') {
+            return { ok: false, reason: 'Private document save form was not FFN docform.' };
+        }
+
+        const actionControl = form.querySelector<HTMLInputElement>('input[type="hidden"][name="action"]');
+        if (!actionControl || actionControl.value.trim().toLowerCase() !== 'save') {
+            return { ok: false, reason: 'Private document save form is missing hidden action=save.' };
+        }
+
+        const docIdControl = form.querySelector<HTMLInputElement>('input[type="hidden"][name="docid"]');
+        const formDocId = docIdControl?.value.trim() || '';
+        if (!formDocId) {
+            return { ok: false, reason: 'Private document save form is missing hidden docid.' };
+        }
+        if (formDocId !== docId) {
+            return { ok: false, reason: `Private document form docid ${formDocId} did not match requested docid ${docId}.` };
+        }
+
+        const rawAction = form.getAttribute('action')?.trim();
+        if (!rawAction) {
+            return { ok: false, reason: 'Private document save form did not include an action URL.' };
+        }
+
+        let actionUrl: string;
+        try {
+            actionUrl = new URL(rawAction, requestUrl).href;
+        } catch {
+            return { ok: false, reason: 'Private document save form action URL is invalid.' };
+        }
+
+        let parsedActionUrl: URL;
+        try {
+            parsedActionUrl = new URL(actionUrl);
+        } catch {
+            return { ok: false, reason: 'Private document save form action URL is invalid.' };
+        }
+
+        if (parsedActionUrl.origin !== 'https://www.fanfiction.net' || parsedActionUrl.pathname !== '/docs/edit.php') {
+            return { ok: false, reason: 'Private document save form action did not target FFN /docs/edit.php.' };
+        }
+
+        const targetDocId = parsedActionUrl.searchParams.get('docid');
+        if (targetDocId && targetDocId !== docId) {
+            return { ok: false, reason: `Private document save target docid ${targetDocId} did not match requested docid ${docId}.` };
+        }
+
+        const currentHtml = textarea.value || textarea.textContent || '';
+        const submittedHtml = options.replacementHtml !== undefined ? options.replacementHtml : currentHtml;
+        if (!submittedHtml.trim()) {
+            return {
+                ok: false,
+                reason: options.operationLabel === 'IMPORT'
+                    ? 'Replacement content is empty.'
+                    : 'Private document editor content is empty, so refresh was blocked.',
+            };
+        }
+
+        const params = new URLSearchParams();
+        Array.from(form.elements).forEach(element => appendSuccessfulControl(params, element));
+        params.set(textarea.name, submittedHtml);
+        params.set('action', 'save');
+        params.set('docid', docId);
+
+        return {
+            ok: true,
+            actionUrl,
+            body: params.toString(),
+            submittedHtml,
+        };
+    },
+
+    _verifyPrivateDocSaveResponse: function (
+        response: FetchTextResponse,
+        docId: string,
+        submittedHtml: string,
+        options: SavePrivateDocOptions
+    ): PrivateDocSaveAttemptResult {
+        const responseDoc = new DOMParser().parseFromString(response.responseText, 'text/html');
+
+        const explicitFailure = this._getPrivateDocExplicitFailureReason(responseDoc, response);
+        if (explicitFailure) {
+            return { ok: false, reason: explicitFailure, retryable: false };
+        }
+
+        const successPanel = Core.getElement(Elements.SUCCESS_PANEL, responseDoc);
+        const successText = normalizeText(successPanel?.textContent || '');
+        if (/successfully\s+saved|success/i.test(successText)) {
+            return { ok: true, retryable: false };
+        }
+
+        const textarea = this._getEditorTextarea(responseDoc);
+        const form = this._getPrivateDocForm(responseDoc, textarea);
+        const returnedDocId = form?.querySelector<HTMLInputElement>('input[type="hidden"][name="docid"]')?.value.trim() || '';
+        if (returnedDocId && returnedDocId !== docId) {
+            return {
+                ok: false,
+                reason: `FFN returned docid ${returnedDocId} instead of ${docId} after save verification.`,
+                retryable: false,
+            };
+        }
+
+        if (options.operationLabel === 'REFRESH') {
+            const refreshedHtml = textarea ? (textarea.value || textarea.textContent || '').trim() : '';
+            if (returnedDocId === docId && refreshedHtml) {
+                return { ok: true, retryable: false };
+            }
+
+            return {
+                ok: false,
+                reason: 'FFN did not confirm the refresh save.',
+                retryable: true,
+            };
+        }
+
+        const returnedHtml = textarea ? (textarea.value || textarea.textContent || '') : '';
+        if (returnedDocId === docId && this._normalizeEditorHtmlForComparison(returnedHtml) === this._normalizeEditorHtmlForComparison(submittedHtml)) {
+            return { ok: true, retryable: false };
+        }
+
+        if (returnedDocId === docId && textarea) {
+            return {
+                ok: false,
+                reason: 'FFN returned editor content that did not match the imported HTML.',
+                retryable: true,
+            };
+        }
+
+        return {
+            ok: false,
+            reason: 'FFN did not confirm the import save.',
+            retryable: true,
+        };
     },
 
     /**
-     * Refreshes a document by loading it in a hidden iframe and clicking Save.
-     * This lets FFN preserve the existing content while extending document life.
+     * Refreshes a document by loading the edit form, preserving the existing HTML,
+     * and submitting the same FFN save payload through the service worker fetch path.
      */
     refreshPrivateDoc: async function (docId: string, title: string, attempt: number = 1): Promise<boolean> {
         const log = Core.getLogger(this.MODULE_NAME, 'refreshPrivateDoc');
         const maxRetries = SettingsManager.get('fetchMaxRetries');
 
         try {
-            log(`[REFRESH START] Attempting to refresh "${title}" (DocID: ${docId}, Attempt: ${attempt}/${maxRetries})`);
-            log('[REFRESH] Verifying document has content...');
-
-            const doc = await fetchWithBackoff<Document>({
-                url: `https://www.fanfiction.net/docs/edit.php?docid=${docId}`,
-                maxRetries,
-                getDelay: (retryAttempt) => retryAttempt * SettingsManager.get('fetchRetryBaseMs'),
-                onSuccess: async (resp) => {
-                    const text = await resp.text();
-                    return new DOMParser().parseFromString(text, 'text/html');
-                },
-                onError: (resp) => {
-                    log(`[REFRESH ERROR] Failed to fetch document for verification: ${resp.status}`);
-                    return null;
-                },
-                onRetry: (retryAttempt, waitTime, status) => {
-                    log(`[REFRESH] Verification fetch failed (${status}). Retrying in ${waitTime}ms... (Attempt ${retryAttempt})`);
-                },
-            });
-
-            if (!doc) return false;
-
-            const trimmedContent = this._getEditorContentForGuard(doc);
-            if (trimmedContent === null) {
-                log(`[REFRESH ERROR] Could not find content textarea for "${title}"`);
-                return false;
-            }
-
-            if (!trimmedContent) {
-                log(`[REFRESH BLOCKED] Document "${title}" appears to be empty. Aborting refresh to prevent data loss.`);
-                console.warn(`REFRESH BLOCKED: Document "${title}" (DocID: ${docId}) has no content. Skipping to prevent accidental deletion.`);
-                return false;
-            }
-
-            log(`[REFRESH] Content verified (${trimmedContent.length} chars). Proceeding with refresh...`);
-            const saveSuccess = await this._savePrivateDocViaIframe(docId, title, {
+            log(`[REFRESH START] Refreshing "${title}" (DocID: ${docId}, Attempt: ${attempt}/${maxRetries})`);
+            const saveResult = await this._savePrivateDocDirectlyWithResult(docId, title, {
                 operationLabel: 'REFRESH',
             });
 
-            if (!saveSuccess && attempt < maxRetries) {
+            if (!saveResult.ok && saveResult.retryable && attempt < maxRetries) {
                 const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
-                log(`[REFRESH] Refresh failed for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+                log(`[REFRESH] Save not confirmed for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
                 await new Promise(r => setTimeout(r, waitTime));
                 return this.refreshPrivateDoc(docId, title, attempt + 1);
             }
 
-            return saveSuccess;
+            if (!saveResult.ok) {
+                log(`[REFRESH FAILED] ${saveResult.reason || 'Unknown refresh failure.'}`);
+            }
+            return saveResult.ok;
         } catch (err) {
             log('[REFRESH ERROR] Exception during refresh:', err);
             console.error(`REFRESH FAILED for document ${docId}:`, err);
@@ -272,14 +508,14 @@ export const DocFetchService = {
 
         try {
             log(`[IMPORT START] Replacing "${title}" (DocID: ${docId}, Attempt: ${attempt}/${maxRetries})`);
-            const saveResult = await this._savePrivateDocViaIframeWithResult(docId, title, {
+            const saveResult = await this._savePrivateDocDirectlyWithResult(docId, title, {
                 operationLabel: 'IMPORT',
                 replacementHtml,
             });
 
-            if (!saveResult.ok && attempt < maxRetries) {
+            if (!saveResult.ok && saveResult.retryable && attempt < maxRetries) {
                 const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
-                log(`[IMPORT] Save failed for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+                log(`[IMPORT] Save not confirmed for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
                 await new Promise(r => setTimeout(r, waitTime));
                 return this.replacePrivateDocContentWithResult(docId, title, replacementHtml, attempt + 1);
             }
@@ -301,255 +537,65 @@ export const DocFetchService = {
         }
     },
 
-    /**
-     * Shared hidden-iframe save implementation for refresh and import.
-     */
-    _savePrivateDocViaIframe: async function (
+    _savePrivateDocDirectly: async function (
         docId: string,
         title: string,
         options: SavePrivateDocOptions,
     ): Promise<boolean> {
-        const result = await this._savePrivateDocViaIframeWithResult(docId, title, options);
+        const result = await this._savePrivateDocDirectlyWithResult(docId, title, options);
         return result.ok;
     },
 
     /**
-     * Shared hidden-iframe save implementation with a structured failure reason.
+     * Shared direct-save implementation with structured failure reasons and retry metadata.
      */
-    _savePrivateDocViaIframeWithResult: async function (
+    _savePrivateDocDirectlyWithResult: async function (
         docId: string,
         title: string,
         options: SavePrivateDocOptions,
-    ): Promise<PrivateDocSaveResult> {
-        const log = Core.getLogger(this.MODULE_NAME, '_savePrivateDocViaIframe');
+    ): Promise<PrivateDocSaveAttemptResult> {
+        const log = Core.getLogger(this.MODULE_NAME, '_savePrivateDocDirectlyWithResult');
+        const editUrl = `https://www.fanfiction.net/docs/edit.php?docid=${encodeURIComponent(docId)}`;
         const label = options.operationLabel;
 
-        log(`[${label}] Loading document in hidden iframe...`);
-
         if (options.replacementHtml !== undefined && !options.replacementHtml.trim()) {
-            return { ok: false, reason: 'Replacement content is empty.' };
+            return { ok: false, reason: 'Replacement content is empty.', retryable: false };
         }
 
-        return new Promise<PrivateDocSaveResult>((resolve) => {
-            const iframe = document.createElement('iframe');
-            iframe.name = `_ffn_${label.toLowerCase()}_${docId}`;
-            iframe.style.position = 'absolute';
-            iframe.style.width = '1px';
-            iframe.style.height = '1px';
-            iframe.style.left = '-9999px';
-            iframe.style.top = '-9999px';
-            iframe.style.border = 'none';
-            iframe.style.visibility = 'hidden';
-            document.body.appendChild(iframe);
-
-            let isResolved = false;
-            let checkInterval: number | null = null;
-            let loadTimer: number | null = null;
-            let saveTimer: number | null = null;
-            let submitInterval: number | null = null;
-
-            const clearIntervalIfSet = (timerId: number | null) => {
-                if (timerId !== null) window.clearInterval(timerId);
-            };
-
-            const clearTimeoutIfSet = (timerId: number | null) => {
-                if (timerId !== null) window.clearTimeout(timerId);
-            };
-
-            const removeIframe = () => {
-                clearIntervalIfSet(checkInterval);
-                clearTimeoutIfSet(loadTimer);
-                clearTimeoutIfSet(saveTimer);
-                clearIntervalIfSet(submitInterval);
-                window.removeEventListener('pagehide', onPageHide);
-                if (iframe.parentNode) {
-                    iframe.parentNode.removeChild(iframe);
-                }
-            };
-
-            const resolveOnce = (result: PrivateDocSaveResult) => {
-                if (isResolved) return;
-                isResolved = true;
-                removeIframe();
-                resolve(result);
-            };
-
-            const failOnce = (reason: string) => resolveOnce({ ok: false, reason });
-            const onPageHide = () => failOnce('Page changed before the save confirmation was received.');
-            window.addEventListener('pagehide', onPageHide);
-
-            let editorControlsFailureReason = 'Editor controls were not ready in the hidden editor.';
-            const waitForEditorControls = (maxAttempts: number = 100): Promise<HiddenEditorControls | null> => {
-                return new Promise((resolveControls) => {
-                    let attempts = 0;
-                    const controlsInterval = window.setInterval(() => {
-                        attempts++;
-                        try {
-                            const iframeDoc = iframe.contentDocument;
-                            if (!iframeDoc) {
-                                window.clearInterval(controlsInterval);
-                                editorControlsFailureReason = 'Hidden editor document was unavailable.';
-                                resolveControls(null);
-                                return;
-                            }
-
-                            const hasContent = iframeDoc.body && iframeDoc.body.children.length > 0;
-                            if (hasContent) {
-                                const submitButton = Core.getElement(Elements.SAVE_BUTTON, iframeDoc);
-                                const textarea = this._getEditorTextarea(iframeDoc);
-                                if (submitButton && textarea) {
-                                    window.clearInterval(controlsInterval);
-                                    log(`[${label}] Editor controls found after ${attempts * 200}ms`);
-                                    resolveControls({ submitButton, textarea });
-                                    return;
-                                }
-                            }
-
-                            if (attempts >= maxAttempts) {
-                                window.clearInterval(controlsInterval);
-                                const iframeDocForLog = iframe.contentDocument;
-                                const missingSaveButton = !iframeDocForLog || !Core.getElement(Elements.SAVE_BUTTON, iframeDocForLog);
-                                const missingTextarea = !iframeDocForLog || !this._getEditorTextarea(iframeDocForLog);
-                                const missing = [
-                                    missingSaveButton ? 'Save button' : '',
-                                    missingTextarea ? 'editor textarea' : '',
-                                ].filter(Boolean).join(' and ') || 'Editor controls';
-                                editorControlsFailureReason = `${missing} not found in the hidden editor after ${maxAttempts * 200}ms.`;
-                                log(`[${label} ERROR] ${missing} not found after ${maxAttempts * 200}ms`);
-                                resolveControls(null);
-                            }
-                        } catch (e) {
-                            window.clearInterval(controlsInterval);
-                            editorControlsFailureReason = `Could not inspect hidden editor controls: ${e}`;
-                            log(`[${label} ERROR] Exception while waiting for editor controls: ${e}`);
-                            resolveControls(null);
-                        }
-                    }, 200);
-                });
-            };
-
-            checkInterval = window.setInterval(async () => {
-                try {
-                    const iframeDoc = iframe.contentDocument;
-                    if (!iframeDoc || iframeDoc.readyState !== 'complete') return;
-
-                    clearIntervalIfSet(checkInterval);
-                    checkInterval = null;
-                    log(`[${label}] Page readyState complete, waiting for editor controls...`);
-
-                    const controls = await waitForEditorControls();
-                    if (!controls) {
-                        log(`[${label} ERROR] Could not find editor controls in hidden iframe`);
-                        failOnce(editorControlsFailureReason);
-                        return;
-                    }
-
-                    const { submitButton, textarea } = controls;
-                    const currentContent = (textarea.value || textarea.innerHTML || '').trim();
-
-                    if (label === 'REFRESH' && !currentContent) {
-                        log(`[${label} BLOCKED] Hidden editor loaded empty content for "${title}". Save blocked.`);
-                        failOnce('Hidden editor loaded empty content, so save was blocked.');
-                        return;
-                    }
-
-                    if (options.replacementHtml !== undefined) {
-                        const didReplace = this._applyReplacementContent(iframe, options.replacementHtml);
-                        if (!didReplace) {
-                            log(`[${label} ERROR] Could not replace editor content for "${title}"`);
-                            failOnce('Replacement content could not be written into the hidden editor.');
-                            return;
-                        }
-                    }
-
-                    let submitCompleted = false;
-                    submitInterval = window.setInterval(() => {
-                        try {
-                            const currentDoc = iframe.contentDocument;
-                            if (currentDoc && currentDoc.readyState === 'complete' && !submitCompleted) {
-                                const successPanel = Core.getElement(Elements.SUCCESS_PANEL, currentDoc);
-                                if (successPanel?.innerHTML.includes('successfully saved') || successPanel?.innerHTML.includes('Success')) {
-                                    submitCompleted = true;
-                                    log(`[${label} SUCCESS] Document saved successfully`);
-                                    console.log(`${label} SUCCESS: Document ${docId} (${title}) saved successfully`);
-                                    resolveOnce({ ok: true });
-                                }
-                            }
-                        } catch {
-                            clearIntervalIfSet(submitInterval);
-                            submitInterval = null;
-                        }
-                    }, 200);
-
-                    log(`[${label}] Clicking Save button...`);
-                    submitButton.click();
-
-                    const saveTimeout = SettingsManager.get('iframeSaveTimeoutMs');
-                    saveTimer = window.setTimeout(() => {
-                        if (!submitCompleted) {
-                            log(`[${label} TIMEOUT] No confirmation received after ${saveTimeout}ms`);
-                            failOnce(`No save confirmation appeared within ${saveTimeout}ms.`);
-                        }
-                    }, saveTimeout);
-                } catch (e) {
-                    clearIntervalIfSet(checkInterval);
-                    checkInterval = null;
-                    log(`[${label} ERROR] Lost access to iframe: ${e}`);
-                    failOnce(`Lost access to the hidden editor: ${e}`);
-                }
-            }, 100);
-
-            const loadTimeout = SettingsManager.get('iframeLoadTimeoutMs');
-            loadTimer = window.setTimeout(() => {
-                log(`[${label} TIMEOUT] Iframe did not load after ${loadTimeout}ms`);
-                failOnce(`Hidden editor did not load within ${loadTimeout}ms.`);
-            }, loadTimeout);
-
-            iframe.src = `https://www.fanfiction.net/docs/edit.php?docid=${docId}`;
+        log(`[${label}] Fetching private document edit page.`);
+        const editResponse = await fetchRequestText({
+            method: 'GET',
+            url: editUrl,
         });
-    },
 
-    /**
-     * Pushes replacement HTML into TinyMCE, its editor iframe, and the backing textarea.
-     */
-    _applyReplacementContent: function (iframe: HTMLIFrameElement, replacementHtml: string): boolean {
-        const log = Core.getLogger(this.MODULE_NAME, '_applyReplacementContent');
-        const iframeDoc = iframe.contentDocument;
-        if (!iframeDoc) return false;
+        const editTransportFailure = this._getPrivateDocTransportFailure(editResponse, 'edit page request');
+        if (editTransportFailure) return editTransportFailure;
 
-        const textarea = this._getEditorTextarea(iframeDoc);
-        if (!textarea) {
-            log('Backing textarea not found.');
-            return false;
+        const editDoc = new DOMParser().parseFromString(editResponse.responseText, 'text/html');
+        const editFailure = this._getPrivateDocExplicitFailureReason(editDoc, editResponse);
+        if (editFailure) {
+            return { ok: false, reason: editFailure, retryable: false };
         }
 
-        const editorFrame = this._getEditorIframe(iframeDoc, textarea);
-        if (editorFrame?.contentDocument?.body) {
-            editorFrame.contentDocument.body.innerHTML = replacementHtml;
+        const request = this._buildPrivateDocSaveRequest(editDoc, editUrl, docId, options);
+        if (!request.ok || !request.actionUrl || request.body === undefined || request.submittedHtml === undefined) {
+            return { ok: false, reason: request.reason || 'Could not build the private document save request.', retryable: false };
         }
 
-        const iframeWindow = iframe.contentWindow as (Window & {
-            tinymce?: TinyMceLike;
-            tinyMCE?: TinyMceLike;
-        }) | null;
-        const tinyMce = iframeWindow?.tinymce || iframeWindow?.tinyMCE;
-        const editorKey = textarea.id || textarea.name || 'bio';
-        const editor = tinyMce?.get?.(editorKey) || tinyMce?.get?.('bio') || tinyMce?.get?.('webcontent') || tinyMce?.activeEditor || null;
+        log(`[${label}] Posting private document save payload.`);
+        const saveResponse = await fetchRequestText({
+            method: 'POST',
+            url: request.actionUrl,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+            },
+            data: request.body,
+            timeout: SettingsManager.get('iframeSaveTimeoutMs'),
+        });
 
-        if (editor?.setContent) {
-            editor.setContent(replacementHtml);
-        }
+        const saveTransportFailure = this._getPrivateDocTransportFailure(saveResponse, 'save request');
+        if (saveTransportFailure) return saveTransportFailure;
 
-        textarea.value = replacementHtml;
-        textarea.textContent = replacementHtml;
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        textarea.dispatchEvent(new Event('change', { bubbles: true }));
-
-        if (editor?.save) {
-            editor.save();
-        }
-
-        const savedValue = textarea.value || textarea.textContent || '';
-        return savedValue.trim() === replacementHtml.trim();
+        return this._verifyPrivateDocSaveResponse(saveResponse, docId, request.submittedHtml, options);
     },
 };
