@@ -743,6 +743,86 @@ describe('DocManager bulk import execution', () => {
         expect(lifeSpy).not.toHaveBeenCalled();
     });
 
+    it('leaves import rows failed on invalid-auth responses without updating Life', async () => {
+        mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
+        const item = makeItem('Doc Name', '101');
+        const plan = DocManager._buildBulkImportPlan(
+            [makeFile('Doc Name.md', 'Import/Doc Name.md', '**Bold**')],
+            [item],
+            'markdown',
+        );
+        const preview = document.createElement('div');
+        const startButton = makeBtn();
+        document.body.append(preview);
+        DocManager._renderBulkImportPreview(preview, startButton, plan);
+        const previewRow = preview.querySelector<HTMLTableRowElement>('tr[data-row-file]');
+        const statusCell = preview.querySelector<HTMLElement>('[data-ffne-status]');
+        const lifeSpy = vi.spyOn(DocManager, 'updateLifeColumn');
+        vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({
+            ok: false,
+            reason: 'Invalid Request / unable to authenticate.',
+        });
+
+        const { results } = await runBulkImportWithPlan(plan);
+
+        expect(previewRow?.classList.contains('ffne-dm-row-success')).toBe(false);
+        expect(previewRow?.classList.contains('ffne-dm-row-failed')).toBe(true);
+        expect(statusCell?.textContent).toBe('Failed');
+        expect(results.innerHTML).toContain('Invalid Request / unable to authenticate.');
+        expect(lifeSpy).not.toHaveBeenCalled();
+    });
+
+    it('retry failed resubmits only failed rows with the same converted payload', async () => {
+        mountDocManagerItems([
+            { docId: '101', docName: 'Doc One' },
+            { docId: '102', docName: 'Doc Two' },
+        ]);
+        const itemOne = makeItem('Doc One', '101');
+        const itemTwo = makeItem('Doc Two', '102');
+        const plan = DocManager._buildBulkImportPlan(
+            [
+                makeFile('Doc One.md', 'Import/Doc One.md', '# One'),
+                makeFile('Doc Two.md', 'Import/Doc Two.md', '# Two'),
+            ],
+            [itemOne, itemTwo],
+            'markdown',
+        );
+        const preview = document.createElement('div');
+        const startButton = makeBtn();
+        const status = document.createElement('div');
+        const results = document.createElement('div');
+        const runButton = makeBtn();
+        document.body.append(preview, status, results);
+        DocManager._renderBulkImportPreview(preview, startButton, plan);
+
+        const calls: Array<{ docId: string; title: string; html: string; }> = [];
+        vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockImplementation(async (docId, title, html) => {
+            calls.push({ docId, title, html });
+            if (docId === '101' && calls.filter(call => call.docId === '101').length === 1) {
+                return { ok: false, reason: 'Invalid Request / unable to authenticate.' };
+            }
+            return { ok: true };
+        });
+
+        await DocManager.runBulkImport(mockEvent(runButton), plan, status, results);
+        await flushMicrotasks();
+
+        expect(calls.map(call => call.docId)).toEqual(['101', '102']);
+        const retryButton = results.querySelector<HTMLButtonElement>('button');
+        expect(retryButton?.textContent).toBe('Retry Failed');
+
+        retryButton?.click();
+        for (let i = 0; i < 5 && calls.length < 3; i++) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            await flushMicrotasks();
+        }
+
+        expect(calls.map(call => call.docId)).toEqual(['101', '102', '101']);
+        expect(calls[0]?.html).toBe('<div>One</div>');
+        expect(calls[2]?.html).toBe('<div>One</div>');
+        expect(calls.filter(call => call.docId === '102')).toHaveLength(1);
+    });
+
     it('normalizes HTML before saving', async () => {
         mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
         const plan = DocManager._buildBulkImportPlan(
