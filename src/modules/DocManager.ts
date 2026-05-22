@@ -477,7 +477,7 @@ function _renderBulkFailures(
         retryButton.addEventListener('click', onRetry);
     }
 
-    container.replaceChildren(
+    const children: Array<string | Node> = [
         h('div', { class: 'ffne-dm-import-results-title' }, title),
         h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
             h('thead', null,
@@ -493,8 +493,11 @@ function _renderBulkFailures(
                 )),
             ),
         ),
-        retryButton ? h('div', { class: 'ffne-dm-retry-wrap' }, retryButton) : null,
-    );
+    ];
+    if (retryButton) {
+        children.push(h('div', { class: 'ffne-dm-retry-wrap' }, retryButton));
+    }
+    container.replaceChildren(...children);
 }
 
 function _buildBulkImportPlan(
@@ -1550,7 +1553,7 @@ export const DocManager = {
             : null;
 
         summaryEl.className = summaryClass;
-        summaryEl.replaceChildren(
+        const summaryChildren: Array<string | Node> = [
             h('div', null,
                 h('strong', null, String(plan.chapters.length)),
                 ' AO3 chapter(s), ',
@@ -1561,15 +1564,20 @@ export const DocManager = {
                 h('strong', null, String(plan.skippedCount)),
                 ' skipped.',
             ),
-            plan.stripNotesMarker
-                ? h('div', { class: 'ffne-dm-summary-detail' },
+        ];
+        if (plan.stripNotesMarker) {
+            summaryChildren.push(
+                h('div', { class: 'ffne-dm-summary-detail' },
                     h('strong', null, 'Strip marker:'),
                     ' ',
                     plan.stripNotesMarker,
-                )
-                : null,
-            duplicateSummary,
-        );
+                ),
+            );
+        }
+        if (duplicateSummary) {
+            summaryChildren.push(duplicateSummary);
+        }
+        summaryEl.replaceChildren(...summaryChildren);
 
         const rows = plan.rows.length > 0
             ? plan.rows.map((row, index) => {
@@ -1639,7 +1647,7 @@ export const DocManager = {
             })
             : [h('tr', null, h('td', { colspan: 3 }, `No top-level ${formatOption.fileLabel} files found.`))];
 
-        preview.replaceChildren(
+        const previewChildren: Array<string | Node> = [
             h('div', null,
                 h('strong', null, 'Format:'),
                 ' ',
@@ -1655,35 +1663,45 @@ export const DocManager = {
                 h('strong', null, String(plan.ignoredFiles.length)),
                 ' ignored.',
             ),
-            plan.blockedFiles.length > 0
-                ? h('div', null,
+        ];
+        if (plan.blockedFiles.length > 0) {
+            previewChildren.push(
+                h('div', null,
                     h('strong', null, 'Blocked:'),
                     ' ',
                     plan.blockedFiles.join(', '),
-                )
-                : null,
-            plan.duplicateFileNames.length > 0
-                ? h('div', null,
+                ),
+            );
+        }
+        if (plan.duplicateFileNames.length > 0) {
+            previewChildren.push(
+                h('div', null,
                     h('strong', null, 'Duplicates:'),
                     ' ',
                     plan.duplicateFileNames.join(', '),
-                )
-                : null,
-            plan.duplicateDocNames.length > 0
-                ? h('div', null,
+                ),
+            );
+        }
+        if (plan.duplicateDocNames.length > 0) {
+            previewChildren.push(
+                h('div', null,
                     h('strong', null, 'Conflicting matches:'),
                     ' ',
                     plan.duplicateDocNames.join(', '),
-                )
-                : null,
-            plan.ignoredFiles.length > 0
-                ? h('div', null,
+                ),
+            );
+        }
+        if (plan.ignoredFiles.length > 0) {
+            previewChildren.push(
+                h('div', null,
                     h('strong', null, 'Ignored:'),
                     ' ',
                     plan.ignoredFiles.slice(0, 8).join(', '),
                     plan.ignoredFiles.length > 8 ? '...' : null,
-                )
-                : null,
+                ),
+            );
+        }
+        previewChildren.push(
             h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
                 h('thead', null,
                     h('tr', null,
@@ -1695,6 +1713,7 @@ export const DocManager = {
                 h('tbody', null, rows),
             ),
         );
+        preview.replaceChildren(...previewChildren);
 
         plan.rows.forEach(row => _renderBulkImportRowStatus(row));
     },

@@ -344,7 +344,7 @@ function _renderFailureTable(
         retryButton.addEventListener('click', onRetry);
     }
 
-    container.replaceChildren(
+    const children: Array<string | Node> = [
         h('div', { class: 'ffne-story-bulk-results-title' }, 'Failed Replacements'),
         h('table', { class: 'ffne-story-bulk-table', contenteditable: 'false' },
             h('thead', null,
@@ -362,10 +362,11 @@ function _renderFailureTable(
                 )),
             ),
         ),
-        retryButton
-            ? h('div', { class: 'ffne-story-bulk-retry-wrap' }, retryButton)
-            : null,
-    );
+    ];
+    if (retryButton) {
+        children.push(h('div', { class: 'ffne-story-bulk-retry-wrap' }, retryButton));
+    }
+    container.replaceChildren(...children);
 }
 
 export const StoryEditContent = {
@@ -618,7 +619,7 @@ export const StoryEditContent = {
             ? 'ffne-story-bulk-summary ffne-story-bulk-error'
             : 'ffne-story-bulk-summary';
         summary.className = summaryClass;
-        summary.replaceChildren(
+        const children: Array<string | Node> = [
             h('div', null,
                 h('strong', null, String(plan.mappedCount)),
                 ' mapped, ',
@@ -627,8 +628,11 @@ export const StoryEditContent = {
                 h('strong', null, String(plan.duplicateDocIds.length)),
                 ' duplicate mapping(s).',
             ),
-            plan.hasBlockingErrors ? h('div', null, 'Each source doc can be used only once.') : null,
-        );
+        ];
+        if (plan.hasBlockingErrors) {
+            children.push(h('div', null, 'Each source doc can be used only once.'));
+        }
+        summary.replaceChildren(...children);
         startButton.disabled = plan.hasBlockingErrors || plan.mappedCount === 0;
         this._state.mappings.forEach(row => this._renderRowStatus(row));
     },
