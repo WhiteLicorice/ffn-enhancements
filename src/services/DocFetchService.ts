@@ -534,6 +534,7 @@ export const DocFetchService = {
                             status: 200,
                             responseText: responseDoc.documentElement?.outerHTML || responseDoc.body?.outerHTML || '',
                             finalUrl: frameHref,
+                            isCfChallenge: false,
                         },
                         docId,
                         submittedHtml,
