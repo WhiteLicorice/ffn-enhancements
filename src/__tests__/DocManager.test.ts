@@ -714,6 +714,35 @@ describe('DocManager bulk import execution', () => {
         expect(results.innerHTML).toContain('Save rejected.');
     });
 
+    it('surfaces guardrail failures without marking import rows successful', async () => {
+        mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
+        const item = makeItem('Doc Name', '101');
+        const plan = DocManager._buildBulkImportPlan(
+            [makeFile('Doc Name.md', 'Import/Doc Name.md', '**Bold**')],
+            [item],
+            'markdown',
+        );
+        const preview = document.createElement('div');
+        const startButton = makeBtn();
+        document.body.append(preview);
+        DocManager._renderBulkImportPreview(preview, startButton, plan);
+        const previewRow = preview.querySelector<HTMLTableRowElement>('tr[data-row-file]');
+        const statusCell = preview.querySelector<HTMLElement>('[data-ffne-status]');
+        const lifeSpy = vi.spyOn(DocManager, 'updateLifeColumn');
+        vi.spyOn(DocFetchService, 'replacePrivateDocContentWithResult').mockResolvedValue({
+            ok: false,
+            reason: 'Private document save form action did not target FFN /docs/edit.php.',
+        });
+
+        const { results } = await runBulkImportWithPlan(plan);
+
+        expect(previewRow?.classList.contains('ffne-dm-row-success')).toBe(false);
+        expect(previewRow?.classList.contains('ffne-dm-row-failed')).toBe(true);
+        expect(statusCell?.textContent).toBe('Failed');
+        expect(results.innerHTML).toContain('Private document save form action did not target FFN /docs/edit.php.');
+        expect(lifeSpy).not.toHaveBeenCalled();
+    });
+
     it('normalizes HTML before saving', async () => {
         mountDocManagerItems([{ docId: '101', docName: 'Doc Name' }]);
         const plan = DocManager._buildBulkImportPlan(
