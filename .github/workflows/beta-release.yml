@@ -36,8 +36,8 @@ jobs:
           else
             PATCH=${{ github.run_number }}
           fi
-          BETA_VERSION="${MAJOR_MINOR}.${PATCH}"
-          echo "version=${BETA_VERSION}" >> $GITHUB_OUTPUT
+          VERSION="${MAJOR_MINOR}.${PATCH}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Package extension
         env:
