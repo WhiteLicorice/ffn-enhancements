@@ -2,7 +2,7 @@ FFN Enhancements fills in what FanFiction.net is missing for readers and writers
 
 ---
 
-## For readers
+# For readers
 
 A Download button appears next to Follow/Favourite on every story page. Pick EPUB, MOBI, PDF, or HTML. Native mode scrapes directly from FFN and is always current. FicHub pulls from their archive and is near-instant. If FicHub is down, Native takes over automatically. EPUB files from both sources include the story's cover art as the thumbnail.
 
@@ -12,7 +12,7 @@ Five themes: System (follows OS preference), Light, Dark, Sepia, High Contrast. 
 
 ---
 
-## For writers
+# For writers
 
 The Doc Manager and Doc Editor both get an Export button. Set the format to Markdown, HTML, or DOCX in Settings. That choice applies everywhere: single exports, bulk export, clipboard copy, and AO3 migration.
 
@@ -34,27 +34,25 @@ Export transforms apply to all export paths: AO3 HTML compatibility (converts in
 
 ---
 
-## Settings
+# Settings
 
 Open via the phone icon in the FFN site header on any FFN page at the top-left. Changes save immediately and sync across all open FanFiction.net tabs.
 
-| Setting | What it does |
-|---|---|
-| Theme | System, Light, Dark, Sepia, or High Contrast |
-| Fluid Layout | Full-width reading layout |
-| Download Format | Markdown, HTML, or DOCX for doc exports |
-| AO3 HTML Compatibility | Convert `text-align` style to `align` attribute on export |
-| Normalize HTML Paragraphs | Flatten multi-line paragraph content on export |
-| Append End Separator | Add a format-specific separator to exported content |
-| Convert Markdown on Paste | Auto-render Markdown pasted into the Doc Editor |
-| Convert HTML on Paste | Auto-render HTML source pasted into the Doc Editor |
-| Always Convert Pasted Text | Run conversion even on rich-text clipboard data |
-| Keyboard Scroll Distance | Pixels scrolled per keypress on story pages |
-| Autofill in Bulk Replace | Auto-map nearby numbered docs after manual source selection |
-| Advanced | Doc fetch retry limits, iframe timeouts, bulk export delays, native chapter scraping delays |
+**Theme:** System, Light, Dark, Sepia, or High Contrast
+Fluid Layout: Full-width reading layout
+**Download Format:** Markdown, HTML, or DOCX for doc exports
+**AO3 HTML Compatibility:** Convert `text-align` style to `align` attribute on export
+**Normalize HTML Paragraphs:** Flatten multi-line paragraph content on export
+**Append End Separator:** Add a format-specific separator to exported content
+**Convert Markdown on Paste:** Auto-render Markdown pasted into the Doc Editor
+**Convert HTML on Paste:** Auto-render HTML source pasted into the Doc Editor
+**Always Convert Pasted Text:** Run conversion even on rich-text clipboard data
+**Keyboard Scroll Distance:** Pixels scrolled per keypress on story pages
+**Autofill in Bulk Replace:** Auto-map nearby numbered docs after manual source selection
+**Advanced:** Doc fetch retry limits, iframe timeouts, bulk export delays, native chapter scraping delays
 
 ---
 
-## Compatibility
+# Compatibility
 
 Tested on Chrome, Edge, and Firefox. Also runs on archiveofourown.org for the AO3 migration bridge, and nothing else.
