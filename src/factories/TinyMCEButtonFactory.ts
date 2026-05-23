@@ -8,11 +8,11 @@ export const TinyMCEButtonFactory = {
     /**
      * Creates a fully styled TinyMCE button element with a native-style tooltip.
      * @param ariaLabel - Text for accessibility and tooltip.
-     * @param htmlContent - The inner HTML (icon or text).
+     * @param iconNode - The icon or text node to render inside the button.
      * @param onClick - The click event handler.
      * @returns The constructed DOM Element ready for injection.
      */
-    create: function (ariaLabel: string, htmlContent: string, onClick: (e: MouseEvent) => void): HTMLElement {
+    create: function (ariaLabel: string, iconNode: HTMLElement, onClick: (e: MouseEvent) => void): HTMLElement {
         // 1. Container: Replicates the wrapper div structure
         const container = document.createElement('div');
         container.className = 'mce-widget mce-btn';
@@ -52,7 +52,7 @@ export const TinyMCEButtonFactory = {
             line-height: 20px; /* Crucial: Defines the vertical size of the button */
         `;
 
-        button.innerHTML = htmlContent;
+        button.appendChild(iconNode);
 
         button.onclick = (e) => {
             e.preventDefault();
@@ -78,10 +78,13 @@ export const TinyMCEButtonFactory = {
                 tooltipEl.className = 'mce-widget mce-tooltip mce-tooltip-n';
                 tooltipEl.style.position = 'absolute';
                 tooltipEl.style.zIndex = '100100';
-                tooltipEl.innerHTML = `
-                    <div class="mce-tooltip-arrow"></div>
-                    <div class="mce-tooltip-inner">${text}</div>
-                `;
+                const arrow = document.createElement('div');
+                arrow.className = 'mce-tooltip-arrow';
+                const inner = document.createElement('div');
+                inner.className = 'mce-tooltip-inner';
+                inner.textContent = text;
+                tooltipEl.appendChild(arrow);
+                tooltipEl.appendChild(inner);
                 document.body.appendChild(tooltipEl);
             } else {
                 // Subsequent hover: just show cached element

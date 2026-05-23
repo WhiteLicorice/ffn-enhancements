@@ -7,6 +7,49 @@ import { NativeDownloader } from './NativeDownloader';
 import { SupportedFormats } from '../enums/SupportedFormats';
 import { markFfneUiRoot } from '../utils/ffneUi';
 import { ThemeManager } from './ThemeManager';
+import { h } from '../utils/dom';
+
+function _buildDownloadModal(): HTMLElement {
+    return h('div', {
+        class: 'modal fade hide',
+        id: 'ffe-download-modal',
+        style: 'display: none;',
+    },
+    h('div', { class: 'modal-header' },
+        h('button', { type: 'button', class: 'close', id: 'ffe-modal-close-x' }, '\u00d7'),
+        h('h3', { id: 'ffe-modal-title', class: 'ffne-dl-modal-title' }, 'Select Download Method'),
+    ),
+    h('div', { class: 'modal-body ffne-dl-modal-body' },
+        h('p', { class: 'ffne-dl-modal-intro' }, 'Choose a source for your file:'),
+        h('div', { class: 'ffne-dl-modal-actions' },
+            h('button', { id: 'ffe-btn-native', class: 'btn icon-book ffne-dl-source-btn' },
+                'Native',
+                h('br'),
+                h('span', { class: 'ffne-dl-source-subtitle' }, '(Browser)'),
+            ),
+            h('button', { id: 'ffe-btn-fichub', class: 'btn icon-cloud-download ffne-dl-source-btn' },
+                'FicHub',
+                h('br'),
+                h('span', { class: 'ffne-dl-source-subtitle' }, '(Archive)'),
+            ),
+        ),
+        h('div', { class: 'alert alert-info ffne-dl-note' },
+            h('ul', { class: 'ffne-dl-note-list' },
+                h('li', null,
+                    h('strong', null, 'Native:'),
+                    ' Generates the file directly from this page. Guaranteed to be the latest version, but takes longer.',
+                ),
+                h('li', null,
+                    h('strong', null, 'FicHub:'),
+                    ' Downloads from the FicHub archive. Very fast, but the file might be slightly older (cached).',
+                ),
+            ),
+        ),
+    ),
+    h('div', { class: 'modal-footer' },
+        h('span', { class: 'btn pull-left', id: 'ffe-modal-close-btn' }, 'Close'),
+    ));
+}
 
 /**
  * Module handling the UI integration for story downloads.
@@ -61,44 +104,9 @@ export const StoryDownloader = {
         if (document.getElementById('ffe-download-modal')) return;
         ThemeManager.ensureComponentStyles();
 
-        const modalHtml = `
-            <div class="modal fade hide" id="ffe-download-modal" style="display: none;">
-                <div class="modal-header">
-                    <button type="button" class="close" id="ffe-modal-close-x">×</button>
-                    <h3 id="ffe-modal-title" class="ffne-dl-modal-title">Select Download Method</h3>
-                </div>
-                <div class="modal-body ffne-dl-modal-body">
-                    <p class="ffne-dl-modal-intro">Choose a source for your file:</p>
-                    
-                    <div class="ffne-dl-modal-actions">
-                        <button id="ffe-btn-native" class="btn icon-book ffne-dl-source-btn">
-                            Native<br><span class="ffne-dl-source-subtitle">(Browser)</span>
-                        </button>
-
-                        <button id="ffe-btn-fichub" class="btn icon-cloud-download ffne-dl-source-btn">
-                            FicHub<br><span class="ffne-dl-source-subtitle">(Archive)</span>
-                        </button>
-                    </div>
-
-                    <div class="alert alert-info ffne-dl-note">
-                        <ul class="ffne-dl-note-list">
-                            <li>
-                                <strong>Native:</strong> Generates the file directly from this page. Guaranteed to be the latest version, but takes longer.
-                            </li>
-                            <li>
-                                <strong>FicHub:</strong> Downloads from the FicHub archive. Very fast, but the file might be slightly older (cached).
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <span class="btn pull-left" id="ffe-modal-close-btn">Close</span>
-                </div>
-            </div>
-        `;
-
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        this.modal = document.getElementById('ffe-download-modal');
+        const modal = _buildDownloadModal();
+        document.body.appendChild(modal);
+        this.modal = modal;
         if (this.modal instanceof HTMLElement) {
             markFfneUiRoot(this.modal);
         }
@@ -132,7 +140,7 @@ export const StoryDownloader = {
         this.mainBtn.className = 'btn';
         this.mainBtn.setAttribute('aria-haspopup', 'menu');
         this.mainBtn.setAttribute('aria-expanded', 'false');
-        this.mainBtn.innerHTML = "Download &#9662;";
+        this.mainBtn.textContent = 'Download \u25be';
         this.mainBtn.onclick = (e) => {
             e.preventDefault();
             this.toggleDropdown();
@@ -303,7 +311,7 @@ export const StoryDownloader = {
         if (!this.mainBtn) return;
         this.mainBtn.disabled = true;
         this.isDownloading = true;
-        this.mainBtn.innerHTML = "Processing...";
+        this.mainBtn.textContent = 'Processing...';
 
         let storyUrl = window.location.href.split('?')[0];
 
@@ -325,7 +333,7 @@ export const StoryDownloader = {
             }
         } catch (e) {
             log('Download strategy failed.', e);
-            this.mainBtn.innerHTML = "Error";
+            this.mainBtn.textContent = 'Error';
             alert("Download failed. Please try again later.");
         } finally {
             this.resetButton();
@@ -382,7 +390,7 @@ export const StoryDownloader = {
     resetButton: function (immediate?: boolean) {
         const reset = () => {
             if (this.mainBtn) {
-                this.mainBtn.innerHTML = "Download &#9662;";
+                this.mainBtn.textContent = 'Download \u25be';
                 this.mainBtn.disabled = false;
             }
             this.isDownloading = false;

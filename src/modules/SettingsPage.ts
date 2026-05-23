@@ -6,6 +6,7 @@ import { Theme } from '../enums/Theme';
 import { markFfneUiRoot } from '../utils/ffneUi';
 import { injectStyleOnce } from '../utils/injectStyleOnce';
 import { FFNLogger } from './FFNLogger';
+import { h } from '../utils/dom';
 import modalStyles from '../styles/settings-modal.css?raw';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -85,7 +86,7 @@ let _unsubscribers: (() => void)[] = [];
  * **To add a new setting to this page:**
  * 1. Add the field/default/loader to `SettingsManager.ts` (see checklist there).
  * 2. If numeric, add the key to `NUMERIC_KEYS` above.
- * 3. Add a `_buildXxxRow(...)` call in `_buildModalHTML()` under the appropriate section.
+ * 3. Add a `_buildXxxRow(...)` call in `_buildModalDOM()` under the appropriate section.
  * 4. Add a `SettingsManager.subscribe(key, ...)` push in `_registerSubscriptions()`.
  *    For numeric keys this happens automatically via `NUMERIC_KEYS`.
  */
@@ -106,7 +107,7 @@ export const SettingsPage = {
 
         const backdrop = markFfneUiRoot(document.createElement('div'));
         backdrop.id = MODAL_ID;
-        backdrop.innerHTML = _buildModalHTML();
+        backdrop.appendChild(_buildModalDOM());
         document.body.appendChild(backdrop);
 
         _wireHandlers(backdrop, log);
@@ -148,255 +149,241 @@ function _injectStyles(): void {
 
 // ─── HTML Builder ─────────────────────────────────────────────────────────────
 
-function _buildModalHTML(): string {
+function _buildModalDOM(): HTMLElement {
     const s = SettingsManager;
-    return `
-        <div class="ffne-modal-panel" role="dialog" aria-modal="true" aria-labelledby="ffne-modal-title">
-            <div class="ffne-modal-header">
-                <h2 id="ffne-modal-title">FFN Enhancements</h2>
-                <button id="ffne-modal-close" class="ffne-modal-close-btn" aria-label="Close settings">×</button>
-            </div>
-            <div class="ffne-modal-body">
-                <p class="ffne-modal-subtitle">Changes saved automatically. Syncs to all open FanFiction.net tabs.</p>
-
-                ${_buildSection('Appearance', [
-                    _buildSelectRow(
-                        'theme',
-                        'Theme',
-                        'Changes the visual treatment for FFN Enhancements and supported FanFiction.net page chrome.',
-                        [
-                            { value: Theme.SYSTEM,        label: 'System (Auto)' },
-                            { value: Theme.LIGHT,         label: 'Light' },
-                            { value: Theme.DARK,          label: 'Dark' },
-                            { value: Theme.SEPIA,         label: 'Sepia' },
-                            { value: Theme.HIGH_CONTRAST, label: 'High Contrast' },
-                        ],
-                        s.get('theme')
-                    ),
-                    _buildToggleRow(
-                        'fluidMode',
-                        'Fluid Layout',
-                        'Removes FFN\'s fixed-width content column for a full-width reading experience, similar to AO3.',
-                        s.get('fluidMode')
-                    ),
-                ])}
-
-                ${_buildSection('Document Export', [
-                    _buildSelectRow(
-                        'docDownloadFormat',
-                        'Download Format',
-                        'File format for exports from Doc Manager and Doc Editor. Does not affect story-page downloads (those always use FicHub).',
-                        [
-                            { value: DocDownloadFormat.MARKDOWN, label: 'Markdown (.md)' },
-                            { value: DocDownloadFormat.HTML,     label: 'HTML (.html)'   },
-                            { value: DocDownloadFormat.DOCX,     label: 'DOCX (.docx)'   },
-                        ],
-                        s.get('docDownloadFormat'),
-                        'Markdown does not preserve HTML-exclusive formatting such as text alignment and custom styles.'
-                    ),
-                    _buildToggleRow(
-                        'ao3HtmlCompatibility',
-                        'AO3 HTML Compatibility',
-                        'Converts inline style="text-align:*" to align="*" in HTML exports. AO3\'s editor only accepts the align attribute.',
-                        s.get('ao3HtmlCompatibility')
-                    ),
-                    _buildToggleRow(
-                        'normalizeHtmlParagraphs',
-                        'Normalize HTML Paragraph Lines',
-                        'Flattens multi-line paragraph text in HTML exports into single lines and inserts a blank line between adjacent paragraphs.',
-                        s.get('normalizeHtmlParagraphs')
-                    ),
-                    _buildToggleRow(
-                        'appendSeparator',
-                        'Append End Separator',
-                        'Adds a separator at end of each exported document (`---` for Markdown, `hr` for HTML/DOCX).',
-                        s.get('appendSeparator')
-                    ),
-                ])}
-
-                ${_buildSection('Convert Pasted Text', [
-                    _buildToggleRow(
-                        'pasteConvertMarkdown',
-                        'Convert Markdown',
-                        'Automatically renders Markdown syntax as formatted text when pasted into the Doc Editor.',
-                        s.get('pasteConvertMarkdown')
-                    ),
-                    _buildToggleRow(
-                        'pasteConvertHtml',
-                        'Convert HTML',
-                        'Automatically renders HTML source code as formatted text when pasted into the Doc Editor.',
-                        s.get('pasteConvertHtml')
-                    ),
-                    _buildToggleRow(
-                        'pasteForceIntercept',
-                        'Always Convert Pasted Text',
-                        'By default, pastes from rich-text sources (Word, Google Docs, browser selections) are skipped so the editor can handle them natively. Enable this to force Markdown and HTML detection for all pastes regardless of source.',
-                        s.get('pasteForceIntercept')
-                    ),
-                ], 'Paste Markdown or HTML source into the Doc Editor and have it automatically rendered as formatted rich text.')}
-
-                ${_buildSection('Reader', [
-                    _buildNumberRow(
-                        'scrollStep',
-                        'Keyboard Scroll Distance',
-                        'Pixels scrolled per keypress when using W / S / ↑ / ↓ on story pages.',
-                        s.get('scrollStep'),
-                        { min: 50, max: 1000, step: 50, unit: 'px' }
-                    ),
-                ])}
-
-                ${_buildSection('Author Tools', [
-                    _buildToggleRow(
-                        'bulkReplaceAutofill',
-                        'Autofill in Bulk Replace',
-                        'When selecting one numbered source document in Bulk Replace, automatically maps matching numbered docs to nearby chapters.',
-                        s.get('bulkReplaceAutofill')
-                    ),
-                ])}
-
-                ${_buildAdvancedSection([
-                    _buildNumberRow(
-                        'fetchMaxRetries',
-                        'Fetch Retry Limit',
-                        'Maximum retry attempts when a document fetch fails (e.g. network error or HTTP 429).',
-                        s.get('fetchMaxRetries'),
-                        { min: 1, max: 10, step: 1 }
-                    ),
-                    _buildNumberRow(
-                        'fetchRetryBaseMs',
-                        'Fetch Retry Backoff Base',
-                        'Base delay between retries. Actual delay = attempt × this value (e.g. 2 s, 4 s, 6 s at 2000 ms).',
-                        s.get('fetchRetryBaseMs'),
-                        { min: 500, max: 10000, step: 500, unit: 'ms' }
-                    ),
-                    _buildNumberRow(
-                        'iframeLoadTimeoutMs',
-                        'Iframe Load Timeout',
-                        'How long to wait for iframe-backed page loads before giving up.',
-                        s.get('iframeLoadTimeoutMs'),
-                        { min: 5000, max: 120000, step: 5000, unit: 'ms' }
-                    ),
-                    _buildNumberRow(
-                        'iframeSaveTimeoutMs',
-                        'Save Confirmation Timeout',
-                        'How long to wait for FFN to return a hidden native-form save response.',
-                        s.get('iframeSaveTimeoutMs'),
-                        { min: 1000, max: 60000, step: 1000, unit: 'ms' }
-                    ),
-                    _buildNumberRow(
-                        'bulkExportDelayMs',
-                        'Bulk Export Delay (Pass 1)',
-                        'Pause between each document request in the first pass of a bulk export or refresh. Increase if FFN rate-limits you.',
-                        s.get('bulkExportDelayMs'),
-                        { min: 200, max: 15000, step: 200, unit: 'ms' }
-                    ),
-                    _buildNumberRow(
-                        'bulkCooldownMs',
-                        'Bulk Export Cool-Down',
-                        'Waiting period between Pass 1 and the Pass 2 retry loop during bulk operations.',
-                        s.get('bulkCooldownMs'),
-                        { min: 1000, max: 30000, step: 1000, unit: 'ms' }
-                    ),
-                    _buildNumberRow(
-                        'bulkRetryDelayMs',
-                        'Bulk Export Delay (Pass 2)',
-                        'Pause between each document request in the retry pass of a bulk export or refresh.',
-                        s.get('bulkRetryDelayMs'),
-                        { min: 200, max: 15000, step: 200, unit: 'ms' }
-                    ),
-                    '<div class="ffne-settings-section-header">Native Downloader</div>',
-                    _buildNumberRow(
-                        'chapterFetchMaxRetries',
-                        'Native Chapter Retry Limit',
-                        'Maximum retry attempts inside a single native chapter fetch before the chapter is deferred to Pass 2.',
-                        s.get('chapterFetchMaxRetries'),
-                        { min: 1, max: 10, step: 1 }
-                    ),
-                    _buildNumberRow(
-                        'chapterRetryBaseMs',
-                        'Native Chapter Backoff Base',
-                        'Base delay between native chapter retries. Actual delay doubles each attempt.',
-                        s.get('chapterRetryBaseMs'),
-                        { min: 500, max: 30000, step: 500, unit: 'ms' }
-                    ),
-                    _buildNumberRow(
-                        'chapterFetchTimeoutMs',
-                        'Native Chapter Timeout',
-                        'How long to wait for each native chapter request before treating it as failed.',
-                        s.get('chapterFetchTimeoutMs'),
-                        { min: 5000, max: 120000, step: 5000, unit: 'ms' }
-                    ),
-                    _buildNumberRow(
-                        'chapterPass1DelayMs',
-                        'Native Delay (Pass 1)',
-                        'Pause between chapters during the first native scraping pass.',
-                        s.get('chapterPass1DelayMs'),
-                        { min: 200, max: 30000, step: 200, unit: 'ms' }
-                    ),
-                    _buildNumberRow(
-                        'chapterCooldownMs',
-                        'Native Cool-Down',
-                        'Waiting period between Pass 1 and Pass 2 when native chapter scraping hits failures.',
-                        s.get('chapterCooldownMs'),
-                        { min: 1000, max: 60000, step: 1000, unit: 'ms' }
-                    ),
-                    _buildNumberRow(
-                        'chapterPass2DelayMs',
-                        'Native Delay (Pass 2)',
-                        'Pause between chapters during each retry pass of the native downloader.',
-                        s.get('chapterPass2DelayMs'),
-                        { min: 200, max: 30000, step: 200, unit: 'ms' }
-                    ),
-                ])}
-            </div>
-        </div>
-    `;
+    return h('div', { class: 'ffne-modal-panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ffne-modal-title' },
+        h('div', { class: 'ffne-modal-header' },
+            h('h2', { id: 'ffne-modal-title' }, 'FFN Enhancements'),
+            h('button', { id: 'ffne-modal-close', class: 'ffne-modal-close-btn', 'aria-label': 'Close settings' }, '\u00d7'),
+        ),
+        h('div', { class: 'ffne-modal-body' },
+            h('p', { class: 'ffne-modal-subtitle' }, 'Changes saved automatically. Syncs to all open FanFiction.net tabs.'),
+            _buildSection('Appearance', [
+                _buildSelectRow(
+                    'theme',
+                    'Theme',
+                    'Changes the visual treatment for FFN Enhancements and supported FanFiction.net page chrome.',
+                    [
+                        { value: Theme.SYSTEM, label: 'System (Auto)' },
+                        { value: Theme.LIGHT, label: 'Light' },
+                        { value: Theme.DARK, label: 'Dark' },
+                        { value: Theme.SEPIA, label: 'Sepia' },
+                        { value: Theme.HIGH_CONTRAST, label: 'High Contrast' },
+                    ],
+                    s.get('theme'),
+                ),
+                _buildToggleRow(
+                    'fluidMode',
+                    'Fluid Layout',
+                    'Removes FFN\'s fixed-width content column for a full-width reading experience, similar to AO3.',
+                    s.get('fluidMode'),
+                ),
+            ]),
+            _buildSection('Document Export', [
+                _buildSelectRow(
+                    'docDownloadFormat',
+                    'Download Format',
+                    'File format for exports from Doc Manager and Doc Editor. Does not affect story-page downloads (those always use FicHub).',
+                    [
+                        { value: DocDownloadFormat.MARKDOWN, label: 'Markdown (.md)' },
+                        { value: DocDownloadFormat.HTML, label: 'HTML (.html)' },
+                        { value: DocDownloadFormat.DOCX, label: 'DOCX (.docx)' },
+                    ],
+                    s.get('docDownloadFormat'),
+                    'Markdown does not preserve HTML-exclusive formatting such as text alignment and custom styles.',
+                ),
+                _buildToggleRow(
+                    'ao3HtmlCompatibility',
+                    'AO3 HTML Compatibility',
+                    'Converts inline style="text-align:*" to align="*" in HTML exports. AO3\'s editor only accepts the align attribute.',
+                    s.get('ao3HtmlCompatibility'),
+                ),
+                _buildToggleRow(
+                    'normalizeHtmlParagraphs',
+                    'Normalize HTML Paragraph Lines',
+                    'Flattens multi-line paragraph text in HTML exports into single lines and inserts a blank line between adjacent paragraphs.',
+                    s.get('normalizeHtmlParagraphs'),
+                ),
+                _buildToggleRow(
+                    'appendSeparator',
+                    'Append End Separator',
+                    'Adds a separator at end of each exported document (`---` for Markdown, `hr` for HTML/DOCX).',
+                    s.get('appendSeparator'),
+                ),
+            ]),
+            _buildSection('Convert Pasted Text', [
+                _buildToggleRow(
+                    'pasteConvertMarkdown',
+                    'Convert Markdown',
+                    'Automatically renders Markdown syntax as formatted text when pasted into the Doc Editor.',
+                    s.get('pasteConvertMarkdown'),
+                ),
+                _buildToggleRow(
+                    'pasteConvertHtml',
+                    'Convert HTML',
+                    'Automatically renders HTML source code as formatted text when pasted into the Doc Editor.',
+                    s.get('pasteConvertHtml'),
+                ),
+                _buildToggleRow(
+                    'pasteForceIntercept',
+                    'Always Convert Pasted Text',
+                    'By default, pastes from rich-text sources (Word, Google Docs, browser selections) are skipped so the editor can handle them natively. Enable this to force Markdown and HTML detection for all pastes regardless of source.',
+                    s.get('pasteForceIntercept'),
+                ),
+            ], 'Paste Markdown or HTML source into the Doc Editor and have it automatically rendered as formatted rich text.'),
+            _buildSection('Reader', [
+                _buildNumberRow(
+                    'scrollStep',
+                    'Keyboard Scroll Distance',
+                    'Pixels scrolled per keypress when using W / S / ↑ / ↓ on story pages.',
+                    s.get('scrollStep'),
+                    { min: 50, max: 1000, step: 50, unit: 'px' },
+                ),
+            ]),
+            _buildSection('Author Tools', [
+                _buildToggleRow(
+                    'bulkReplaceAutofill',
+                    'Autofill in Bulk Replace',
+                    'When selecting one numbered source document in Bulk Replace, automatically maps matching numbered docs to nearby chapters.',
+                    s.get('bulkReplaceAutofill'),
+                ),
+            ]),
+            _buildAdvancedSection([
+                _buildNumberRow(
+                    'fetchMaxRetries',
+                    'Fetch Retry Limit',
+                    'Maximum retry attempts when a document fetch fails (e.g. network error or HTTP 429).',
+                    s.get('fetchMaxRetries'),
+                    { min: 1, max: 10, step: 1 },
+                ),
+                _buildNumberRow(
+                    'fetchRetryBaseMs',
+                    'Fetch Retry Backoff Base',
+                    'Base delay between retries. Actual delay = attempt × this value (e.g. 2 s, 4 s, 6 s at 2000 ms).',
+                    s.get('fetchRetryBaseMs'),
+                    { min: 500, max: 10000, step: 500, unit: 'ms' },
+                ),
+                _buildNumberRow(
+                    'iframeLoadTimeoutMs',
+                    'Iframe Load Timeout',
+                    'How long to wait for iframe-backed page loads before giving up.',
+                    s.get('iframeLoadTimeoutMs'),
+                    { min: 5000, max: 120000, step: 5000, unit: 'ms' },
+                ),
+                _buildNumberRow(
+                    'iframeSaveTimeoutMs',
+                    'Save Confirmation Timeout',
+                    'How long to wait for FFN to return a hidden native-form save response.',
+                    s.get('iframeSaveTimeoutMs'),
+                    { min: 1000, max: 60000, step: 1000, unit: 'ms' },
+                ),
+                _buildNumberRow(
+                    'bulkExportDelayMs',
+                    'Bulk Export Delay (Pass 1)',
+                    'Pause between each document request in the first pass of a bulk export or refresh. Increase if FFN rate-limits you.',
+                    s.get('bulkExportDelayMs'),
+                    { min: 200, max: 15000, step: 200, unit: 'ms' },
+                ),
+                _buildNumberRow(
+                    'bulkCooldownMs',
+                    'Bulk Export Cool-Down',
+                    'Waiting period between Pass 1 and the Pass 2 retry loop during bulk operations.',
+                    s.get('bulkCooldownMs'),
+                    { min: 1000, max: 30000, step: 1000, unit: 'ms' },
+                ),
+                _buildNumberRow(
+                    'bulkRetryDelayMs',
+                    'Bulk Export Delay (Pass 2)',
+                    'Pause between each document request in the retry pass of a bulk export or refresh.',
+                    s.get('bulkRetryDelayMs'),
+                    { min: 200, max: 15000, step: 200, unit: 'ms' },
+                ),
+                h('div', { class: 'ffne-settings-section-header' }, 'Native Downloader'),
+                _buildNumberRow(
+                    'chapterFetchMaxRetries',
+                    'Native Chapter Retry Limit',
+                    'Maximum retry attempts inside a single native chapter fetch before the chapter is deferred to Pass 2.',
+                    s.get('chapterFetchMaxRetries'),
+                    { min: 1, max: 10, step: 1 },
+                ),
+                _buildNumberRow(
+                    'chapterRetryBaseMs',
+                    'Native Chapter Backoff Base',
+                    'Base delay between native chapter retries. Actual delay doubles each attempt.',
+                    s.get('chapterRetryBaseMs'),
+                    { min: 500, max: 30000, step: 500, unit: 'ms' },
+                ),
+                _buildNumberRow(
+                    'chapterFetchTimeoutMs',
+                    'Native Chapter Timeout',
+                    'How long to wait for each native chapter request before treating it as failed.',
+                    s.get('chapterFetchTimeoutMs'),
+                    { min: 5000, max: 120000, step: 5000, unit: 'ms' },
+                ),
+                _buildNumberRow(
+                    'chapterPass1DelayMs',
+                    'Native Delay (Pass 1)',
+                    'Pause between chapters during the first native scraping pass.',
+                    s.get('chapterPass1DelayMs'),
+                    { min: 200, max: 30000, step: 200, unit: 'ms' },
+                ),
+                _buildNumberRow(
+                    'chapterCooldownMs',
+                    'Native Cool-Down',
+                    'Waiting period between Pass 1 and Pass 2 when native chapter scraping hits failures.',
+                    s.get('chapterCooldownMs'),
+                    { min: 1000, max: 60000, step: 1000, unit: 'ms' },
+                ),
+                _buildNumberRow(
+                    'chapterPass2DelayMs',
+                    'Native Delay (Pass 2)',
+                    'Pause between chapters during each retry pass of the native downloader.',
+                    s.get('chapterPass2DelayMs'),
+                    { min: 200, max: 30000, step: 200, unit: 'ms' },
+                ),
+            ]),
+        ),
+    );
 }
 
 // ─── Row Builders ─────────────────────────────────────────────────────────────
 
-function _buildSection(title: string, rows: string[], subtitle?: string): string {
-    return `
-        <div class="ffne-settings-section">
-            <div class="ffne-settings-section-header">${title}</div>
-            ${subtitle ? `<p class="ffne-section-subtitle">${subtitle}</p>` : ''}
-            ${rows.join('')}
-        </div>
-    `;
+function _buildSection(title: string, rows: HTMLElement[], subtitle?: string): HTMLElement {
+    return h('div', { class: 'ffne-settings-section' },
+        h('div', { class: 'ffne-settings-section-header' }, title),
+        subtitle ? h('p', { class: 'ffne-section-subtitle' }, subtitle) : null,
+        ...rows,
+    );
 }
 
-function _buildAdvancedSection(rows: string[]): string {
-    return `
-        <details class="ffne-settings-section">
-            <summary class="ffne-settings-section-header">
-                <span class="ffne-adv-arrow">▶</span>
-                <span class="ffne-adv-arrow-open">▼</span>
-                Advanced Settings
-                <span class="ffne-advanced-hint">
-                    Only adjust these if you know what you are doing.
-                </span>
-            </summary>
-            ${rows.join('')}
-        </details>
-    `;
+function _buildAdvancedSection(rows: HTMLElement[]): HTMLElement {
+    return h('details', { class: 'ffne-settings-section' },
+        h('summary', { class: 'ffne-settings-section-header' },
+            h('span', { class: 'ffne-adv-arrow' }, '\u25b6'),
+            h('span', { class: 'ffne-adv-arrow-open' }, '\u25bc'),
+            ' Advanced Settings ',
+            h('span', { class: 'ffne-advanced-hint' }, 'Only adjust these if you know what you are doing.'),
+        ),
+        ...rows,
+    );
 }
 
-function _buildToggleRow(key: string, label: string, description: string, value: boolean): string {
-    return `
-        <div class="ffne-settings-row">
-            <div class="ffne-settings-row-label">
-                <strong>${label}</strong>
-                <small>${description}</small>
-            </div>
-            <div class="ffne-settings-row-control">
-                <label class="ffne-toggle" title="${label}">
-                    <input type="checkbox" data-setting="${key}" ${value ? 'checked' : ''}>
-                    <span class="ffne-toggle-slider"></span>
-                </label>
-                <span class="ffne-saved" data-saved-for="${key}">✓</span>
-            </div>
-        </div>
-    `;
+function _buildToggleRow(key: string, label: string, description: string, value: boolean): HTMLElement {
+    const input = h('input', { type: 'checkbox', 'data-setting': key }) as HTMLInputElement;
+    input.checked = value;
+    return h('div', { class: 'ffne-settings-row' },
+        h('div', { class: 'ffne-settings-row-label' },
+            h('strong', null, label),
+            h('small', null, description),
+        ),
+        h('div', { class: 'ffne-settings-row-control' },
+            h('label', { class: 'ffne-toggle', title: label },
+                input,
+                h('span', { class: 'ffne-toggle-slider' }),
+            ),
+            h('span', { class: 'ffne-saved', 'data-saved-for': key }, '\u2713'),
+        ),
+    );
 }
 
 interface SelectOption { value: string; label: string; }
@@ -408,23 +395,22 @@ function _buildSelectRow(
     options: SelectOption[],
     current: string,
     warning?: string
-): string {
-    const optHTML = options.map(o =>
-        `<option value="${o.value}"${o.value === current ? ' selected' : ''}>${o.label}</option>`
-    ).join('');
-    return `
-        <div class="ffne-settings-row">
-            <div class="ffne-settings-row-label">
-                <strong>${label}</strong>
-                <small>${description}</small>
-                ${warning ? `<small class="ffne-warning">${warning}</small>` : ''}
-            </div>
-            <div class="ffne-settings-row-control">
-                <select class="ffne-select" data-setting="${key}">${optHTML}</select>
-                <span class="ffne-saved" data-saved-for="${key}">✓</span>
-            </div>
-        </div>
-    `;
+): HTMLElement {
+    const select = h('select', { class: 'ffne-select', 'data-setting': key },
+        options.map(option => h('option', { value: option.value }, option.label)),
+    ) as HTMLSelectElement;
+    select.value = current;
+    return h('div', { class: 'ffne-settings-row' },
+        h('div', { class: 'ffne-settings-row-label' },
+            h('strong', null, label),
+            h('small', null, description),
+            warning ? h('small', { class: 'ffne-warning' }, warning) : null,
+        ),
+        h('div', { class: 'ffne-settings-row-control' },
+            select,
+            h('span', { class: 'ffne-saved', 'data-saved-for': key }, '\u2713'),
+        ),
+    );
 }
 
 interface NumberRowOptions { min: number; max: number; step: number; unit?: string; }
@@ -435,28 +421,27 @@ function _buildNumberRow(
     description: string,
     value: number,
     opts: NumberRowOptions
-): string {
-    return `
-        <div class="ffne-settings-row">
-            <div class="ffne-settings-row-label">
-                <strong>${label}</strong>
-                <small>${description}</small>
-            </div>
-            <div class="ffne-settings-row-control">
-                <input
-                    type="number"
-                    class="ffne-number-input"
-                    data-setting="${key}"
-                    value="${value}"
-                    min="${opts.min}"
-                    max="${opts.max}"
-                    step="${opts.step}"
-                >
-                ${opts.unit ? `<span class="ffne-unit">${opts.unit}</span>` : ''}
-                <span class="ffne-saved" data-saved-for="${key}">✓</span>
-            </div>
-        </div>
-    `;
+): HTMLElement {
+    const input = h('input', {
+        type: 'number',
+        class: 'ffne-number-input',
+        'data-setting': key,
+        min: String(opts.min),
+        max: String(opts.max),
+        step: String(opts.step),
+    }) as HTMLInputElement;
+    input.value = String(value);
+    return h('div', { class: 'ffne-settings-row' },
+        h('div', { class: 'ffne-settings-row-label' },
+            h('strong', null, label),
+            h('small', null, description),
+        ),
+        h('div', { class: 'ffne-settings-row-control' },
+            input,
+            opts.unit ? h('span', { class: 'ffne-unit' }, opts.unit) : null,
+            h('span', { class: 'ffne-saved', 'data-saved-for': key }, '\u2713'),
+        ),
+    );
 }
 
 // ─── Event Handlers ───────────────────────────────────────────────────────────
