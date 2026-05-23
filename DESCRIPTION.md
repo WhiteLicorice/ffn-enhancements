@@ -2,7 +2,7 @@ FFN Enhancements fills in what FanFiction.net is missing for readers and writers
 
 ---
 
-# For readers
+**For readers**
 
 A Download button appears next to Follow/Favourite on every story page. Pick EPUB, MOBI, PDF, or HTML. Native mode scrapes directly from FFN and is always current. FicHub pulls from their archive and is near-instant. If FicHub is down, Native takes over automatically. EPUB files from both sources include the story's cover art as the thumbnail.
 
@@ -12,7 +12,7 @@ Five themes: System (follows OS preference), Light, Dark, Sepia, High Contrast. 
 
 ---
 
-# For writers
+**For writers**
 
 The Doc Manager and Doc Editor both get an Export button. Set the format to Markdown, HTML, or DOCX in Settings. That choice applies everywhere: single exports, bulk export, clipboard copy, and AO3 migration.
 
@@ -34,7 +34,7 @@ Export transforms apply to all export paths: AO3 HTML compatibility (converts in
 
 ---
 
-# Settings
+**Settings**
 
 Open via the phone icon in the FFN site header on any FFN page at the top-left. Changes save immediately and sync across all open FanFiction.net tabs.
 
@@ -53,6 +53,6 @@ Fluid Layout: Full-width reading layout
 
 ---
 
-# Compatibility
+**Compatibility**
 
 Tested on Chrome, Edge, and Firefox. Also runs on archiveofourown.org for the AO3 migration bridge, and nothing else.
