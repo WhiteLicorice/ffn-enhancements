@@ -21,9 +21,26 @@ The extension makes network requests only when you trigger an action that requir
 | Download via FicHub | `fichub.net` — the story identifier is sent to retrieve the file |
 | Download via Native | `fanfiction.net` — the extension scrapes chapter content directly |
 | Doc export (fetch path) | `fanfiction.net` — the extension fetches your own document pages |
+| Bulk Import (upload path) | `fanfiction.net` — document content is sent to your own FFN account |
 | AO3 migration | `archiveofourown.org` — content is pushed to the AO3 tab you opened |
 
 No requests are made to any server run by this extension or its developer. There is no backend.
+
+---
+
+## File and folder access
+
+Bulk Import reads files from a folder you select. The extension reads those files locally in the browser, maps them to your existing FFN documents by name, shows you a preview, and, after you confirm, sends the content to FFN on your behalf. The files are not uploaded to any other destination and are not retained by the extension after the import session ends.
+
+No file content is sent anywhere except to `fanfiction.net` during the import you initiate.
+
+---
+
+## Clipboard access
+
+The Doc Editor toolbar includes a Copy button that writes the current document's content to your clipboard. The extension does not read your clipboard except during a paste event you initiate inside the TinyMCE editor.
+
+When you paste into the editor, the extension reads the clipboard data from that paste event to detect whether it contains Markdown or HTML source, and converts it to rich text if so. This only runs inside the FFN doc editor. The clipboard content is processed locally and is not sent anywhere.
 
 ---
 
