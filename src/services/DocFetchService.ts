@@ -19,6 +19,10 @@ interface PrivateDocSaveAttemptResult extends PrivateDocSaveResult {
     retryable: boolean;
 }
 
+interface PrivateDocDeleteAttemptResult extends PrivateDocSaveResult {
+    retryable: boolean;
+}
+
 interface PrivateDocSavePreparationResult {
     ok: boolean;
     reason?: string;
@@ -236,6 +240,79 @@ export const DocFetchService = {
         }
 
         return null;
+    },
+
+    _getPrivateDocDeleteFailureReason: function (
+        doc: Document,
+        response?: {
+            status?: number;
+            isCfChallenge?: boolean;
+            finalUrl?: string;
+        }
+    ): string | null {
+        const reason = this._getPrivateDocExplicitFailureReason(doc, response);
+        if (reason === 'FFN save request was blocked by a Cloudflare challenge. Open fanfiction.net in this browser, clear the challenge, then retry.') {
+            return 'FFN delete request was blocked by a Cloudflare challenge. Open fanfiction.net in this browser, clear the challenge, then retry.';
+        }
+        return reason;
+    },
+
+    _docManagerPageContainsDocId: function (doc: Document, docId: string): boolean {
+        const links = Array.from(doc.querySelectorAll<HTMLAnchorElement>('a[href*="docid="]'));
+        for (const link of links) {
+            try {
+                const parsed = new URL(link.href, 'https://www.fanfiction.net');
+                if (parsed.searchParams.get('docid') === docId) return true;
+            } catch {
+                if (link.getAttribute('href')?.includes(`docid=${docId}`)) return true;
+            }
+        }
+
+        const controls = Array.from(doc.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLOptionElement>(
+            'input[name="docid"], select[name="docid"], option[value]'
+        ));
+        return controls.some(control => control.value === docId);
+    },
+
+    _verifyPrivateDocDeleteResponse: function (
+        response: {
+            ok: boolean;
+            status: number;
+            responseText: string;
+            finalUrl?: string;
+            isCfChallenge?: boolean;
+        },
+        docId: string,
+    ): PrivateDocDeleteAttemptResult {
+        const responseDoc = new DOMParser().parseFromString(response.responseText, 'text/html');
+
+        const explicitFailure = this._getPrivateDocDeleteFailureReason(responseDoc, response);
+        if (explicitFailure) {
+            return { ok: false, reason: explicitFailure, retryable: false };
+        }
+
+        const bodyText = normalizeText(responseDoc.body?.textContent || '');
+        if (!bodyText && !response.responseText.trim()) {
+            return { ok: false, reason: 'FFN returned an empty delete response.', retryable: true };
+        }
+
+        if (!response.ok && response.status > 0) {
+            return {
+                ok: false,
+                reason: `FFN delete request failed with HTTP ${response.status}.`,
+                retryable: response.status === 429 || response.status >= 500,
+            };
+        }
+
+        if (this._docManagerPageContainsDocId(responseDoc, docId)) {
+            return {
+                ok: false,
+                reason: `FFN returned a DocManager page that still contains document ${docId}.`,
+                retryable: true,
+            };
+        }
+
+        return { ok: true, retryable: false };
     },
 
     _preparePrivateDocSaveForm: function (
@@ -528,6 +605,112 @@ export const DocFetchService = {
         });
     },
 
+    _submitPrivateDocDeleteFrame: function (
+        removeUrl: string,
+        docId: string,
+        title: string,
+    ): Promise<PrivateDocDeleteAttemptResult> {
+        const log = Core.getLogger(this.MODULE_NAME, '_submitPrivateDocDeleteFrame');
+
+        return new Promise<PrivateDocDeleteAttemptResult>((resolve) => {
+            let settled = false;
+            let timeoutId: number | null = null;
+            const iframe = document.createElement('iframe');
+            iframe.name = createFrameName('ffne_doc_delete_');
+            iframe.setAttribute('sandbox', 'allow-same-origin');
+            hideFrame(iframe);
+            iframe.src = removeUrl;
+
+            const cleanup = () => {
+                if (timeoutId !== null) window.clearTimeout(timeoutId);
+                iframe.removeEventListener('load', onLoad);
+                iframe.remove();
+            };
+
+            const resolveOnce = (result: PrivateDocDeleteAttemptResult) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(result);
+            };
+
+            const armTimeout = (ms: number, reason: string) => {
+                if (timeoutId !== null) window.clearTimeout(timeoutId);
+                timeoutId = window.setTimeout(() => {
+                    resolveOnce({
+                        ok: false,
+                        reason,
+                        retryable: true,
+                    });
+                }, ms);
+            };
+
+            const onLoad = () => {
+                try {
+                    const frameWindow = iframe.contentWindow;
+                    const responseDoc = iframe.contentDocument;
+                    if (!frameWindow || !responseDoc) {
+                        resolveOnce({
+                            ok: false,
+                            reason: 'Hidden delete iframe was not readable.',
+                            retryable: true,
+                        });
+                        return;
+                    }
+
+                    const currentHref = frameWindow.location.href || responseDoc.URL || '';
+                    const frameHref = currentHref && currentHref !== 'about:blank' ? currentHref : iframe.src || '';
+                    const bodyText = normalizeText(responseDoc.body?.textContent || '');
+                    if ((!frameHref || frameHref === 'about:blank') && !bodyText) return;
+
+                    log(`[DELETE] Loaded remove response for "${title}".`);
+                    resolveOnce(this._verifyPrivateDocDeleteResponse(
+                        {
+                            ok: true,
+                            status: 200,
+                            responseText: responseDoc.documentElement?.outerHTML || responseDoc.body?.outerHTML || '',
+                            finalUrl: frameHref,
+                            isCfChallenge: false,
+                        },
+                        docId,
+                    ));
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : String(err);
+                    log('Could not inspect hidden private document delete frame.', message);
+                    resolveOnce({
+                        ok: false,
+                        reason: `Could not inspect hidden private document delete frame: ${message}`,
+                        retryable: true,
+                    });
+                }
+            };
+
+            try {
+                const mountPoint = document.body || document.documentElement;
+                if (!mountPoint) {
+                    resolveOnce({
+                        ok: false,
+                        reason: 'Could not mount the hidden delete iframe.',
+                        retryable: false,
+                    });
+                    return;
+                }
+
+                iframe.addEventListener('load', onLoad);
+                mountPoint.append(iframe);
+                armTimeout(SettingsManager.get('iframeLoadTimeoutMs'), 'Delete request timed out.');
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                log('Could not create hidden private document delete iframe.', message);
+                resolveOnce({
+                    ok: false,
+                    reason: `Could not create hidden private document delete iframe: ${message}`,
+                    retryable: true,
+                });
+            }
+        });
+    },
+
     /**
      * Refreshes a document by loading the edit page in a hidden no-script iframe,
      * preserving the existing HTML, and submitting FFN's real save form.
@@ -565,6 +748,50 @@ export const DocFetchService = {
             }
 
             return false;
+        }
+    },
+
+    /**
+     * Deletes a private document through FFN's existing remove endpoint and
+     * verifies the returned DocManager page no longer exposes the deleted docid.
+     */
+    deletePrivateDocWithResult: async function (
+        docId: string,
+        title: string,
+        attempt: number = 1,
+    ): Promise<PrivateDocSaveResult> {
+        const log = Core.getLogger(this.MODULE_NAME, 'deletePrivateDocWithResult');
+        const maxRetries = SettingsManager.get('fetchMaxRetries');
+        const removeUrl = `https://www.fanfiction.net/docs/docs.php?action=remove&docid=${encodeURIComponent(docId)}`;
+
+        try {
+            log(`[DELETE START] Deleting "${title}" (DocID: ${docId}, Attempt: ${attempt}/${maxRetries})`);
+            const deleteResult = await this._submitPrivateDocDeleteFrame(removeUrl, docId, title);
+
+            if (!deleteResult.ok && deleteResult.retryable && attempt < maxRetries) {
+                const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
+                log(`[DELETE] Delete not confirmed for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                return this.deletePrivateDocWithResult(docId, title, attempt + 1);
+            }
+
+            return {
+                ok: deleteResult.ok,
+                reason: deleteResult.reason,
+            };
+        } catch (err) {
+            log('[DELETE ERROR] Exception during delete:', err);
+            console.error(`DELETE FAILED for document ${docId}:`, err);
+
+            if (attempt < maxRetries) {
+                const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
+                log(`[DELETE] Exception occurred. Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                return this.deletePrivateDocWithResult(docId, title, attempt + 1);
+            }
+
+            const message = err instanceof Error ? err.message : String(err);
+            return { ok: false, reason: `Unexpected error: ${message}` };
         }
     },
 

@@ -10,6 +10,7 @@ import { fetchRequestText } from '../utils/fetchRequest';
 
 const fetchRequestTextMock = vi.mocked(fetchRequestText);
 const EDIT_URL = 'https://www.fanfiction.net/docs/edit.php?docid=123';
+const DELETE_URL = 'https://www.fanfiction.net/docs/docs.php?action=remove&docid=123';
 
 function makeEditPage(options: {
     docId?: string;
@@ -46,6 +47,22 @@ function makeEditPage(options: {
     `;
 }
 
+function makeDocManagerPage(docIds: string[]): string {
+    return `
+        <table id="gui_table1">
+            <tbody>
+                ${docIds.map(docId => `
+                    <tr>
+                        <td><a href="https://www.fanfiction.net/docs/edit.php?docid=${docId}">Edit</a></td>
+                        <td>Doc ${docId}</td>
+                        <td><a href="https://www.fanfiction.net/docs/docs.php?action=remove&docid=${docId}">Remove</a></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
 function writeFrameHtml(
     iframe: HTMLIFrameElement,
     html: string,
@@ -62,6 +79,12 @@ function writeFrameHtml(
 function getSaveFrame(): HTMLIFrameElement {
     const iframe = document.querySelector<HTMLIFrameElement>('iframe[name^="ffne_doc_save_"]');
     if (!iframe) throw new Error('Expected hidden save iframe to exist.');
+    return iframe;
+}
+
+function getDeleteFrame(): HTMLIFrameElement {
+    const iframe = document.querySelector<HTMLIFrameElement>('iframe[name^="ffne_doc_delete_"]');
+    if (!iframe) throw new Error('Expected hidden delete iframe to exist.');
     return iframe;
 }
 
@@ -571,5 +594,108 @@ describe('DocFetchService direct save helpers', () => {
         expect(fetchRequestTextMock).not.toHaveBeenCalled();
         expect(submitSpy).toHaveBeenCalledTimes(1);
         expect(document.querySelector('iframe[name^="ffne_doc_save_"]')).toBeNull();
+    });
+
+    it('loads the remove URL in a hidden iframe and succeeds when the docid disappears', async () => {
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        const iframe = getDeleteFrame();
+
+        expect(iframe.src).toBe(DELETE_URL);
+        expect(iframe.getAttribute('sandbox')).toBe('allow-same-origin');
+        expect(iframe.getAttribute('sandbox')).not.toContain('allow-scripts');
+
+        writeFrameHtml(iframe, makeDocManagerPage(['456']), 'https://www.fanfiction.net/docs/docs.php');
+        iframe.dispatchEvent(new Event('load'));
+
+        await expect(promise).resolves.toEqual({ ok: true, reason: undefined });
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+        expect(document.querySelector('iframe[name^="ffne_doc_delete_"]')).toBeNull();
+    });
+
+    it('fails delete verification when the returned DocManager page still contains the docid', async () => {
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        const iframe = getDeleteFrame();
+        writeFrameHtml(iframe, makeDocManagerPage(['123', '456']), 'https://www.fanfiction.net/docs/docs.php');
+
+        iframe.dispatchEvent(new Event('load'));
+
+        await expect(promise).resolves.toEqual({
+            ok: false,
+            reason: 'FFN returned a DocManager page that still contains document 123.',
+        });
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+    });
+
+    it('fails delete safely on login responses', async () => {
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        const iframe = getDeleteFrame();
+        writeFrameHtml(iframe, '<body>Please log in to continue.</body>', 'https://www.fanfiction.net/login.php');
+
+        iframe.dispatchEvent(new Event('load'));
+
+        await expect(promise).resolves.toEqual({
+            ok: false,
+            reason: 'FFN returned a login or authorization page.',
+        });
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+    });
+
+    it('fails delete safely on Cloudflare-like responses', async () => {
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        const iframe = getDeleteFrame();
+        writeFrameHtml(iframe, '<title>Just a moment...</title><body>Checking your browser before accessing fanfiction.net. Cloudflare</body>');
+
+        iframe.dispatchEvent(new Event('load'));
+
+        const result = await promise;
+        expect(result.ok).toBe(false);
+        expect(result.reason).toContain('delete request was blocked by a Cloudflare challenge');
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+    });
+
+    it('fails delete safely when the response iframe is unreadable', async () => {
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        const iframe = getDeleteFrame();
+        Object.defineProperty(iframe, 'contentDocument', {
+            configurable: true,
+            get: () => null,
+        });
+
+        iframe.dispatchEvent(new Event('load'));
+
+        await expect(promise).resolves.toEqual({
+            ok: false,
+            reason: 'Hidden delete iframe was not readable.',
+        });
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+        expect(document.querySelector('iframe[name^="ffne_doc_delete_"]')).toBeNull();
+    });
+
+    it('cleans up the hidden delete iframe after request timeouts', async () => {
+        vi.useFakeTimers();
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 1 as never;
+                case 'fetchRetryBaseMs':
+                    return 0 as never;
+                case 'iframeLoadTimeoutMs':
+                    return 10 as never;
+                case 'iframeSaveTimeoutMs':
+                    return 1000 as never;
+                default:
+                    return 0 as never;
+            }
+        });
+
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        await vi.advanceTimersByTimeAsync(10);
+
+        await expect(promise).resolves.toEqual({
+            ok: false,
+            reason: 'Delete request timed out.',
+        });
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+        expect(document.querySelector('iframe[name^="ffne_doc_delete_"]')).toBeNull();
     });
 });
