@@ -1,6 +1,11 @@
 # ffn-enhancements
 
-A suite of modern enhancements to FFN's old-school interface, for readers and writers. Inspired by [ao3-enhancements](https://github.com/jsmnbom/ao3-enhancements).
+[![Firefox Add-ons](https://img.shields.io/amo/v/ffn-enhancements?style=for-the-badge&color=orange&logo=firefox-browser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/ffn-enhancements/)
+[![Stable Build](https://img.shields.io/github/v/release/WhiteLicorice/ffn-enhancements?label=Stable&style=for-the-badge&color=orange)](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest)
+[![Beta Build](https://img.shields.io/badge/Beta-Latest-orange?style=for-the-badge)](https://github.com/WhiteLicorice/ffn-enhancements/releases/tag/beta)
+[![License](https://img.shields.io/github/license/WhiteLicorice/ffn-enhancements?style=for-the-badge&color=green)](LICENSE)
+
+A suite of modern enhancements to FFN's old-school interface, for readers and writers. Inspired by [ao3-enhancements](https://github.com/jsmnbom/ao3-enhancements). Available on Firefox and Chromium.
 
 ---
 
@@ -81,15 +86,19 @@ In the Doc Editor toolbar, a **Copy** button (two overlapping pages icon) copies
 
 ### Bulk export all documents
 
-In the Doc Manager, **Download All** exports every document as a timestamped `.zip`. Two-pass system with automatic cooldown and retry for documents that fail on the first pass. Failed items get placeholder files in the ZIP so nothing disappears silently.
+In the Doc Manager, **Bulk Export** opens a selection modal. Check off the documents you want, hold Shift to select a range, then confirm. Exports everything as a timestamped `.zip`. Two-pass system with automatic cooldown and retry for documents that fail on the first pass. Failed items get placeholder files in the ZIP so nothing disappears silently.
 
 ### Bulk import documents
 
 In the Doc Manager, the **Advanced** panel has a **Bulk Import** button. Point it at a folder of Markdown, HTML, or DOCX files and it maps them to existing documents by semantic numbering (`Chapter 01.md` matches the doc named `1. Chapter 01`). A preview shows what matched, what's missing, and any duplicates before you confirm. Same two-pass retry system as bulk export.
 
+### Bulk delete documents
+
+In the Doc Manager, **Bulk Delete** opens a selection modal. Check off documents to delete and confirm. Each deletion uses an authenticated same-origin request. A second confirmation dialog lists the affected documents before anything is removed. Two-pass retry system catches transient failures.
+
 ### Refresh documents (reset the 365-day expiry)
 
-FFN documents expire after 365 days untouched. The Doc Manager has a **Refresh** button per row and a **Refresh All** button. Bulk refresh skips documents already at 365 days, highlights each row as it processes, and updates the Life column in place.
+FFN documents expire after 365 days untouched. The Doc Manager has a **Refresh** button per row and a **Refresh All** button that opens a selection modal. Check off the documents to refresh, hold Shift to select a range. Bulk refresh skips documents already at 365 days, highlights each row as it processes, and updates the Life column in place.
 
 ### Paste Markdown or HTML into the editor
 
@@ -200,6 +209,7 @@ npm run build:chrome
 npm run build:firefox
 npm run dev      # rebuild extension files in watch mode
 npm run package  # build and zip both browser targets
+npm run lint     # ESLint (eslint-plugin-no-unsanitized enforced)
 ```
 
 Chrome/Edge builds emit `dist-chrome/` with a `background.service_worker` entry. Firefox builds emit `dist-firefox/` with `background.scripts`, because Firefox MV3 does not support service-worker backgrounds. Both targets use `chrome.*` APIs directly; both browsers expose the full `chrome.*` alias with Promise support in MV3 for everything this extension needs. CI sets `FFNE_VERSION` and `FFNE_BETA` to produce release ZIPs with the right manifest version metadata.
@@ -223,7 +233,7 @@ Test files under `src/__tests__/`, matching `**/*.test.ts`:
 | `EpubBuilder.test.ts` | EPUB ZIP structure and OPF/NCX XML validity |
 | `DocxBuilder.test.ts` | DOCX ZIP structure and OOXML document content |
 | `FicHubDownloader.test.ts` | FicHub API response parsing |
-| `DocManager.test.ts` | Bulk export/refresh button reference and smoke tests |
+| `DocManager.test.ts` | Bulk export, refresh, delete button wiring and smoke tests |
 | `DocFetchService.test.ts` | Doc page fetch and content extraction |
 | `DocIframeHandler.test.ts` | Paste listener attachment and Markdown/HTML detection |
 | `StoryEditContent.test.ts` | Bulk Replace modal and mapping logic |
@@ -242,6 +252,8 @@ Test files under `src/__tests__/`, matching `**/*.test.ts`:
 | `service-worker.test.ts` | Service worker message routing (OPEN_TAB, CROSS_ORIGIN_FETCH) |
 | `zipAdapter.test.ts` | ZIP utility round-trip, deflate, and blob conversion |
 | `nativeDownloader.test.ts` | NativeDownloader retry flow, pass-2 fallback, and chapter order |
+| `platform/extensionApi.test.ts` | Browser API normalization wrapper |
+| `platform/storage.test.ts` | Storage layer: localStorage mirror, remote change dedup |
 
 ### CI / CD
 
@@ -307,4 +319,7 @@ Example: `feat: add markdown export to doc manager`
 - [x] Critical theme prelude for FOUC prevention
 - [x] Automated beta extension ZIP releases on push to main
 - [x] Manual stable extension ZIP release pipeline with auto-generated patch notes
+- [x] Bulk delete documents from Doc Manager
+- [x] Selection modals with Shift-click range select for bulk operations
+- [x] ESLint with `eslint-plugin-no-unsanitized` for DOM safety
 - [ ] Custom font settings sitewide (needs a `FontManager` module hooked into the `EarlyBoot` system)
