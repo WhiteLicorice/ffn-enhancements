@@ -7,6 +7,19 @@
 
 ---
 
+## Agent Instruction Entrypoints
+
+`AGENTS.md` exists at the repository root as the first-hop instruction file
+for agents that discover repo guidance through that convention. Keep it
+short and point it here.
+
+This file (`.claude/CLAUDE.md`) is the canonical, detailed guide. Update this
+file when architecture, build, browser, testing, or workflow gotchas change.
+If a tool reads only `AGENTS.md`, it should be directed here rather than
+duplicating guidance in two places.
+
+---
+
 ## Conventions
 
 Follow best software engineering + UX/UI conventions. Favor modular, scalable, maintainable, readable, correct, well-documented code. Fix bugs at root. Build features future-proof. Avoid bandaids/hacks unless env-constrained. Be liberal with GOTCHAs + TODOs for future devs. Update tests alongside code. No non-ASCII anywhere — avoid encoding errors.
@@ -735,39 +748,60 @@ tsconfig.json                    - Strict TypeScript config
    (iframe form submission) than `_fetchDocPage`. Deliberately
    not unified.
 
-6. `SupportedFormats` vs `DocDownloadFormat` — keep separate. `SupportedFormats`
+6. **GOTCHA: Bulk Delete must use same-origin fetch, not a hidden iframe.**
+   Do not model DocManager Bulk Delete after `refreshPrivateDoc` or Bulk
+   Import's hidden edit-page iframe. Firefox returned HTTP 200 responses
+   containing FFN's invalid-auth page when delete used a sandboxed iframe
+   pointed at `/docs/docs.php?action=remove&docid=...`; Chromium accepted the
+   same flow, which made this easy to miss.
+
+   Delete is a GET-only DocManager action, so follow the Bulk Export-style
+   authenticated same-origin request path in `deletePrivateDocWithResult()`:
+   `fetch(removeUrl, { credentials: 'include', redirect: 'follow' })`.
+   Parse the returned DocManager HTML and verify the target `docid` no longer
+   appears before marking the row deleted. Keep auth/login/403/429/5xx/network
+   failures retryable with `attempt * fetchRetryBaseMs`; the bulk runner still
+   provides its pass-2 retry/cooldown.
+
+   Also do not display FFN error panels via raw `textContent`. Adjacent block
+   nodes and `<br>` can collapse into strings like
+   `Invalid RequestWe are unable to authenticate your request`. Use the
+   readable FFN error extraction in `DocFetchService` so failures render as
+   `Invalid Request: We are unable to authenticate your request.`
+
+7. `SupportedFormats` vs `DocDownloadFormat` — keep separate. `SupportedFormats`
    reader-facing (EPUB/MOBI/PDF/etc.). `DocDownloadFormat` author doc export only.
    Overlap on `HTML` + `MARKDOWN` but serve different contexts.
 
-7. `GM_registerMenuCommand` return type — returns `string | number`; varies by
+8. `GM_registerMenuCommand` return type — returns `string | number`; varies by
    Tampermonkey version. Store as `string | number | null` if need to
    unregister. Current `SettingsMenu.ts` no store return value.
 
-8. `enableFluidMode()` / `disableFluidMode()` on `LayoutManager` no persist
+9. `enableFluidMode()` / `disableFluidMode()` on `LayoutManager` no persist
    preference — imperative helpers for internal use. Only
    `toggleFluidMode()` persists via `SettingsManager.set()`. If add new
    explicit enable/disable public calls, persist there too.
 
-9. `GM_addValueChangeListener` fires for same-tab changes in some TM builds —
+10. `GM_addValueChangeListener` fires for same-tab changes in some TM builds —
    `!remote` guard in `SettingsManager._registerValueListeners` prevents
    double-applying changes already handled by `set()`. Always include guard
    when writing new `GM_addValueChangeListener` callbacks.
 
-10. `--ffne-ui-white` is surface color, becomes dark in dark theme. Never
+11. `--ffne-ui-white` is surface color, becomes dark in dark theme. Never
     use for text on colored backgrounds (modal headers, toasts, badges). Use
     `--ffne-ui-text-on-accent` instead — stays light across all themes.
 
-11. `CssScanner` skips `<style>` tags whose `id` starts with `ffne-`, `ffe-`, or
+12. `CssScanner` skips `<style>` tags whose `id` starts with `ffne-`, `ffe-`, or
     `ffn-enhancements`. When adding new injected style tags, use one of these
     prefixes to prevent scanner generating redundant overrides.
 
-12. FFN main CSS cross-origin (CDN-served), so `CssScanner` cannot read
+13. FFN main CSS cross-origin (CDN-served), so `CssScanner` cannot read
     `cssRules` from those sheets. `native-overrides.css` provides fallback
     element-level overrides using `var(--ffne-*)` tokens. When FFN adds new
     UI patterns not covered, add rules there rather than
     expanding scanner reach.
 
-13. **GOTCHA: Scanner vs native-overrides injection order.** `_injectFfnOverrides`
+14. **GOTCHA: Scanner vs native-overrides injection order.** `_injectFfnOverrides`
     concatenates `[scannerCss, elementCss]`. Scanner preserves `!important` from
     original rules. When scanner + native-overrides produce identical selectors
     with `!important` (e.g., `#gui_table1 tbody tr:hover td`), native-overrides
@@ -775,11 +809,11 @@ tsconfig.json                    - Strict TypeScript config
     remapped colors win + semantic tokens stop working. Native-overrides must
     always be final word.
 
-14. `userscript.noframes` intentional. TinyMCE editor iframes themed from
+15. `userscript.noframes` intentional. TinyMCE editor iframes themed from
     parent document via `iframe.contentDocument`, so no build features
     depending on userscript executing inside subframes.
 
-15. **GOTCHA: Do NOT include `service_worker` in Firefox manifest.** Firefox
+16. **GOTCHA: Do NOT include `service_worker` in Firefox manifest.** Firefox
     MV3 uses event pages (`background.scripts`). Firefox 121+ has experimental
     `background.service_worker` support behind
     `extensions.backgroundServiceWorker.enabled` pref. When BOTH `scripts` +
@@ -804,7 +838,7 @@ tsconfig.json                    - Strict TypeScript config
     works identically whether Chrome loads it as a module service worker or
     Firefox loads it as a classic event-page script.
 
-16. **GOTCHA: `chrome.scripting.executeScript({ func })` no confirm
+17. **GOTCHA: `chrome.scripting.executeScript({ func })` no confirm
     receipt of `window.postMessage` from injected closure.**
     `executeScript` promise resolves when injected function *finishes
     executing*, NOT when `message` listener acks post. If
@@ -821,7 +855,7 @@ tsconfig.json                    - Strict TypeScript config
     `openSettingsInTab` relies on to trigger inject + retry fallback. See
     Section 2.1 for full chain.
 
-17. **GOTCHA: Use `optional_host_permissions`, NOT `host_permissions`, when
+18. **GOTCHA: Use `optional_host_permissions`, NOT `host_permissions`, when
     you need `chrome.permissions.request` to prompt user.** Per MDN:
     `permissions.request()` can ONLY request permissions/origins declared in
     `optional_permissions` / `optional_host_permissions`. On Firefox, calling
