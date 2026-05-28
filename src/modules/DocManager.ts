@@ -615,6 +615,7 @@ interface BulkSelectionModalConfig {
     checkboxColumnLabel: string;
     warningOnSelect?: boolean;
     onStart: (e: MouseEvent, plan: BulkSelectionPlan, statusEl: HTMLElement, resultsEl: HTMLElement, updateSummary: () => void) => Promise<void>;
+    onClose?: () => void;
 }
 
 interface BulkSelectionModalResult {
@@ -649,7 +650,7 @@ function _openBulkSelectionModal(config: BulkSelectionModalConfig): BulkSelectio
                 ? 'ffne-dm-summary ffne-dm-warning'
                 : 'ffne-dm-summary';
         }
-        summary.replaceChildren(
+        const summaryChildren: Array<string | Node> = [
             h('div', null,
                 h('strong', null, String(selectedRows.length)),
                 ' selected of ',
@@ -657,7 +658,13 @@ function _openBulkSelectionModal(config: BulkSelectionModalConfig): BulkSelectio
                 ' available document(s).',
             ),
             h('div', { class: 'ffne-dm-summary-detail' }, _formatBulkSelectionNameList(selectedRows)),
-        );
+        ];
+        if (selectedRows.length === 0) {
+            summaryChildren.push(
+                h('div', { class: 'ffne-dm-summary-hint' }, '( Use Shift + Click to select a range )'),
+            );
+        }
+        summary.replaceChildren(...summaryChildren);
     };
 
     const setRowSelected = (row: BulkSelectionPreviewRow, selected: boolean) => {
@@ -763,10 +770,14 @@ function _openBulkSelectionModal(config: BulkSelectionModalConfig): BulkSelectio
         updateSummary();
     });
 
+    let closed = false;
     const close = () => {
+        if (closed) return;
+        closed = true;
         const modal = document.getElementById(config.modalId);
         if (modal) modal.remove();
         document.removeEventListener('keydown', escHandler);
+        config.onClose?.();
     };
 
     closeButton.addEventListener('click', close);
@@ -1637,6 +1648,10 @@ export const DocManager = {
                 await this.runBulkDelete(e as MouseEvent, plan, statusEl, resultsEl);
                 updateSummary();
             },
+            onClose: () => {
+                this._bulkDeletePlan = null;
+                this._deleteEscHandler = null;
+            },
         });
         this._bulkDeletePlan = plan;
         this._deleteEscHandler = escHandler;
@@ -1670,6 +1685,10 @@ export const DocManager = {
                 await this.runBulkExport(e as MouseEvent, plan, statusEl, resultsEl, selectedIds);
                 updateSummary();
             },
+            onClose: () => {
+                this._bulkExportPlan = null;
+                this._exportEscHandler = null;
+            },
         });
         this._bulkExportPlan = plan;
         this._exportEscHandler = escHandler;
@@ -1702,6 +1721,10 @@ export const DocManager = {
                 const selectedIds = new Set(selectedRows.map(row => row.item.docId));
                 await this.runBulkRefresh(e as MouseEvent, plan, statusEl, resultsEl, selectedIds);
                 updateSummary();
+            },
+            onClose: () => {
+                this._bulkRefreshPlan = null;
+                this._refreshEscHandler = null;
             },
         });
         this._bulkRefreshPlan = plan;

@@ -1170,6 +1170,7 @@ describe('DocManager bulk selection modal interactions', () => {
         expect(checkboxes.every(cb => !cb.checked)).toBe(true);
         expect(startButton.disabled).toBe(true);
         expect(summary?.textContent).toContain('0 selected');
+        expect(summary?.textContent).toContain('( Use Shift + Click to select a range )');
     });
 
     it('Refresh modal opens with no rows selected and disabled start', () => {
@@ -1184,6 +1185,7 @@ describe('DocManager bulk selection modal interactions', () => {
         expect(checkboxes[0].checked).toBe(false);
         expect(startButton.disabled).toBe(true);
         expect(summary?.textContent).toContain('0 selected');
+        expect(summary?.textContent).toContain('( Use Shift + Click to select a range )');
     });
 
     it('Select All and Select None update checkboxes, row highlighting, and summary', () => {
@@ -1202,12 +1204,32 @@ describe('DocManager bulk selection modal interactions', () => {
         expect(startButton.disabled).toBe(false);
         expect(summary?.textContent).toContain('Doc A');
         expect(summary?.textContent).toContain('Doc B');
+        expect(summary?.textContent).not.toContain('Shift + Click');
 
         clearButton.click();
 
         expect(checkboxes.every(cb => !cb.checked)).toBe(true);
         expect(rows.every(r => !r.classList.contains('ffne-dm-row-selected'))).toBe(true);
         expect(startButton.disabled).toBe(true);
+        expect(summary?.textContent).toContain('( Use Shift + Click to select a range )');
+    });
+
+    it('clears stored plan state when a selection modal is closed from its own controls', () => {
+        mountDocManagerItems([
+            { docId: '201', docName: 'Doc A' },
+        ]);
+
+        DocManager.openBulkExportModal();
+        expect(DocManager._bulkExportPlan).not.toBeNull();
+
+        const modal = document.getElementById('ffne-docmanager-export-modal');
+        const closeButton = Array.from(modal?.querySelectorAll<HTMLButtonElement>('button.ffne-dm-btn') || [])
+            .find(button => button.textContent === 'Close');
+        closeButton?.click();
+
+        expect(document.getElementById('ffne-docmanager-export-modal')).toBeNull();
+        expect(DocManager._bulkExportPlan).toBeNull();
+        expect(DocManager._exportEscHandler).toBeNull();
     });
 
     it('checkbox Shift-click selects the full range', () => {

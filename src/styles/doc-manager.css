@@ -249,6 +249,12 @@
     margin-top: 3px;
 }
 
+.ffne-dm-summary-hint {
+    margin-top: 3px;
+    color: var(--ffne-ui-text-disabled);
+    font-size: 11px;
+}
+
 .ffne-dm-warning {
     color: var(--ffne-semantic-warning-text-dark);
     background: var(--ffne-semantic-warning-bg);
