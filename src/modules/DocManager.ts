@@ -30,6 +30,7 @@ import docManagerStyles from '../styles/doc-manager.css?raw';
 const ADVANCED_DRAWER_ID = 'ffne-docmanager-advanced-drawer';
 const ADVANCED_MODAL_ID = 'ffne-docmanager-advanced-modal';
 const IMPORT_MODAL_ID = 'ffne-docmanager-import-modal';
+const DELETE_MODAL_ID = 'ffne-docmanager-delete-modal';
 const AO3_MODAL_ID = 'ffne-docmanager-ao3-modal';
 const ADVANCED_STYLE_ID = 'ffne-docmanager-advanced-styles';
 type BulkImportFormat = 'markdown' | 'html' | 'docx';
@@ -68,6 +69,7 @@ const SUPPORTED_BULK_IMPORT_EXTENSIONS = new Set(
 );
 
 type BulkImportRowStatus = 'matched' | 'missing' | 'duplicate' | 'running' | 'retrying' | 'success' | 'failed';
+type BulkDeleteRowStatus = 'idle' | 'running' | 'retrying' | 'success' | 'failed';
 
 interface BulkImportPreviewRow {
     docId: string;
@@ -102,6 +104,18 @@ interface BulkImportFailure {
 interface BulkSimpleFailure {
     docName: string;
     reason: string;
+}
+
+interface BulkDeletePreviewRow {
+    item: IBulkItem;
+    selected: boolean;
+    status: BulkDeleteRowStatus;
+    modalRow: HTMLTableRowElement | null;
+    checkbox: HTMLInputElement | null;
+}
+
+interface BulkDeletePlan {
+    rows: BulkDeletePreviewRow[];
 }
 
 interface Ao3MigrationState {
@@ -498,6 +512,95 @@ function _renderBulkFailures(
         children.push(h('div', { class: 'ffne-dm-retry-wrap' }, retryButton));
     }
     container.replaceChildren(...children);
+}
+
+function _buildBulkDeletePlan(items: IBulkItem[] = _collectBulkItems()): BulkDeletePlan {
+    return {
+        rows: items.map(item => ({
+            item,
+            selected: false,
+            status: 'idle',
+            modalRow: null,
+            checkbox: null,
+        })),
+    };
+}
+
+function _getBulkDeleteSelectedRows(plan: BulkDeletePlan): BulkDeletePreviewRow[] {
+    return plan.rows.filter(row => row.selected && row.status !== 'success');
+}
+
+function _formatBulkDeleteNameList(rows: BulkDeletePreviewRow[], limit: number = 8): string {
+    const names = rows.map(row => row.item.docName);
+    if (names.length === 0) return 'No documents selected.';
+
+    const visible = names.slice(0, limit);
+    const remainder = names.length - visible.length;
+    return remainder > 0
+        ? `${visible.join(', ')}, and ${remainder} more`
+        : visible.join(', ');
+}
+
+function _getBulkDeleteConfirmMessage(rows: BulkDeletePreviewRow[]): string {
+    const names = rows.slice(0, 12).map(row => `- ${row.item.docName}`).join('\n');
+    const remainder = rows.length > 12 ? `\n- and ${rows.length - 12} more` : '';
+    return (
+        `Bulk Delete will permanently delete ${rows.length} document(s):\n\n` +
+        `${names}${remainder}\n\n` +
+        'This cannot be undone from FFN Enhancements. Continue?'
+    );
+}
+
+function _getBulkDeleteRowStatusLabel(row: BulkDeletePreviewRow): string {
+    switch (row.status) {
+        case 'idle':
+            return row.selected ? 'Selected' : 'Not selected';
+        case 'running':
+            return 'Deleting';
+        case 'retrying':
+            return 'Retrying';
+        case 'success':
+            return 'Deleted';
+        case 'failed':
+            return 'Failed';
+    }
+}
+
+function _renderBulkDeleteRowStatus(row: BulkDeletePreviewRow): void {
+    if (!row.modalRow) return;
+
+    row.modalRow.classList.remove('ffne-dm-row-running', 'ffne-dm-row-success', 'ffne-dm-row-failed');
+    if (row.status === 'running' || row.status === 'retrying') {
+        row.modalRow.classList.add('ffne-dm-row-running');
+    }
+    if (row.status === 'success') {
+        row.modalRow.classList.add('ffne-dm-row-success');
+    }
+    if (row.status === 'failed') {
+        row.modalRow.classList.add('ffne-dm-row-failed');
+    }
+
+    const statusCell = row.modalRow.querySelector<HTMLElement>('[data-ffne-status]');
+    if (!statusCell) return;
+    statusCell.className = row.status === 'idle'
+        ? row.selected ? 'ffne-dm-status-selected' : 'ffne-dm-status-idle'
+        : `ffne-dm-status-${row.status}`;
+    statusCell.textContent = _getBulkDeleteRowStatusLabel(row);
+}
+
+function _setBulkDeleteRowStatus(
+    row: BulkDeletePreviewRow,
+    status: Extract<BulkDeleteRowStatus, 'running' | 'retrying' | 'success' | 'failed'>,
+): void {
+    row.status = status;
+    if (status === 'success') {
+        row.selected = false;
+        if (row.checkbox) {
+            row.checkbox.checked = false;
+            row.checkbox.disabled = true;
+        }
+    }
+    _renderBulkDeleteRowStatus(row);
 }
 
 function _buildBulkImportPlan(
@@ -914,8 +1017,10 @@ export const DocManager = {
 
     _advancedEscHandler: null as ((e: KeyboardEvent) => void) | null,
     _importEscHandler: null as ((e: KeyboardEvent) => void) | null,
+    _deleteEscHandler: null as ((e: KeyboardEvent) => void) | null,
     _ao3EscHandler: null as ((e: KeyboardEvent) => void) | null,
     _bulkImportPlan: null as BulkImportPlan | null,
+    _bulkDeletePlan: null as BulkDeletePlan | null,
     _ao3MigrationState: null as Ao3MigrationState | null,
 
     /**
@@ -1056,6 +1161,7 @@ export const DocManager = {
         const bulkExportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-export' }, 'Run');
         const bulkRefreshButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-refresh' }, 'Run');
         const bulkImportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-import' }, 'Open');
+        const bulkDeleteButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-delete' }, 'Open');
         const bulkMigrateButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-migrate-ao3' }, 'Open');
         overlay.appendChild(
             h('div', { class: 'ffne-dm-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ffne-dm-advanced-title' },
@@ -1089,6 +1195,12 @@ export const DocManager = {
                         ),
                         h('div', { class: 'ffne-dm-routine' },
                             h('div', { class: 'ffne-dm-routine-header' },
+                                h('span', { class: 'ffne-dm-routine-title' }, 'Bulk Delete'),
+                                bulkDeleteButton,
+                            ),
+                        ),
+                        h('div', { class: 'ffne-dm-routine' },
+                            h('div', { class: 'ffne-dm-routine-header' },
                                 h('span', { class: 'ffne-dm-routine-title' }, 'Bulk Migrate to AO3'),
                                 bulkMigrateButton,
                             ),
@@ -1112,6 +1224,10 @@ export const DocManager = {
         bulkImportButton.addEventListener('click', () => {
             this.closeAdvancedRoutinesModal();
             this.openBulkImportModal();
+        });
+        bulkDeleteButton.addEventListener('click', () => {
+            this.closeAdvancedRoutinesModal();
+            this.openBulkDeleteModal();
         });
         bulkMigrateButton.addEventListener('click', () => {
             this.closeAdvancedRoutinesModal();
@@ -1317,6 +1433,162 @@ export const DocManager = {
         }
 
         this._bulkImportPlan = null;
+    },
+
+    openBulkDeleteModal: function () {
+        if (document.getElementById(DELETE_MODAL_ID)) return;
+
+        this._injectAdvancedStyles();
+        this._bulkDeletePlan = _buildBulkDeletePlan();
+
+        const plan = this._bulkDeletePlan;
+        const overlay = markFfneUiRoot(document.createElement('div'));
+        overlay.id = DELETE_MODAL_ID;
+        overlay.className = 'ffne-dm-overlay';
+        const closeButton = h('button', { type: 'button', class: 'ffne-dm-close', 'aria-label': 'Close' }, '\u00d7');
+        const selectAllButton = h('button', { type: 'button', id: 'ffne-dm-delete-select-all', class: 'ffne-dm-btn', 'data-ffne-action': 'select-all-delete' }, 'Select All');
+        const clearButton = h('button', { type: 'button', id: 'ffne-dm-delete-clear', class: 'ffne-dm-btn', 'data-ffne-action': 'clear-delete' }, 'Clear');
+        const startButton = h('button', { type: 'button', id: 'ffne-dm-delete-start', class: 'ffne-dm-btn', disabled: true }, 'Delete');
+        const summary = h('div', { id: 'ffne-dm-delete-summary', class: 'ffne-dm-summary' });
+        const results = h('div', { id: 'ffne-dm-delete-results', class: 'ffne-dm-import-results', hidden: true });
+        const status = h('span', { id: 'ffne-dm-delete-status', class: 'ffne-dm-run-status' });
+        const closeDeleteButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'close-delete' }, 'Close');
+        const rowsBody = h('tbody');
+
+        const updateSummary = () => {
+            const selectedRows = _getBulkDeleteSelectedRows(plan);
+            startButton.disabled = selectedRows.length === 0;
+            summary.className = selectedRows.length > 0
+                ? 'ffne-dm-summary ffne-dm-warning'
+                : 'ffne-dm-summary';
+            summary.replaceChildren(
+                h('div', null,
+                    h('strong', null, String(selectedRows.length)),
+                    ' selected of ',
+                    h('strong', null, String(plan.rows.filter(row => row.status !== 'success').length)),
+                    ' available document(s).',
+                ),
+                h('div', { class: 'ffne-dm-summary-detail' }, _formatBulkDeleteNameList(selectedRows)),
+            );
+        };
+
+        const setRowSelected = (row: BulkDeletePreviewRow, selected: boolean) => {
+            if (row.status === 'success') return;
+            row.selected = selected;
+            if (row.checkbox) row.checkbox.checked = selected;
+            if (row.status === 'failed') row.status = 'idle';
+            _renderBulkDeleteRowStatus(row);
+        };
+
+        const renderedRows = plan.rows.length > 0
+            ? plan.rows.map((row, index) => {
+                const checkbox = h('input', {
+                    type: 'checkbox',
+                    'aria-label': `Select ${row.item.docName}`,
+                    'data-ffne-delete-index': String(index),
+                });
+                const rowEl = h('tr', { 'data-row-doc-id': row.item.docId },
+                    h('td', null, checkbox),
+                    h('td', null, row.item.docName),
+                    h('td', null, row.item.docId),
+                    h('td', { 'data-ffne-status': true }),
+                );
+                row.checkbox = checkbox;
+                row.modalRow = rowEl;
+                checkbox.addEventListener('change', () => {
+                    setRowSelected(row, checkbox.checked);
+                    updateSummary();
+                });
+                _renderBulkDeleteRowStatus(row);
+                return rowEl;
+            })
+            : [h('tr', null, h('td', { colspan: 4 }, 'No DocManager documents found.'))];
+        rowsBody.replaceChildren(...renderedRows);
+
+        overlay.appendChild(
+            h('div', { class: 'ffne-dm-modal ffne-dm-modal-wide', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ffne-dm-delete-title' },
+                h('div', { class: 'ffne-dm-modal-header' },
+                    h('h3', { id: 'ffne-dm-delete-title' }, 'Bulk Delete'),
+                    closeButton,
+                ),
+                h('div', { class: 'ffne-dm-modal-body' },
+                    h('div', { class: 'ffne-dm-import-controls' },
+                        h('div', { class: 'ffne-dm-picker-group' },
+                            selectAllButton,
+                            clearButton,
+                        ),
+                        startButton,
+                    ),
+                    summary,
+                    h('div', { class: 'ffne-dm-preview-scroll' },
+                        h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
+                            h('thead', null,
+                                h('tr', null,
+                                    h('th', null, 'Delete'),
+                                    h('th', null, 'Document'),
+                                    h('th', null, 'Doc ID'),
+                                    h('th', null, 'Status'),
+                                ),
+                            ),
+                            rowsBody,
+                        ),
+                    ),
+                    results,
+                    h('div', { class: 'ffne-dm-footer' },
+                        status,
+                        closeDeleteButton,
+                    ),
+                ),
+            ),
+        );
+
+        selectAllButton.addEventListener('click', () => {
+            plan.rows.forEach(row => setRowSelected(row, true));
+            updateSummary();
+        });
+
+        clearButton.addEventListener('click', () => {
+            plan.rows.forEach(row => setRowSelected(row, false));
+            updateSummary();
+        });
+
+        startButton.addEventListener('click', async (e) => {
+            const selectedRows = _getBulkDeleteSelectedRows(plan);
+            if (selectedRows.length === 0) return;
+
+            const confirmed = confirm(_getBulkDeleteConfirmMessage(selectedRows));
+            if (!confirmed) return;
+
+            await this.runBulkDelete(e as MouseEvent, plan, status || undefined, results || undefined);
+            updateSummary();
+        });
+
+        closeButton.addEventListener('click', () => this.closeBulkDeleteModal());
+        closeDeleteButton.addEventListener('click', () => this.closeBulkDeleteModal());
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.closeBulkDeleteModal();
+        });
+
+        this._deleteEscHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') this.closeBulkDeleteModal();
+        };
+        document.addEventListener('keydown', this._deleteEscHandler);
+
+        updateSummary();
+        document.body.appendChild(overlay);
+    },
+
+    closeBulkDeleteModal: function () {
+        const modal = document.getElementById(DELETE_MODAL_ID);
+        if (modal) modal.remove();
+
+        if (this._deleteEscHandler) {
+            document.removeEventListener('keydown', this._deleteEscHandler);
+            this._deleteEscHandler = null;
+        }
+
+        this._bulkDeletePlan = null;
     },
 
     openAo3MigrationModal: function () {
@@ -2214,6 +2486,109 @@ export const DocManager = {
     },
 
     /**
+     * Deletes the currently selected DocManager rows through FFN's existing remove endpoint.
+     */
+    runBulkDelete: async function (
+        e: MouseEvent,
+        plan: BulkDeletePlan,
+        statusEl?: HTMLElement,
+        resultsEl?: HTMLElement,
+        retryDocIds?: Set<string>,
+    ) {
+        const log = Core.getLogger(this.MODULE_NAME, 'runBulkDelete');
+        const btn = e.currentTarget as HTMLButtonElement;
+        const failureReasons = new Map<string, string>();
+        const failedRows: BulkDeletePreviewRow[] = [];
+
+        const rowsToDelete = retryDocIds
+            ? plan.rows.filter(row => retryDocIds.has(row.item.docId) && row.status !== 'success')
+            : _getBulkDeleteSelectedRows(plan);
+
+        if (rowsToDelete.length === 0) {
+            if (statusEl) statusEl.textContent = 'No documents selected for deletion.';
+            _renderBulkFailures(resultsEl, 'Failed Deletes', []);
+            return;
+        }
+
+        if (statusEl) statusEl.textContent = `Preparing to delete ${rowsToDelete.length} document(s)...`;
+        _renderBulkFailures(resultsEl, 'Failed Deletes', []);
+        log(`Bulk Delete requested for ${rowsToDelete.length} document(s).`);
+
+        await runBulkOperation<BulkDeletePreviewRow>(e, {
+            verb: 'Delete',
+            getItems: () => rowsToDelete,
+            preBatch: (totalCount) => {
+                if (statusEl) statusEl.textContent = `Deleting ${totalCount} document(s). Do not close this tab.`;
+            },
+            onItemStart: (row, pass, index, total) => {
+                _setBulkDeleteRowStatus(row, pass === 2 ? 'retrying' : 'running');
+                if (statusEl) {
+                    const verb = pass === 2 ? 'Retrying' : 'Deleting';
+                    statusEl.textContent = `${verb} ${index}/${total}: ${row.item.title}...`;
+                }
+            },
+            processItem: async (row) => {
+                try {
+                    const result = await DocFetchService.deletePrivateDocWithResult(row.item.docId, row.item.title);
+                    if (!result.ok) {
+                        failureReasons.set(row.item.docId, result.reason || `Failed to delete DocID ${row.item.docId}.`);
+                        _setBulkDeleteRowStatus(row, 'failed');
+                        return false;
+                    }
+                    return true;
+                } catch (err) {
+                    const reason = err instanceof Error ? err.message : String(err);
+                    failureReasons.set(row.item.docId, `Unexpected error: ${reason}`);
+                    _setBulkDeleteRowStatus(row, 'failed');
+                    return false;
+                }
+            },
+            onItemSuccess: (row) => {
+                _setBulkDeleteRowStatus(row, 'success');
+                row.item.row.remove();
+            },
+            onPermanentFailure: (row) => {
+                if (!failedRows.includes(row)) failedRows.push(row);
+            },
+            onFinalize: ({ successCount, totalCount }) => {
+                if (successCount === totalCount) {
+                    btn.innerText = 'All Done!';
+                    log(`Successfully deleted all ${successCount} document(s).`);
+                } else if (successCount > 0) {
+                    btn.innerText = `${successCount}/${totalCount}`;
+                    log(`Deleted ${successCount} of ${totalCount} document(s).`);
+                } else {
+                    btn.innerText = 'Failed';
+                    log('Failed to delete any selected documents.');
+                }
+
+                if (statusEl) {
+                    if (successCount === totalCount) {
+                        statusEl.textContent = `Deleted all ${successCount} document(s).`;
+                    } else if (successCount > 0) {
+                        statusEl.textContent = `Deleted ${successCount}; failed ${totalCount - successCount}.`;
+                    } else {
+                        statusEl.textContent = 'No documents deleted.';
+                    }
+                }
+
+                const failures = failedRows.map(row => ({
+                    docName: row.item.docName,
+                    reason: failureReasons.get(row.item.docId) || `Failed to delete DocID ${row.item.docId}.`,
+                }));
+                const retryFn = failedRows.length > 0
+                    ? () => {
+                        const retryIds = new Set(failedRows.map(row => row.item.docId));
+                        const fakeEvent = { currentTarget: btn } as unknown as MouseEvent;
+                        DocManager.runBulkDelete(fakeEvent, plan, statusEl, resultsEl, retryIds);
+                    }
+                    : undefined;
+                _renderBulkFailures(resultsEl, 'Failed Deletes', failures, retryFn);
+            },
+        });
+    },
+
+    /**
      * Handles bulk FFN doc migration into existing AO3 chapters.
      */
     runBulkAo3Migration: async function (
@@ -2640,6 +3015,7 @@ export const DocManager = {
 
     // Exported for tests — verifies button-reference lifecycle in onFinalize callbacks.
     _runBulkOperation,
+    _buildBulkDeletePlan,
     _buildBulkImportPlan,
     _createAo3MigrationRows,
     _setManualAo3SourceSelection,

@@ -30,7 +30,8 @@ jobs:
         id: version
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
-          BETA_VERSION="0.17.0-beta.${{ github.run_number }}+${SHORT_SHA}"
+          BASE_VERSION=$(node -p "require('./package.json').version.split('-')[0]")
+          BETA_VERSION="${BASE_VERSION}-beta.${{ github.run_number }}+${SHORT_SHA}"
           echo "version=${BETA_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Package extension

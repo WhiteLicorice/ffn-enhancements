@@ -10,6 +10,7 @@ import { fetchRequestText } from '../utils/fetchRequest';
 
 const fetchRequestTextMock = vi.mocked(fetchRequestText);
 const EDIT_URL = 'https://www.fanfiction.net/docs/edit.php?docid=123';
+const DELETE_URL = 'https://www.fanfiction.net/docs/docs.php?action=remove&docid=123';
 
 function makeEditPage(options: {
     docId?: string;
@@ -46,6 +47,22 @@ function makeEditPage(options: {
     `;
 }
 
+function makeDocManagerPage(docIds: string[]): string {
+    return `
+        <table id="gui_table1">
+            <tbody>
+                ${docIds.map(docId => `
+                    <tr>
+                        <td><a href="https://www.fanfiction.net/docs/edit.php?docid=${docId}">Edit</a></td>
+                        <td>Doc ${docId}</td>
+                        <td><a href="https://www.fanfiction.net/docs/docs.php?action=remove&docid=${docId}">Remove</a></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
 function writeFrameHtml(
     iframe: HTMLIFrameElement,
     html: string,
@@ -63,6 +80,26 @@ function getSaveFrame(): HTMLIFrameElement {
     const iframe = document.querySelector<HTMLIFrameElement>('iframe[name^="ffne_doc_save_"]');
     if (!iframe) throw new Error('Expected hidden save iframe to exist.');
     return iframe;
+}
+
+function makeFetchResponse(
+    html: string,
+    options: { status?: number; url?: string } = {},
+): Response {
+    const response = new Response(html, {
+        status: options.status ?? 200,
+        headers: { 'Content-Type': 'text/html' },
+    });
+    Object.defineProperty(response, 'url', {
+        value: options.url ?? 'https://www.fanfiction.net/docs/docs.php',
+        configurable: true,
+    });
+    return response;
+}
+
+async function flushMicrotasks(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
 }
 
 function mockIframeFormSubmit(
@@ -385,7 +422,7 @@ describe('DocFetchService direct save helpers', () => {
 
         await expect(promise).resolves.toEqual({
             ok: false,
-            reason: 'Invalid Request / unable to authenticate.',
+            reason: 'Invalid Request: We are unable to authenticate your request.',
         });
         expect(fetchRequestTextMock).not.toHaveBeenCalled();
         expect(submitSpy).toHaveBeenCalledTimes(1);
@@ -571,5 +608,163 @@ describe('DocFetchService direct save helpers', () => {
         expect(fetchRequestTextMock).not.toHaveBeenCalled();
         expect(submitSpy).toHaveBeenCalledTimes(1);
         expect(document.querySelector('iframe[name^="ffne_doc_save_"]')).toBeNull();
+    });
+
+    it('deletes with a credentialed same-origin fetch and succeeds when the docid disappears', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            makeFetchResponse(makeDocManagerPage(['456']))
+        );
+
+        await expect(DocFetchService.deletePrivateDocWithResult('123', 'Doc Name')).resolves.toEqual({
+            ok: true,
+            reason: undefined,
+        });
+
+        expect(fetchSpy).toHaveBeenCalledWith(DELETE_URL, {
+            credentials: 'include',
+            redirect: 'follow',
+        });
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+        expect(document.querySelector('iframe[name^="ffne_doc_delete_"]')).toBeNull();
+    });
+
+    it('fails delete verification when the returned DocManager page still contains the docid', async () => {
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            makeFetchResponse(makeDocManagerPage(['123', '456']))
+        );
+
+        await expect(DocFetchService.deletePrivateDocWithResult('123', 'Doc Name')).resolves.toEqual({
+            ok: false,
+            reason: 'FFN returned a DocManager page that still contains document 123.',
+        });
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+    });
+
+    it('retries formatted invalid-auth delete responses with incremental backoff', async () => {
+        vi.useFakeTimers();
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 3 as never;
+                case 'fetchRetryBaseMs':
+                    return 25 as never;
+                default:
+                    return 0 as never;
+            }
+        });
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => (
+            makeFetchResponse('<div class="panel_error"><b>Invalid Request</b><div>We are unable to authenticate your request.</div></div>')
+        ));
+
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(25);
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+        await vi.advanceTimersByTimeAsync(50);
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(3);
+
+        await expect(promise).resolves.toEqual({
+            ok: false,
+            reason: 'Invalid Request: We are unable to authenticate your request.',
+        });
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+    });
+
+    it('recovers when a later delete retry returns a confirmed DocManager page', async () => {
+        vi.useFakeTimers();
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 3 as never;
+                case 'fetchRetryBaseMs':
+                    return 25 as never;
+                default:
+                    return 0 as never;
+            }
+        });
+        const fetchSpy = vi.spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(makeFetchResponse('<body>Invalid RequestWe are unable to authenticate your request.</body>'))
+            .mockResolvedValueOnce(makeFetchResponse(makeDocManagerPage(['456'])));
+
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(25);
+        await flushMicrotasks();
+
+        await expect(promise).resolves.toEqual({
+            ok: true,
+            reason: undefined,
+        });
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+    });
+
+    it('retries login delete responses with incremental backoff', async () => {
+        vi.useFakeTimers();
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 2 as never;
+                case 'fetchRetryBaseMs':
+                    return 10 as never;
+                default:
+                    return 0 as never;
+            }
+        });
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => (
+            makeFetchResponse('<body>Please log in to continue.</body>', {
+                url: 'https://www.fanfiction.net/login.php',
+            })
+        ));
+
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(10);
+        await flushMicrotasks();
+
+        await expect(promise).resolves.toEqual({
+            ok: false,
+            reason: 'FFN returned a login or authorization page.',
+        });
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+    });
+
+    it('retries network errors before returning the final delete failure', async () => {
+        vi.useFakeTimers();
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 2 as never;
+                case 'fetchRetryBaseMs':
+                    return 10 as never;
+                default:
+                    return 0 as never;
+            }
+        });
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network down'));
+
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(10);
+        await flushMicrotasks();
+
+        await expect(promise).resolves.toEqual({
+            ok: false,
+            reason: 'Delete request failed: Network down',
+        });
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
     });
 });

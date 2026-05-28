@@ -309,6 +309,8 @@
 }
 
 .ffne-dm-status-matched { color: var(--ffne-semantic-success-text); font-weight: 700; }
+.ffne-dm-status-selected { color: var(--ffne-semantic-warning-text); font-weight: 700; }
+.ffne-dm-status-idle { color: var(--ffne-ui-text-muted); }
 .ffne-dm-status-missing { color: var(--ffne-ui-text-muted); }
 .ffne-dm-status-duplicate { color: var(--ffne-semantic-error-text); font-weight: 700; }
 .ffne-dm-status-running,

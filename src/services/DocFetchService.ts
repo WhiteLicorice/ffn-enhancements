@@ -19,6 +19,10 @@ interface PrivateDocSaveAttemptResult extends PrivateDocSaveResult {
     retryable: boolean;
 }
 
+interface PrivateDocDeleteAttemptResult extends PrivateDocSaveResult {
+    retryable: boolean;
+}
+
 interface PrivateDocSavePreparationResult {
     ok: boolean;
     reason?: string;
@@ -32,6 +36,56 @@ const FFN_DOC_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
 
 function normalizeText(value: string): string {
     return value.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeFfnFailureText(value: string): string {
+    const text = normalizeText(value);
+    if (/invalid\s*request/i.test(text) && /unable\s*to\s*authenticate/i.test(text)) {
+        return 'Invalid Request: We are unable to authenticate your request.';
+    }
+    return text;
+}
+
+function getReadableText(node: Node | null | undefined): string {
+    if (!node) return '';
+
+    const chunks: string[] = [];
+    const blockTags = new Set([
+        'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'BR', 'DD', 'DIV', 'DL', 'DT',
+        'FIELDSET', 'FIGCAPTION', 'FIGURE', 'FOOTER', 'FORM', 'H1', 'H2', 'H3', 'H4',
+        'H5', 'H6', 'HEADER', 'HR', 'LI', 'MAIN', 'NAV', 'OL', 'P', 'PRE', 'SECTION',
+        'TABLE', 'TBODY', 'TD', 'TFOOT', 'TH', 'THEAD', 'TR', 'UL',
+    ]);
+
+    const walk = (current: Node) => {
+        if (current.nodeType === Node.TEXT_NODE) {
+            chunks.push(current.textContent || '');
+            return;
+        }
+
+        if (!(current instanceof Element)) {
+            current.childNodes.forEach(walk);
+            return;
+        }
+
+        const isBlock = blockTags.has(current.tagName);
+        if (isBlock) chunks.push(' ');
+        if (current.tagName === 'BR' || current.tagName === 'HR') {
+            chunks.push(' ');
+            return;
+        }
+
+        current.childNodes.forEach(walk);
+        if (isBlock) chunks.push(' ');
+    };
+
+    walk(node);
+    return normalizeFfnFailureText(chunks.join(''));
+}
+
+function isRetryableDeleteFailureReason(reason: string | undefined): boolean {
+    if (!reason) return false;
+    return /invalid\s*request|unable\s*to\s*authenticate|login|authorization|cloudflare|ddos protection|denied access/i.test(reason);
 }
 
 function normalizeUrlForComparison(value: string | undefined): string {
@@ -202,7 +256,7 @@ export const DocFetchService = {
             finalUrl?: string;
         }
     ): string | null {
-        const bodyText = normalizeText(doc.body?.textContent || '');
+        const bodyText = getReadableText(doc.body);
         const titleText = normalizeText(doc.title || '');
         if (
             response?.isCfChallenge
@@ -213,7 +267,7 @@ export const DocFetchService = {
         }
 
         const errorPanel = doc.querySelector<HTMLElement>('.panel_error, .gui_error, .alert-error, .error');
-        const errorText = normalizeText(errorPanel?.textContent || '');
+        const errorText = getReadableText(errorPanel);
         if (errorText) return errorText;
 
         const finalUrlPath = normalizeUrlForComparison(response?.finalUrl);
@@ -227,8 +281,8 @@ export const DocFetchService = {
             return 'FFN returned a login or authorization page.';
         }
 
-        if (/invalid\s+request|unable\s+to\s+authenticate/i.test(bodyText)) {
-            return 'Invalid Request / unable to authenticate.';
+        if (/invalid\s*request|unable\s*to\s*authenticate/i.test(bodyText)) {
+            return normalizeFfnFailureText(bodyText);
         }
 
         if (response?.status === 403) {
@@ -236,6 +290,83 @@ export const DocFetchService = {
         }
 
         return null;
+    },
+
+    _getPrivateDocDeleteFailureReason: function (
+        doc: Document,
+        response?: {
+            status?: number;
+            isCfChallenge?: boolean;
+            finalUrl?: string;
+        }
+    ): string | null {
+        const reason = this._getPrivateDocExplicitFailureReason(doc, response);
+        if (reason === 'FFN save request was blocked by a Cloudflare challenge. Open fanfiction.net in this browser, clear the challenge, then retry.') {
+            return 'FFN delete request was blocked by a Cloudflare challenge. Open fanfiction.net in this browser, clear the challenge, then retry.';
+        }
+        return reason;
+    },
+
+    _docManagerPageContainsDocId: function (doc: Document, docId: string): boolean {
+        const links = Array.from(doc.querySelectorAll<HTMLAnchorElement>('a[href*="docid="]'));
+        for (const link of links) {
+            try {
+                const parsed = new URL(link.href, 'https://www.fanfiction.net');
+                if (parsed.searchParams.get('docid') === docId) return true;
+            } catch {
+                if (link.getAttribute('href')?.includes(`docid=${docId}`)) return true;
+            }
+        }
+
+        const controls = Array.from(doc.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLOptionElement>(
+            'input[name="docid"], select[name="docid"], option[value]'
+        ));
+        return controls.some(control => control.value === docId);
+    },
+
+    _verifyPrivateDocDeleteResponse: function (
+        response: {
+            ok: boolean;
+            status: number;
+            responseText: string;
+            finalUrl?: string;
+            isCfChallenge?: boolean;
+        },
+        docId: string,
+    ): PrivateDocDeleteAttemptResult {
+        const responseDoc = new DOMParser().parseFromString(response.responseText, 'text/html');
+
+        const explicitFailure = this._getPrivateDocDeleteFailureReason(responseDoc, response);
+        if (explicitFailure) {
+            return {
+                ok: false,
+                reason: explicitFailure,
+                retryable: isRetryableDeleteFailureReason(explicitFailure),
+            };
+        }
+
+        const bodyText = getReadableText(responseDoc.body);
+        if (!bodyText && !response.responseText.trim()) {
+            return { ok: false, reason: 'FFN returned an empty delete response.', retryable: true };
+        }
+
+        if (!response.ok && response.status > 0) {
+            return {
+                ok: false,
+                reason: `FFN delete request failed with HTTP ${response.status}.`,
+                retryable: response.status === 403 || response.status === 429 || response.status >= 500,
+            };
+        }
+
+        if (this._docManagerPageContainsDocId(responseDoc, docId)) {
+            return {
+                ok: false,
+                reason: `FFN returned a DocManager page that still contains document ${docId}.`,
+                retryable: true,
+            };
+        }
+
+        return { ok: true, retryable: false };
     },
 
     _preparePrivateDocSaveForm: function (
@@ -528,6 +659,45 @@ export const DocFetchService = {
         });
     },
 
+    _fetchPrivateDocDeleteWithResult: async function (
+        removeUrl: string,
+        docId: string,
+        title: string,
+    ): Promise<PrivateDocDeleteAttemptResult> {
+        const log = Core.getLogger(this.MODULE_NAME, '_fetchPrivateDocDeleteWithResult');
+
+        try {
+            const response = await fetch(removeUrl, {
+                credentials: 'include',
+                redirect: 'follow',
+            });
+            const responseText = await response.text();
+            log(`[DELETE] Loaded remove response for "${title}".`, {
+                status: response.status,
+                finalUrl: response.url,
+            });
+
+            return this._verifyPrivateDocDeleteResponse(
+                {
+                    ok: response.ok,
+                    status: response.status,
+                    responseText,
+                    finalUrl: response.url,
+                    isCfChallenge: false,
+                },
+                docId,
+            );
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            log(`Delete request failed for "${title}".`, message);
+            return {
+                ok: false,
+                reason: `Delete request failed: ${message}`,
+                retryable: true,
+            };
+        }
+    },
+
     /**
      * Refreshes a document by loading the edit page in a hidden no-script iframe,
      * preserving the existing HTML, and submitting FFN's real save form.
@@ -565,6 +735,50 @@ export const DocFetchService = {
             }
 
             return false;
+        }
+    },
+
+    /**
+     * Deletes a private document through FFN's existing remove endpoint and
+     * verifies the returned DocManager page no longer exposes the deleted docid.
+     */
+    deletePrivateDocWithResult: async function (
+        docId: string,
+        title: string,
+        attempt: number = 1,
+    ): Promise<PrivateDocSaveResult> {
+        const log = Core.getLogger(this.MODULE_NAME, 'deletePrivateDocWithResult');
+        const maxRetries = SettingsManager.get('fetchMaxRetries');
+        const removeUrl = `https://www.fanfiction.net/docs/docs.php?action=remove&docid=${encodeURIComponent(docId)}`;
+
+        try {
+            log(`[DELETE START] Deleting "${title}" (DocID: ${docId}, Attempt: ${attempt}/${maxRetries})`);
+            const deleteResult = await this._fetchPrivateDocDeleteWithResult(removeUrl, docId, title);
+
+            if (!deleteResult.ok && deleteResult.retryable && attempt < maxRetries) {
+                const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
+                log(`[DELETE] Delete not confirmed for "${title}". Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                return this.deletePrivateDocWithResult(docId, title, attempt + 1);
+            }
+
+            return {
+                ok: deleteResult.ok,
+                reason: deleteResult.reason,
+            };
+        } catch (err) {
+            log('[DELETE ERROR] Exception during delete:', err);
+            console.error(`DELETE FAILED for document ${docId}:`, err);
+
+            if (attempt < maxRetries) {
+                const waitTime = attempt * SettingsManager.get('fetchRetryBaseMs');
+                log(`[DELETE] Exception occurred. Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                return this.deletePrivateDocWithResult(docId, title, attempt + 1);
+            }
+
+            const message = err instanceof Error ? err.message : String(err);
+            return { ok: false, reason: `Unexpected error: ${message}` };
         }
     },
 

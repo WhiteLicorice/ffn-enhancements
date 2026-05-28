@@ -174,6 +174,10 @@ describe('DocManager FFNE UI roots', () => {
         expect(document.getElementById('ffne-docmanager-import-modal')?.getAttribute('data-ffne-ui')).toBe('');
 
         DocManager.closeBulkImportModal();
+        DocManager.openBulkDeleteModal();
+        expect(document.getElementById('ffne-docmanager-delete-modal')?.getAttribute('data-ffne-ui')).toBe('');
+
+        DocManager.closeBulkDeleteModal();
         DocManager.openAo3MigrationModal();
         expect(document.getElementById('ffne-docmanager-ao3-modal')?.getAttribute('data-ffne-ui')).toBe('');
     });
@@ -878,6 +882,7 @@ describe('DocManager advanced drawer', () => {
         expect(document.querySelector('[data-ffne-action="bulk-export"]')).not.toBeNull();
         expect(document.querySelector('[data-ffne-action="bulk-refresh"]')).not.toBeNull();
         expect(document.querySelector('[data-ffne-action="bulk-import"]')).not.toBeNull();
+        expect(document.querySelector('[data-ffne-action="bulk-delete"]')).not.toBeNull();
         expect(document.querySelector('[data-ffne-action="bulk-migrate-ao3"]')).not.toBeNull();
     });
 
@@ -892,6 +897,200 @@ describe('DocManager advanced drawer', () => {
 
         expect(exportSpy).toHaveBeenCalledTimes(1);
         expect(refreshSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('routes Bulk Delete through its modal handler', () => {
+        const deleteSpy = vi.spyOn(DocManager, 'openBulkDeleteModal').mockImplementation(() => undefined);
+
+        DocManager.injectAdvancedDrawer();
+        document.querySelector<HTMLButtonElement>('#ffne-docmanager-advanced-drawer button')?.click();
+        document.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-delete"]')?.click();
+
+        expect(deleteSpy).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('DocManager bulk delete modal', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        Core.activeDelegate = DocManagerDelegate;
+        vi.restoreAllMocks();
+    });
+
+    afterEach(() => {
+        DocManager.closeBulkDeleteModal();
+        Core.activeDelegate = null;
+        vi.restoreAllMocks();
+        cleanupDOM();
+    });
+
+    it('opens with no documents selected and supports select all and clear', () => {
+        mountDocManagerItems([
+            { docId: '101', docName: 'Doc One' },
+            { docId: '102', docName: 'Doc Two' },
+        ]);
+
+        DocManager.openBulkDeleteModal();
+
+        const startButton = document.getElementById('ffne-dm-delete-start') as HTMLButtonElement;
+        const summary = document.getElementById('ffne-dm-delete-summary');
+        const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>('#ffne-docmanager-delete-modal input[type="checkbox"]'));
+
+        expect(checkboxes).toHaveLength(2);
+        expect(checkboxes.every(checkbox => !checkbox.checked)).toBe(true);
+        expect(startButton.disabled).toBe(true);
+        expect(summary?.textContent).toContain('0 selected');
+
+        document.getElementById('ffne-dm-delete-select-all')?.click();
+
+        expect(checkboxes.every(checkbox => checkbox.checked)).toBe(true);
+        expect(startButton.disabled).toBe(false);
+        expect(summary?.textContent).toContain('Doc One');
+        expect(summary?.textContent).toContain('Doc Two');
+
+        document.getElementById('ffne-dm-delete-clear')?.click();
+
+        expect(checkboxes.every(checkbox => !checkbox.checked)).toBe(true);
+        expect(startButton.disabled).toBe(true);
+        expect(summary?.textContent).toContain('0 selected');
+    });
+
+    it('uses one native confirm summarizing selected docs before running', async () => {
+        mountDocManagerItems([
+            { docId: '101', docName: 'Doc One' },
+            { docId: '102', docName: 'Doc Two' },
+        ]);
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        const runSpy = vi.spyOn(DocManager, 'runBulkDelete').mockResolvedValue(undefined);
+
+        DocManager.openBulkDeleteModal();
+        const firstCheckbox = document.querySelector<HTMLInputElement>('#ffne-docmanager-delete-modal input[type="checkbox"]');
+        if (!firstCheckbox) throw new Error('Expected a delete checkbox.');
+        firstCheckbox.checked = true;
+        firstCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+        document.getElementById('ffne-dm-delete-start')?.click();
+        await flushMicrotasks();
+
+        expect(confirmSpy).toHaveBeenCalledTimes(1);
+        expect(confirmSpy.mock.calls[0]?.[0]).toContain('Doc One');
+        expect(confirmSpy.mock.calls[0]?.[0]).not.toContain('Doc Two');
+        expect(runSpy).not.toHaveBeenCalled();
+    });
+});
+
+describe('DocManager bulk delete execution', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        Core.activeDelegate = DocManagerDelegate;
+        vi.restoreAllMocks();
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
+            return 0;
+        });
+    });
+
+    afterEach(() => {
+        DocManager.closeBulkDeleteModal();
+        Core.activeDelegate = null;
+        vi.restoreAllMocks();
+        cleanupDOM();
+    });
+
+    async function runVisibleBulkDelete() {
+        const plan = DocManager._bulkDeletePlan;
+        if (!plan) throw new Error('Expected a bulk delete plan.');
+        const btn = makeBtn();
+        const status = document.createElement('div');
+        const results = document.createElement('div');
+        document.body.append(status, results);
+
+        await DocManager.runBulkDelete(mockEvent(btn), plan, status, results);
+        await flushMicrotasks();
+        return { plan, btn, status, results };
+    }
+
+    it('deletes only selected documents and removes successful rows from the live table', async () => {
+        mountDocManagerItems([
+            { docId: '101', docName: 'Doc One' },
+            { docId: '102', docName: 'Doc Two' },
+        ]);
+        DocManager.openBulkDeleteModal();
+        const plan = DocManager._bulkDeletePlan;
+        if (!plan) throw new Error('Expected a bulk delete plan.');
+        plan.rows[0].selected = true;
+        const deleteSpy = vi.spyOn(DocFetchService, 'deletePrivateDocWithResult').mockResolvedValue({ ok: true });
+
+        const { status } = await runVisibleBulkDelete();
+
+        expect(deleteSpy).toHaveBeenCalledTimes(1);
+        expect(deleteSpy).toHaveBeenCalledWith('101', 'Doc One');
+        expect(document.querySelector('#gui_table1 tbody')?.textContent).not.toContain('Doc One');
+        expect(document.querySelector('#gui_table1 tbody')?.textContent).toContain('Doc Two');
+        expect(plan.rows[0].modalRow?.classList.contains('ffne-dm-row-success')).toBe(true);
+        expect(status.textContent).toBe('Deleted all 1 document(s).');
+    });
+
+    it('surfaces delete failures and retries only failed documents', async () => {
+        mountDocManagerItems([
+            { docId: '101', docName: 'Doc One' },
+            { docId: '102', docName: 'Doc Two' },
+        ]);
+        DocManager.openBulkDeleteModal();
+        const plan = DocManager._bulkDeletePlan;
+        if (!plan) throw new Error('Expected a bulk delete plan.');
+        plan.rows.forEach(row => {
+            row.selected = true;
+            if (row.checkbox) row.checkbox.checked = true;
+        });
+
+        const calls: string[] = [];
+        let docOneAttempts = 0;
+        vi.spyOn(DocFetchService, 'deletePrivateDocWithResult').mockImplementation(async (docId) => {
+            calls.push(docId);
+            if (docId === '101') {
+                docOneAttempts++;
+                if (docOneAttempts <= 2) {
+                    return { ok: false, reason: 'Delete rejected.' };
+                }
+            }
+            return { ok: true };
+        });
+
+        const { results } = await runVisibleBulkDelete();
+
+        expect(calls).toEqual(['101', '102', '101']);
+        expect(results.innerHTML).toContain('Delete rejected.');
+        expect(document.querySelector('#gui_table1 tbody')?.textContent).toContain('Doc One');
+        expect(document.querySelector('#gui_table1 tbody')?.textContent).not.toContain('Doc Two');
+
+        const retryButton = results.querySelector<HTMLButtonElement>('button');
+        expect(retryButton?.textContent).toBe('Retry Failed');
+        retryButton?.click();
+        for (let i = 0; i < 5 && calls.length < 4; i++) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            await flushMicrotasks();
+        }
+
+        expect(calls).toEqual(['101', '102', '101', '101']);
+        expect(document.querySelector('#gui_table1 tbody')?.textContent).not.toContain('Doc One');
+    });
+
+    it('renders formatted auth failure reasons for failed deletes', async () => {
+        mountDocManagerItems([
+            { docId: '101', docName: 'Doc One' },
+        ]);
+        DocManager.openBulkDeleteModal();
+        const plan = DocManager._bulkDeletePlan;
+        if (!plan) throw new Error('Expected a bulk delete plan.');
+        plan.rows[0].selected = true;
+        vi.spyOn(DocFetchService, 'deletePrivateDocWithResult').mockResolvedValue({
+            ok: false,
+            reason: 'Invalid Request: We are unable to authenticate your request.',
+        });
+
+        const { results } = await runVisibleBulkDelete();
+
+        expect(results.innerHTML).toContain('Invalid Request: We are unable to authenticate your request.');
     });
 });
 

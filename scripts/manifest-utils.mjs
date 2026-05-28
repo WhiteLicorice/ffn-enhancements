@@ -37,7 +37,7 @@ export function copyDirRecursive(src, dest) {
 
 export function patchManifest(manifestPath) {
     const target = getBuildTarget();
-    const requestedVersion = process.env.FFNE_VERSION;
+    const requestedVersion = process.env.FFNE_VERSION || getPackageVersion();
 
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 
@@ -73,4 +73,9 @@ function toManifestVersion(version) {
     const build = Number(betaBuild[1]);
     const safeBuild = Number.isFinite(build) ? Math.max(0, Math.min(build, 65535)) : 0;
     return `${core[1]}.${core[2]}.${core[3]}.${safeBuild}`;
+}
+
+function getPackageVersion() {
+    const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    return typeof packageJson.version === 'string' ? packageJson.version : '';
 }
