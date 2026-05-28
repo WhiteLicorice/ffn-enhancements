@@ -1074,6 +1074,24 @@ describe('DocManager bulk delete execution', () => {
         expect(calls).toEqual(['101', '102', '101', '101']);
         expect(document.querySelector('#gui_table1 tbody')?.textContent).not.toContain('Doc One');
     });
+
+    it('renders formatted auth failure reasons for failed deletes', async () => {
+        mountDocManagerItems([
+            { docId: '101', docName: 'Doc One' },
+        ]);
+        DocManager.openBulkDeleteModal();
+        const plan = DocManager._bulkDeletePlan;
+        if (!plan) throw new Error('Expected a bulk delete plan.');
+        plan.rows[0].selected = true;
+        vi.spyOn(DocFetchService, 'deletePrivateDocWithResult').mockResolvedValue({
+            ok: false,
+            reason: 'Invalid Request: We are unable to authenticate your request.',
+        });
+
+        const { results } = await runVisibleBulkDelete();
+
+        expect(results.innerHTML).toContain('Invalid Request: We are unable to authenticate your request.');
+    });
 });
 
 describe('DocManager AO3 migration mapping', () => {

@@ -82,10 +82,24 @@ function getSaveFrame(): HTMLIFrameElement {
     return iframe;
 }
 
-function getDeleteFrame(): HTMLIFrameElement {
-    const iframe = document.querySelector<HTMLIFrameElement>('iframe[name^="ffne_doc_delete_"]');
-    if (!iframe) throw new Error('Expected hidden delete iframe to exist.');
-    return iframe;
+function makeFetchResponse(
+    html: string,
+    options: { status?: number; url?: string } = {},
+): Response {
+    const response = new Response(html, {
+        status: options.status ?? 200,
+        headers: { 'Content-Type': 'text/html' },
+    });
+    Object.defineProperty(response, 'url', {
+        value: options.url ?? 'https://www.fanfiction.net/docs/docs.php',
+        configurable: true,
+    });
+    return response;
+}
+
+async function flushMicrotasks(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
 }
 
 function mockIframeFormSubmit(
@@ -408,7 +422,7 @@ describe('DocFetchService direct save helpers', () => {
 
         await expect(promise).resolves.toEqual({
             ok: false,
-            reason: 'Invalid Request / unable to authenticate.',
+            reason: 'Invalid Request: We are unable to authenticate your request.',
         });
         expect(fetchRequestTextMock).not.toHaveBeenCalled();
         expect(submitSpy).toHaveBeenCalledTimes(1);
@@ -596,106 +610,161 @@ describe('DocFetchService direct save helpers', () => {
         expect(document.querySelector('iframe[name^="ffne_doc_save_"]')).toBeNull();
     });
 
-    it('loads the remove URL in a hidden iframe and succeeds when the docid disappears', async () => {
-        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
-        const iframe = getDeleteFrame();
+    it('deletes with a credentialed same-origin fetch and succeeds when the docid disappears', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            makeFetchResponse(makeDocManagerPage(['456']))
+        );
 
-        expect(iframe.src).toBe(DELETE_URL);
-        expect(iframe.getAttribute('sandbox')).toBe('allow-same-origin');
-        expect(iframe.getAttribute('sandbox')).not.toContain('allow-scripts');
+        await expect(DocFetchService.deletePrivateDocWithResult('123', 'Doc Name')).resolves.toEqual({
+            ok: true,
+            reason: undefined,
+        });
 
-        writeFrameHtml(iframe, makeDocManagerPage(['456']), 'https://www.fanfiction.net/docs/docs.php');
-        iframe.dispatchEvent(new Event('load'));
-
-        await expect(promise).resolves.toEqual({ ok: true, reason: undefined });
+        expect(fetchSpy).toHaveBeenCalledWith(DELETE_URL, {
+            credentials: 'include',
+            redirect: 'follow',
+        });
         expect(fetchRequestTextMock).not.toHaveBeenCalled();
         expect(document.querySelector('iframe[name^="ffne_doc_delete_"]')).toBeNull();
     });
 
     it('fails delete verification when the returned DocManager page still contains the docid', async () => {
-        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
-        const iframe = getDeleteFrame();
-        writeFrameHtml(iframe, makeDocManagerPage(['123', '456']), 'https://www.fanfiction.net/docs/docs.php');
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            makeFetchResponse(makeDocManagerPage(['123', '456']))
+        );
 
-        iframe.dispatchEvent(new Event('load'));
-
-        await expect(promise).resolves.toEqual({
+        await expect(DocFetchService.deletePrivateDocWithResult('123', 'Doc Name')).resolves.toEqual({
             ok: false,
             reason: 'FFN returned a DocManager page that still contains document 123.',
         });
         expect(fetchRequestTextMock).not.toHaveBeenCalled();
     });
 
-    it('fails delete safely on login responses', async () => {
-        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
-        const iframe = getDeleteFrame();
-        writeFrameHtml(iframe, '<body>Please log in to continue.</body>', 'https://www.fanfiction.net/login.php');
+    it('retries formatted invalid-auth delete responses with incremental backoff', async () => {
+        vi.useFakeTimers();
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 3 as never;
+                case 'fetchRetryBaseMs':
+                    return 25 as never;
+                default:
+                    return 0 as never;
+            }
+        });
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => (
+            makeFetchResponse('<div class="panel_error"><b>Invalid Request</b><div>We are unable to authenticate your request.</div></div>')
+        ));
 
-        iframe.dispatchEvent(new Event('load'));
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(25);
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+        await vi.advanceTimersByTimeAsync(50);
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(3);
+
+        await expect(promise).resolves.toEqual({
+            ok: false,
+            reason: 'Invalid Request: We are unable to authenticate your request.',
+        });
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+    });
+
+    it('recovers when a later delete retry returns a confirmed DocManager page', async () => {
+        vi.useFakeTimers();
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 3 as never;
+                case 'fetchRetryBaseMs':
+                    return 25 as never;
+                default:
+                    return 0 as never;
+            }
+        });
+        const fetchSpy = vi.spyOn(globalThis, 'fetch')
+            .mockResolvedValueOnce(makeFetchResponse('<body>Invalid RequestWe are unable to authenticate your request.</body>'))
+            .mockResolvedValueOnce(makeFetchResponse(makeDocManagerPage(['456'])));
+
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(25);
+        await flushMicrotasks();
+
+        await expect(promise).resolves.toEqual({
+            ok: true,
+            reason: undefined,
+        });
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(fetchRequestTextMock).not.toHaveBeenCalled();
+    });
+
+    it('retries login delete responses with incremental backoff', async () => {
+        vi.useFakeTimers();
+        vi.mocked(SettingsManager.get).mockImplementation((key) => {
+            switch (key) {
+                case 'fetchMaxRetries':
+                    return 2 as never;
+                case 'fetchRetryBaseMs':
+                    return 10 as never;
+                default:
+                    return 0 as never;
+            }
+        });
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => (
+            makeFetchResponse('<body>Please log in to continue.</body>', {
+                url: 'https://www.fanfiction.net/login.php',
+            })
+        ));
+
+        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(10);
+        await flushMicrotasks();
 
         await expect(promise).resolves.toEqual({
             ok: false,
             reason: 'FFN returned a login or authorization page.',
         });
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
         expect(fetchRequestTextMock).not.toHaveBeenCalled();
     });
 
-    it('fails delete safely on Cloudflare-like responses', async () => {
-        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
-        const iframe = getDeleteFrame();
-        writeFrameHtml(iframe, '<title>Just a moment...</title><body>Checking your browser before accessing fanfiction.net. Cloudflare</body>');
-
-        iframe.dispatchEvent(new Event('load'));
-
-        const result = await promise;
-        expect(result.ok).toBe(false);
-        expect(result.reason).toContain('delete request was blocked by a Cloudflare challenge');
-        expect(fetchRequestTextMock).not.toHaveBeenCalled();
-    });
-
-    it('fails delete safely when the response iframe is unreadable', async () => {
-        const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
-        const iframe = getDeleteFrame();
-        Object.defineProperty(iframe, 'contentDocument', {
-            configurable: true,
-            get: () => null,
-        });
-
-        iframe.dispatchEvent(new Event('load'));
-
-        await expect(promise).resolves.toEqual({
-            ok: false,
-            reason: 'Hidden delete iframe was not readable.',
-        });
-        expect(fetchRequestTextMock).not.toHaveBeenCalled();
-        expect(document.querySelector('iframe[name^="ffne_doc_delete_"]')).toBeNull();
-    });
-
-    it('cleans up the hidden delete iframe after request timeouts', async () => {
+    it('retries network errors before returning the final delete failure', async () => {
         vi.useFakeTimers();
         vi.mocked(SettingsManager.get).mockImplementation((key) => {
             switch (key) {
                 case 'fetchMaxRetries':
-                    return 1 as never;
+                    return 2 as never;
                 case 'fetchRetryBaseMs':
-                    return 0 as never;
-                case 'iframeLoadTimeoutMs':
                     return 10 as never;
-                case 'iframeSaveTimeoutMs':
-                    return 1000 as never;
                 default:
                     return 0 as never;
             }
         });
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network down'));
 
         const promise = DocFetchService.deletePrivateDocWithResult('123', 'Doc Name');
+        await flushMicrotasks();
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+
         await vi.advanceTimersByTimeAsync(10);
+        await flushMicrotasks();
 
         await expect(promise).resolves.toEqual({
             ok: false,
-            reason: 'Delete request timed out.',
+            reason: 'Delete request failed: Network down',
         });
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
         expect(fetchRequestTextMock).not.toHaveBeenCalled();
-        expect(document.querySelector('iframe[name^="ffne_doc_delete_"]')).toBeNull();
     });
 });
