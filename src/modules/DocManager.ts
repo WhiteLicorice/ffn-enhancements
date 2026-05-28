@@ -1634,7 +1634,7 @@ export const DocManager = {
                 const confirmed = confirm(_getBulkDeleteConfirmMessage(selectedRows));
                 if (!confirmed) return;
 
-                await this.runBulkDelete(e as MouseEvent, plan, statusEl || undefined, resultsEl || undefined);
+                await this.runBulkDelete(e as MouseEvent, plan, statusEl, resultsEl);
                 updateSummary();
             },
         });
@@ -1667,7 +1667,7 @@ export const DocManager = {
                 const selectedRows = _getBulkSelectionSelectedRows(plan);
                 if (selectedRows.length === 0) return;
                 const selectedIds = new Set(selectedRows.map(row => row.item.docId));
-                await this.runBulkExport(e as MouseEvent, plan, statusEl || undefined, resultsEl || undefined, selectedIds);
+                await this.runBulkExport(e as MouseEvent, plan, statusEl, resultsEl, selectedIds);
                 updateSummary();
             },
         });
@@ -1700,7 +1700,7 @@ export const DocManager = {
                 const selectedRows = _getBulkSelectionSelectedRows(plan);
                 if (selectedRows.length === 0) return;
                 const selectedIds = new Set(selectedRows.map(row => row.item.docId));
-                await this.runBulkRefresh(e as MouseEvent, plan, statusEl || undefined, resultsEl || undefined, selectedIds);
+                await this.runBulkRefresh(e as MouseEvent, plan, statusEl, resultsEl, selectedIds);
                 updateSummary();
             },
         });
