@@ -146,23 +146,27 @@ Open **FFN Enhancements Settings** by clicking the phone icon in the FFN site he
 
 ## Installation
 
+### Firefox
+
+Install from the [Firefox Add-ons store](https://addons.mozilla.org/en-US/firefox/addon/ffn-enhancements/). Updates are automatic.
+
+To install manually (advanced):
+
+1. Download `ffn-enhancements-firefox.zip` from the [latest release](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest).
+2. Extract the ZIP somewhere permanent.
+3. Open `about:debugging#/runtime/this-firefox`.
+4. Choose **Load Temporary Add-on** and select `manifest.json` from the extracted folder.
+
+Temporary add-ons are removed when Firefox restarts. The signed AMO build is permanent.
+
 ### Chrome / Edge / Brave
 
-1. Download `ffn-enhancements-chrome.zip` from the latest release.
+There is no Chrome Web Store listing. Google charges a 5 USD registration fee to publish on the store. Unlike Firefox, Chromium browsers allow unpacked debug extensions to persist indefinitely, so a store listing is unnecessary.
+
+1. Download `ffn-enhancements-chrome.zip` from the [latest release](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest).
 2. Extract the ZIP somewhere permanent.
 3. Open `chrome://extensions`, enable **Developer mode**, and choose **Load unpacked**.
 4. Select the extracted extension folder.
-
-### Firefox
-
-1. Download `ffn-enhancements-firefox.zip` from the latest release.
-2. Open `about:debugging#/runtime/this-firefox`.
-3. Choose **Load Temporary Add-on**.
-4. Select `manifest.json` from the extracted extension folder.
-
-Temporary Firefox add-ons are removed when Firefox restarts. Use the signed AMO build once it is published.
-
-All required host permissions (FFN, AO3, FicHub) are declared as required and granted at install. There is no first-click permissions prompt. It just works.
 
 ### First-paint theming
 
