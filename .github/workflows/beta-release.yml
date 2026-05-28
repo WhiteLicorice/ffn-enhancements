@@ -30,7 +30,10 @@ jobs:
         id: version
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
-          BASE_VERSION=$(node -p "require('./package.json').version.split('-')[0]")
+          BASE_VERSION=$(git tag --sort=-v:refname | grep -oP '^v\K[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          if [ -z "$BASE_VERSION" ]; then
+            BASE_VERSION=$(node -p "require('./package.json').version.split('-')[0]")
+          fi
           BETA_VERSION="${BASE_VERSION}-beta.${{ github.run_number }}+${SHORT_SHA}"
           echo "version=${BETA_VERSION}" >> $GITHUB_OUTPUT
 
