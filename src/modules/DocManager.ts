@@ -31,6 +31,8 @@ const ADVANCED_DRAWER_ID = 'ffne-docmanager-advanced-drawer';
 const ADVANCED_MODAL_ID = 'ffne-docmanager-advanced-modal';
 const IMPORT_MODAL_ID = 'ffne-docmanager-import-modal';
 const DELETE_MODAL_ID = 'ffne-docmanager-delete-modal';
+const EXPORT_MODAL_ID = 'ffne-docmanager-export-modal';
+const REFRESH_MODAL_ID = 'ffne-docmanager-refresh-modal';
 const AO3_MODAL_ID = 'ffne-docmanager-ao3-modal';
 const ADVANCED_STYLE_ID = 'ffne-docmanager-advanced-styles';
 type BulkImportFormat = 'markdown' | 'html' | 'docx';
@@ -116,6 +118,20 @@ interface BulkDeletePreviewRow {
 
 interface BulkDeletePlan {
     rows: BulkDeletePreviewRow[];
+}
+
+type BulkSelectionRowStatus = 'idle' | 'running' | 'retrying' | 'success' | 'failed';
+
+interface BulkSelectionPreviewRow {
+    item: IBulkItem;
+    selected: boolean;
+    status: BulkSelectionRowStatus;
+    modalRow: HTMLTableRowElement | null;
+    checkbox: HTMLInputElement | null;
+}
+
+interface BulkSelectionPlan {
+    rows: BulkSelectionPreviewRow[];
 }
 
 interface Ao3MigrationState {
@@ -524,6 +540,73 @@ function _buildBulkDeletePlan(items: IBulkItem[] = _collectBulkItems()): BulkDel
             checkbox: null,
         })),
     };
+}
+
+function _buildBulkSelectionPlan(items: IBulkItem[] = _collectBulkItems()): BulkSelectionPlan {
+    return {
+        rows: items.map(item => ({
+            item,
+            selected: false,
+            status: 'idle',
+            modalRow: null,
+            checkbox: null,
+        })),
+    };
+}
+
+function _getBulkSelectionSelectedRows(plan: BulkSelectionPlan): BulkSelectionPreviewRow[] {
+    return plan.rows.filter(row => row.selected && row.status !== 'success');
+}
+
+function _getBulkSelectionRowStatusLabel(row: BulkSelectionPreviewRow): string {
+    switch (row.status) {
+        case 'idle':
+            return row.selected ? 'Selected' : 'Not selected';
+        case 'running':
+            return 'Running';
+        case 'retrying':
+            return 'Retrying';
+        case 'success':
+            return 'Done';
+        case 'failed':
+            return 'Failed';
+    }
+}
+
+function _renderBulkSelectionRowStatus(row: BulkSelectionPreviewRow): void {
+    if (!row.modalRow) return;
+
+    row.modalRow.classList.remove('ffne-dm-row-running', 'ffne-dm-row-success', 'ffne-dm-row-failed', 'ffne-dm-row-selected');
+    if (row.status === 'running' || row.status === 'retrying') {
+        row.modalRow.classList.add('ffne-dm-row-running');
+    }
+    if (row.status === 'success') {
+        row.modalRow.classList.add('ffne-dm-row-success');
+    }
+    if (row.status === 'failed') {
+        row.modalRow.classList.add('ffne-dm-row-failed');
+    }
+    if (row.selected && row.status === 'idle') {
+        row.modalRow.classList.add('ffne-dm-row-selected');
+    }
+
+    const statusCell = row.modalRow.querySelector<HTMLElement>('[data-ffne-status]');
+    if (!statusCell) return;
+    statusCell.className = row.status === 'idle'
+        ? row.selected ? 'ffne-dm-status-selected' : 'ffne-dm-status-idle'
+        : `ffne-dm-status-${row.status}`;
+    statusCell.textContent = _getBulkSelectionRowStatusLabel(row);
+}
+
+function _formatBulkSelectionNameList(rows: BulkSelectionPreviewRow[], limit: number = 8): string {
+    const names = rows.map(row => row.item.docName);
+    if (names.length === 0) return 'No documents selected.';
+
+    const visible = names.slice(0, limit);
+    const remainder = names.length - visible.length;
+    return remainder > 0
+        ? `${visible.join(', ')}, and ${remainder} more`
+        : visible.join(', ');
 }
 
 function _getBulkDeleteSelectedRows(plan: BulkDeletePlan): BulkDeletePreviewRow[] {
@@ -1018,9 +1101,13 @@ export const DocManager = {
     _advancedEscHandler: null as ((e: KeyboardEvent) => void) | null,
     _importEscHandler: null as ((e: KeyboardEvent) => void) | null,
     _deleteEscHandler: null as ((e: KeyboardEvent) => void) | null,
+    _exportEscHandler: null as ((e: KeyboardEvent) => void) | null,
+    _refreshEscHandler: null as ((e: KeyboardEvent) => void) | null,
     _ao3EscHandler: null as ((e: KeyboardEvent) => void) | null,
     _bulkImportPlan: null as BulkImportPlan | null,
     _bulkDeletePlan: null as BulkDeletePlan | null,
+    _bulkExportPlan: null as BulkSelectionPlan | null,
+    _bulkRefreshPlan: null as BulkSelectionPlan | null,
     _ao3MigrationState: null as Ao3MigrationState | null,
 
     /**
@@ -1154,12 +1241,8 @@ export const DocManager = {
         overlay.id = ADVANCED_MODAL_ID;
         overlay.className = 'ffne-dm-overlay';
         const closeButton = h('button', { type: 'button', class: 'ffne-dm-close', 'aria-label': 'Close' }, '\u00d7');
-        const bulkExportStatus = h('div', { class: 'ffne-dm-routine-status', 'data-ffne-status': 'bulk-export' });
-        const bulkExportResults = h('div', { class: 'ffne-dm-import-results', 'data-ffne-results': 'bulk-export', hidden: true });
-        const bulkRefreshStatus = h('div', { class: 'ffne-dm-routine-status', 'data-ffne-status': 'bulk-refresh' });
-        const bulkRefreshResults = h('div', { class: 'ffne-dm-import-results', 'data-ffne-results': 'bulk-refresh', hidden: true });
-        const bulkExportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-export' }, 'Run');
-        const bulkRefreshButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-refresh' }, 'Run');
+        const bulkExportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-export' }, 'Open');
+        const bulkRefreshButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-refresh' }, 'Open');
         const bulkImportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-import' }, 'Open');
         const bulkDeleteButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-delete' }, 'Open');
         const bulkMigrateButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-migrate-ao3' }, 'Open');
@@ -1176,16 +1259,12 @@ export const DocManager = {
                                 h('span', { class: 'ffne-dm-routine-title' }, 'Bulk Export'),
                                 bulkExportButton,
                             ),
-                            bulkExportStatus,
-                            bulkExportResults,
                         ),
                         h('div', { class: 'ffne-dm-routine' },
                             h('div', { class: 'ffne-dm-routine-header' },
                                 h('span', { class: 'ffne-dm-routine-title' }, 'Bulk Refresh'),
                                 bulkRefreshButton,
                             ),
-                            bulkRefreshStatus,
-                            bulkRefreshResults,
                         ),
                         h('div', { class: 'ffne-dm-routine' },
                             h('div', { class: 'ffne-dm-routine-header' },
@@ -1215,11 +1294,13 @@ export const DocManager = {
         });
 
         closeButton.addEventListener('click', () => this.closeAdvancedRoutinesModal());
-        bulkExportButton.addEventListener('click', (e) => {
-            this.runBulkExport(e as MouseEvent, bulkExportStatus, bulkExportResults);
+        bulkExportButton.addEventListener('click', () => {
+            this.closeAdvancedRoutinesModal();
+            this.openBulkExportModal();
         });
-        bulkRefreshButton.addEventListener('click', (e) => {
-            this.runBulkRefresh(e as MouseEvent, bulkRefreshStatus, bulkRefreshResults);
+        bulkRefreshButton.addEventListener('click', () => {
+            this.closeAdvancedRoutinesModal();
+            this.openBulkRefreshModal();
         });
         bulkImportButton.addEventListener('click', () => {
             this.closeAdvancedRoutinesModal();
@@ -1589,6 +1670,364 @@ export const DocManager = {
         }
 
         this._bulkDeletePlan = null;
+    },
+
+    openBulkExportModal: function () {
+        if (document.getElementById(EXPORT_MODAL_ID)) return;
+
+        this._injectAdvancedStyles();
+        this._bulkExportPlan = _buildBulkSelectionPlan();
+
+        const plan = this._bulkExportPlan;
+        const overlay = markFfneUiRoot(document.createElement('div'));
+        overlay.id = EXPORT_MODAL_ID;
+        overlay.className = 'ffne-dm-overlay';
+        const closeButton = h('button', { type: 'button', class: 'ffne-dm-close', 'aria-label': 'Close' }, '\u00d7');
+        const selectAllButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'select-all-export' }, 'Select All');
+        const clearButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'clear-export' }, 'Select None');
+        const startButton = h('button', { type: 'button', id: 'ffne-dm-export-start', class: 'ffne-dm-btn', disabled: true }, 'Export');
+        const summary = h('div', { id: 'ffne-dm-export-summary', class: 'ffne-dm-summary' });
+        const results = h('div', { id: 'ffne-dm-export-results', class: 'ffne-dm-import-results', hidden: true });
+        const status = h('span', { id: 'ffne-dm-export-status', class: 'ffne-dm-run-status' });
+        const closeExportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'close-export' }, 'Close');
+        const rowsBody = h('tbody');
+
+        let lastClickedIndex: number | null = null;
+
+        const updateSummary = () => {
+            const selectedRows = _getBulkSelectionSelectedRows(plan);
+            startButton.disabled = selectedRows.length === 0;
+            summary.replaceChildren(
+                h('div', null,
+                    h('strong', null, String(selectedRows.length)),
+                    ' selected of ',
+                    h('strong', null, String(plan.rows.filter(row => row.status !== 'success').length)),
+                    ' available document(s).',
+                ),
+                h('div', { class: 'ffne-dm-summary-detail' }, _formatBulkSelectionNameList(selectedRows)),
+            );
+        };
+
+        const setRowSelected = (row: BulkSelectionPreviewRow, selected: boolean) => {
+            if (row.status === 'success') return;
+            row.selected = selected;
+            if (row.checkbox) row.checkbox.checked = selected;
+            if (row.status === 'failed') row.status = 'idle';
+            _renderBulkSelectionRowStatus(row);
+        };
+
+        const renderedRows = plan.rows.length > 0
+            ? plan.rows.map((row, index) => {
+                const checkbox = h('input', {
+                    type: 'checkbox',
+                    'aria-label': `Select ${row.item.docName}`,
+                    'data-ffne-select-index': String(index),
+                });
+                const rowEl = h('tr', { 'data-row-doc-id': row.item.docId },
+                    h('td', null, checkbox),
+                    h('td', null, row.item.docName),
+                    h('td', null, row.item.docId),
+                    h('td', { 'data-ffne-status': true }),
+                );
+                row.checkbox = checkbox;
+                row.modalRow = rowEl;
+                checkbox.addEventListener('change', () => {
+                    setRowSelected(row, checkbox.checked);
+                    lastClickedIndex = index;
+                    updateSummary();
+                });
+                rowEl.addEventListener('click', (e) => {
+                    if ((e.target as HTMLElement).tagName === 'INPUT') return;
+                    if (e.shiftKey && lastClickedIndex !== null) {
+                        const start = Math.min(lastClickedIndex, index);
+                        const end = Math.max(lastClickedIndex, index);
+                        const targetState = !row.selected;
+                        for (let i = start; i <= end; i++) {
+                            setRowSelected(plan.rows[i], targetState);
+                        }
+                    } else {
+                        setRowSelected(row, !row.selected);
+                    }
+                    lastClickedIndex = index;
+                    updateSummary();
+                });
+                _renderBulkSelectionRowStatus(row);
+                return rowEl;
+            })
+            : [h('tr', null, h('td', { colspan: 4 }, 'No DocManager documents found.'))];
+        rowsBody.replaceChildren(...renderedRows);
+
+        overlay.appendChild(
+            h('div', { class: 'ffne-dm-modal ffne-dm-modal-wide', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ffne-dm-export-title' },
+                h('div', { class: 'ffne-dm-modal-header' },
+                    h('h3', { id: 'ffne-dm-export-title' }, 'Bulk Export'),
+                    closeButton,
+                ),
+                h('div', { class: 'ffne-dm-modal-body' },
+                    h('div', { class: 'ffne-dm-import-controls' },
+                        h('div', { class: 'ffne-dm-picker-group' },
+                            selectAllButton,
+                            clearButton,
+                        ),
+                        startButton,
+                    ),
+                    summary,
+                    h('div', { class: 'ffne-dm-preview-scroll' },
+                        h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
+                            h('thead', null,
+                                h('tr', null,
+                                    h('th', null, 'Export'),
+                                    h('th', null, 'Document'),
+                                    h('th', null, 'Doc ID'),
+                                    h('th', null, 'Status'),
+                                ),
+                            ),
+                            rowsBody,
+                        ),
+                    ),
+                    results,
+                    h('div', { class: 'ffne-dm-footer' },
+                        status,
+                        closeExportButton,
+                    ),
+                ),
+            ),
+        );
+
+        selectAllButton.addEventListener('click', () => {
+            plan.rows.forEach(row => setRowSelected(row, true));
+            updateSummary();
+        });
+
+        clearButton.addEventListener('click', () => {
+            plan.rows.forEach(row => setRowSelected(row, false));
+            updateSummary();
+        });
+
+        startButton.addEventListener('click', async (e) => {
+            const selectedRows = _getBulkSelectionSelectedRows(plan);
+            if (selectedRows.length === 0) return;
+            const selectedIds = new Set(selectedRows.map(row => row.item.docId));
+            await this.runBulkExport(e as MouseEvent, status || undefined, results || undefined, selectedIds);
+            for (const row of plan.rows) {
+                if (selectedIds.has(row.item.docId) && row.status !== 'failed') {
+                    row.status = 'success';
+                    row.selected = false;
+                    if (row.checkbox) {
+                        row.checkbox.checked = false;
+                        row.checkbox.disabled = true;
+                    }
+                }
+                _renderBulkSelectionRowStatus(row);
+            }
+            updateSummary();
+        });
+
+        closeButton.addEventListener('click', () => this.closeBulkExportModal());
+        closeExportButton.addEventListener('click', () => this.closeBulkExportModal());
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.closeBulkExportModal();
+        });
+
+        this._exportEscHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') this.closeBulkExportModal();
+        };
+        document.addEventListener('keydown', this._exportEscHandler);
+
+        updateSummary();
+        document.body.appendChild(overlay);
+    },
+
+    closeBulkExportModal: function () {
+        const modal = document.getElementById(EXPORT_MODAL_ID);
+        if (modal) modal.remove();
+
+        if (this._exportEscHandler) {
+            document.removeEventListener('keydown', this._exportEscHandler);
+            this._exportEscHandler = null;
+        }
+
+        this._bulkExportPlan = null;
+    },
+
+    openBulkRefreshModal: function () {
+        if (document.getElementById(REFRESH_MODAL_ID)) return;
+
+        this._injectAdvancedStyles();
+        this._bulkRefreshPlan = _buildBulkSelectionPlan();
+
+        const plan = this._bulkRefreshPlan;
+        const overlay = markFfneUiRoot(document.createElement('div'));
+        overlay.id = REFRESH_MODAL_ID;
+        overlay.className = 'ffne-dm-overlay';
+        const closeButton = h('button', { type: 'button', class: 'ffne-dm-close', 'aria-label': 'Close' }, '\u00d7');
+        const selectAllButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'select-all-refresh' }, 'Select All');
+        const clearButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'clear-refresh' }, 'Select None');
+        const startButton = h('button', { type: 'button', id: 'ffne-dm-refresh-start', class: 'ffne-dm-btn', disabled: true }, 'Refresh');
+        const summary = h('div', { id: 'ffne-dm-refresh-summary', class: 'ffne-dm-summary' });
+        const results = h('div', { id: 'ffne-dm-refresh-results', class: 'ffne-dm-import-results', hidden: true });
+        const status = h('span', { id: 'ffne-dm-refresh-status', class: 'ffne-dm-run-status' });
+        const closeRefreshButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'close-refresh' }, 'Close');
+        const rowsBody = h('tbody');
+
+        let lastClickedIndex: number | null = null;
+
+        const updateSummary = () => {
+            const selectedRows = _getBulkSelectionSelectedRows(plan);
+            startButton.disabled = selectedRows.length === 0;
+            summary.replaceChildren(
+                h('div', null,
+                    h('strong', null, String(selectedRows.length)),
+                    ' selected of ',
+                    h('strong', null, String(plan.rows.filter(row => row.status !== 'success').length)),
+                    ' available document(s).',
+                ),
+                h('div', { class: 'ffne-dm-summary-detail' }, _formatBulkSelectionNameList(selectedRows)),
+            );
+        };
+
+        const setRowSelected = (row: BulkSelectionPreviewRow, selected: boolean) => {
+            if (row.status === 'success') return;
+            row.selected = selected;
+            if (row.checkbox) row.checkbox.checked = selected;
+            if (row.status === 'failed') row.status = 'idle';
+            _renderBulkSelectionRowStatus(row);
+        };
+
+        const renderedRows = plan.rows.length > 0
+            ? plan.rows.map((row, index) => {
+                const checkbox = h('input', {
+                    type: 'checkbox',
+                    'aria-label': `Select ${row.item.docName}`,
+                    'data-ffne-select-index': String(index),
+                });
+                const rowEl = h('tr', { 'data-row-doc-id': row.item.docId },
+                    h('td', null, checkbox),
+                    h('td', null, row.item.docName),
+                    h('td', null, row.item.docId),
+                    h('td', { 'data-ffne-status': true }),
+                );
+                row.checkbox = checkbox;
+                row.modalRow = rowEl;
+                checkbox.addEventListener('change', () => {
+                    setRowSelected(row, checkbox.checked);
+                    lastClickedIndex = index;
+                    updateSummary();
+                });
+                rowEl.addEventListener('click', (e) => {
+                    if ((e.target as HTMLElement).tagName === 'INPUT') return;
+                    if (e.shiftKey && lastClickedIndex !== null) {
+                        const start = Math.min(lastClickedIndex, index);
+                        const end = Math.max(lastClickedIndex, index);
+                        const targetState = !row.selected;
+                        for (let i = start; i <= end; i++) {
+                            setRowSelected(plan.rows[i], targetState);
+                        }
+                    } else {
+                        setRowSelected(row, !row.selected);
+                    }
+                    lastClickedIndex = index;
+                    updateSummary();
+                });
+                _renderBulkSelectionRowStatus(row);
+                return rowEl;
+            })
+            : [h('tr', null, h('td', { colspan: 4 }, 'No DocManager documents found.'))];
+        rowsBody.replaceChildren(...renderedRows);
+
+        overlay.appendChild(
+            h('div', { class: 'ffne-dm-modal ffne-dm-modal-wide', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ffne-dm-refresh-title' },
+                h('div', { class: 'ffne-dm-modal-header' },
+                    h('h3', { id: 'ffne-dm-refresh-title' }, 'Bulk Refresh'),
+                    closeButton,
+                ),
+                h('div', { class: 'ffne-dm-modal-body' },
+                    h('div', { class: 'ffne-dm-import-controls' },
+                        h('div', { class: 'ffne-dm-picker-group' },
+                            selectAllButton,
+                            clearButton,
+                        ),
+                        startButton,
+                    ),
+                    summary,
+                    h('div', { class: 'ffne-dm-preview-scroll' },
+                        h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
+                            h('thead', null,
+                                h('tr', null,
+                                    h('th', null, 'Refresh'),
+                                    h('th', null, 'Document'),
+                                    h('th', null, 'Doc ID'),
+                                    h('th', null, 'Status'),
+                                ),
+                            ),
+                            rowsBody,
+                        ),
+                    ),
+                    results,
+                    h('div', { class: 'ffne-dm-footer' },
+                        status,
+                        closeRefreshButton,
+                    ),
+                ),
+            ),
+        );
+
+        selectAllButton.addEventListener('click', () => {
+            plan.rows.forEach(row => setRowSelected(row, true));
+            updateSummary();
+        });
+
+        clearButton.addEventListener('click', () => {
+            plan.rows.forEach(row => setRowSelected(row, false));
+            updateSummary();
+        });
+
+        startButton.addEventListener('click', async (e) => {
+            const selectedRows = _getBulkSelectionSelectedRows(plan);
+            if (selectedRows.length === 0) return;
+            const selectedIds = new Set(selectedRows.map(row => row.item.docId));
+            await this.runBulkRefresh(e as MouseEvent, status || undefined, results || undefined, selectedIds);
+            for (const row of plan.rows) {
+                if (selectedIds.has(row.item.docId) && row.status !== 'failed') {
+                    row.status = 'success';
+                    row.selected = false;
+                    if (row.checkbox) {
+                        row.checkbox.checked = false;
+                        row.checkbox.disabled = true;
+                    }
+                }
+                _renderBulkSelectionRowStatus(row);
+            }
+            updateSummary();
+        });
+
+        closeButton.addEventListener('click', () => this.closeBulkRefreshModal());
+        closeRefreshButton.addEventListener('click', () => this.closeBulkRefreshModal());
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.closeBulkRefreshModal();
+        });
+
+        this._refreshEscHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') this.closeBulkRefreshModal();
+        };
+        document.addEventListener('keydown', this._refreshEscHandler);
+
+        updateSummary();
+        document.body.appendChild(overlay);
+    },
+
+    closeBulkRefreshModal: function () {
+        const modal = document.getElementById(REFRESH_MODAL_ID);
+        if (modal) modal.remove();
+
+        if (this._refreshEscHandler) {
+            document.removeEventListener('keydown', this._refreshEscHandler);
+            this._refreshEscHandler = null;
+        }
+
+        this._bulkRefreshPlan = null;
     },
 
     openAo3MigrationModal: function () {
@@ -3016,6 +3455,7 @@ export const DocManager = {
     // Exported for tests — verifies button-reference lifecycle in onFinalize callbacks.
     _runBulkOperation,
     _buildBulkDeletePlan,
+    _buildBulkSelectionPlan,
     _buildBulkImportPlan,
     _createAo3MigrationRows,
     _setManualAo3SourceSelection,

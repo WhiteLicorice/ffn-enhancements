@@ -886,16 +886,20 @@ describe('DocManager advanced drawer', () => {
         expect(document.querySelector('[data-ffne-action="bulk-migrate-ao3"]')).not.toBeNull();
     });
 
-    it('routes Bulk Export and Bulk Refresh through existing handlers', () => {
-        const exportSpy = vi.spyOn(DocManager, 'runBulkExport').mockResolvedValue(undefined);
-        const refreshSpy = vi.spyOn(DocManager, 'runBulkRefresh').mockResolvedValue(undefined);
+    it('routes Bulk Export and Bulk Refresh through selection modals', () => {
+        const exportSpy = vi.spyOn(DocManager, 'openBulkExportModal').mockImplementation(() => undefined);
+        const refreshSpy = vi.spyOn(DocManager, 'openBulkRefreshModal').mockImplementation(() => undefined);
 
         DocManager.injectAdvancedDrawer();
         document.querySelector<HTMLButtonElement>('#ffne-docmanager-advanced-drawer button')?.click();
         document.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-export"]')?.click();
-        document.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-refresh"]')?.click();
 
         expect(exportSpy).toHaveBeenCalledTimes(1);
+
+        // Re-open modal since clicking export closes the advanced modal
+        DocManager.openAdvancedRoutinesModal();
+        document.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-refresh"]')?.click();
+
         expect(refreshSpy).toHaveBeenCalledTimes(1);
     });
 

@@ -308,6 +308,15 @@
     background-color: var(--ffne-semantic-error-bg) !important;
 }
 
+.ffne-dm-preview .ffne-dm-row-selected td {
+    background-color: var(--ffne-semantic-selected-bg, rgba(59, 130, 246, 0.08)) !important;
+}
+
+.ffne-dm-preview tr {
+    cursor: pointer;
+    user-select: none;
+}
+
 .ffne-dm-status-matched { color: var(--ffne-semantic-success-text); font-weight: 700; }
 .ffne-dm-status-selected { color: var(--ffne-semantic-warning-text); font-weight: 700; }
 .ffne-dm-status-idle { color: var(--ffne-ui-text-muted); }
