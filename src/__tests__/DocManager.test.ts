@@ -1204,7 +1204,7 @@ describe('DocManager bulk selection modal interactions', () => {
         expect(startButton.disabled).toBe(false);
         expect(summary?.textContent).toContain('Doc A');
         expect(summary?.textContent).toContain('Doc B');
-        expect(summary?.textContent).not.toContain('Shift + Click');
+        expect(summary?.textContent).toContain('Shift + Click');
 
         clearButton.click();
 

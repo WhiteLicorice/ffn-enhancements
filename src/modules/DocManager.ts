@@ -659,11 +659,9 @@ function _openBulkSelectionModal(config: BulkSelectionModalConfig): BulkSelectio
             ),
             h('div', { class: 'ffne-dm-summary-detail' }, _formatBulkSelectionNameList(selectedRows)),
         ];
-        if (selectedRows.length === 0) {
-            summaryChildren.push(
-                h('div', { class: 'ffne-dm-summary-hint' }, '( Use Shift + Click to select a range )'),
-            );
-        }
+        summaryChildren.push(
+            h('div', { class: 'ffne-dm-summary-hint' }, '( Use Shift + Click to select a range )'),
+        );
         summary.replaceChildren(...summaryChildren);
     };
 
