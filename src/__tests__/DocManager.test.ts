@@ -7,6 +7,7 @@ import { DocFetchService } from '../services/DocFetchService';
 import { SettingsManager } from '../modules/SettingsManager';
 import { Core } from '../modules/Core';
 import { DocManagerDelegate } from '../delegates/DocManagerDelegate';
+import { DocDownloadFormat } from '../enums/DocDownloadFormat';
 import { bytesToArrayBuffer, createZip, textToBytes, type ZipFileEntry } from '../utils/zip';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -886,16 +887,20 @@ describe('DocManager advanced drawer', () => {
         expect(document.querySelector('[data-ffne-action="bulk-migrate-ao3"]')).not.toBeNull();
     });
 
-    it('routes Bulk Export and Bulk Refresh through existing handlers', () => {
-        const exportSpy = vi.spyOn(DocManager, 'runBulkExport').mockResolvedValue(undefined);
-        const refreshSpy = vi.spyOn(DocManager, 'runBulkRefresh').mockResolvedValue(undefined);
+    it('routes Bulk Export and Bulk Refresh through selection modals', () => {
+        const exportSpy = vi.spyOn(DocManager, 'openBulkExportModal').mockImplementation(() => undefined);
+        const refreshSpy = vi.spyOn(DocManager, 'openBulkRefreshModal').mockImplementation(() => undefined);
 
         DocManager.injectAdvancedDrawer();
         document.querySelector<HTMLButtonElement>('#ffne-docmanager-advanced-drawer button')?.click();
         document.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-export"]')?.click();
-        document.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-refresh"]')?.click();
 
         expect(exportSpy).toHaveBeenCalledTimes(1);
+
+        // Re-open modal since clicking export closes the advanced modal
+        DocManager.openAdvancedRoutinesModal();
+        document.querySelector<HTMLButtonElement>('[data-ffne-action="bulk-refresh"]')?.click();
+
         expect(refreshSpy).toHaveBeenCalledTimes(1);
     });
 
@@ -932,23 +937,27 @@ describe('DocManager bulk delete modal', () => {
 
         DocManager.openBulkDeleteModal();
 
-        const startButton = document.getElementById('ffne-dm-delete-start') as HTMLButtonElement;
-        const summary = document.getElementById('ffne-dm-delete-summary');
-        const checkboxes = Array.from(document.querySelectorAll<HTMLInputElement>('#ffne-docmanager-delete-modal input[type="checkbox"]'));
+        const modal = document.getElementById('ffne-docmanager-delete-modal')!;
+        const buttons = Array.from(modal.querySelectorAll<HTMLButtonElement>('button.ffne-dm-btn'));
+        const startButton = buttons.find(b => b.textContent === 'Delete')!;
+        const selectAllButton = buttons.find(b => b.textContent === 'Select All')!;
+        const clearButton = buttons.find(b => b.textContent === 'Select None')!;
+        const summary = modal.querySelector('.ffne-dm-summary');
+        const checkboxes = Array.from(modal.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
 
         expect(checkboxes).toHaveLength(2);
         expect(checkboxes.every(checkbox => !checkbox.checked)).toBe(true);
         expect(startButton.disabled).toBe(true);
         expect(summary?.textContent).toContain('0 selected');
 
-        document.getElementById('ffne-dm-delete-select-all')?.click();
+        selectAllButton.click();
 
         expect(checkboxes.every(checkbox => checkbox.checked)).toBe(true);
         expect(startButton.disabled).toBe(false);
         expect(summary?.textContent).toContain('Doc One');
         expect(summary?.textContent).toContain('Doc Two');
 
-        document.getElementById('ffne-dm-delete-clear')?.click();
+        clearButton.click();
 
         expect(checkboxes.every(checkbox => !checkbox.checked)).toBe(true);
         expect(startButton.disabled).toBe(true);
@@ -964,11 +973,13 @@ describe('DocManager bulk delete modal', () => {
         const runSpy = vi.spyOn(DocManager, 'runBulkDelete').mockResolvedValue(undefined);
 
         DocManager.openBulkDeleteModal();
-        const firstCheckbox = document.querySelector<HTMLInputElement>('#ffne-docmanager-delete-modal input[type="checkbox"]');
+        const modal = document.getElementById('ffne-docmanager-delete-modal')!;
+        const firstCheckbox = modal.querySelector<HTMLInputElement>('input[type="checkbox"]');
         if (!firstCheckbox) throw new Error('Expected a delete checkbox.');
-        firstCheckbox.checked = true;
-        firstCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-        document.getElementById('ffne-dm-delete-start')?.click();
+        firstCheckbox.click();
+        const buttons = Array.from(modal.querySelectorAll<HTMLButtonElement>('button.ffne-dm-btn'));
+        const startButton = buttons.find(b => b.textContent === 'Delete')!;
+        startButton.click();
         await flushMicrotasks();
 
         expect(confirmSpy).toHaveBeenCalledTimes(1);
@@ -1091,6 +1102,324 @@ describe('DocManager bulk delete execution', () => {
         const { results } = await runVisibleBulkDelete();
 
         expect(results.innerHTML).toContain('Invalid Request: We are unable to authenticate your request.');
+    });
+});
+
+// ─── Bulk Selection Modal tests ─────────────────────────────────────────────
+
+function mountDocManagerItemsWithLife(items: Array<{ docId: string; docName: string; life?: string }>): void {
+    document.body.innerHTML = `
+        <table id="gui_table1">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Life</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${items.map(({ docId, docName, life }) => `
+                    <tr>
+                        <td><a href="https://www.fanfiction.net/docs/edit.php?docid=${docId}">Edit</a></td>
+                        <td>${docName}</td>
+                        <td>${life ?? '123 days'}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+function getModalHelpers(modalId: string) {
+    const modal = document.getElementById(modalId)!;
+    const buttons = Array.from(modal.querySelectorAll<HTMLButtonElement>('button.ffne-dm-btn'));
+    const startButton = buttons.find(b => !b.textContent?.includes('Select') && !b.textContent?.includes('Close'))!;
+    const selectAllButton = buttons.find(b => b.textContent === 'Select All')!;
+    const clearButton = buttons.find(b => b.textContent === 'Select None')!;
+    const checkboxes = Array.from(modal.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+    const rows = Array.from(modal.querySelectorAll<HTMLTableRowElement>('tbody tr'));
+    const summary = modal.querySelector('.ffne-dm-summary');
+    return { modal, startButton, selectAllButton, clearButton, checkboxes, rows, summary };
+}
+
+describe('DocManager bulk selection modal interactions', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        Core.activeDelegate = DocManagerDelegate;
+        vi.restoreAllMocks();
+    });
+
+    afterEach(() => {
+        DocManager.closeBulkExportModal();
+        DocManager.closeBulkRefreshModal();
+        Core.activeDelegate = null;
+        vi.restoreAllMocks();
+        cleanupDOM();
+    });
+
+    it('Export modal opens with no rows selected and disabled start', () => {
+        mountDocManagerItems([
+            { docId: '201', docName: 'Export A' },
+            { docId: '202', docName: 'Export B' },
+        ]);
+
+        DocManager.openBulkExportModal();
+        const { startButton, checkboxes, summary } = getModalHelpers('ffne-docmanager-export-modal');
+
+        expect(checkboxes).toHaveLength(2);
+        expect(checkboxes.every(cb => !cb.checked)).toBe(true);
+        expect(startButton.disabled).toBe(true);
+        expect(summary?.textContent).toContain('0 selected');
+        expect(summary?.textContent).toContain('( Use Shift + Click to select a range )');
+    });
+
+    it('Refresh modal opens with no rows selected and disabled start', () => {
+        mountDocManagerItems([
+            { docId: '301', docName: 'Refresh A' },
+        ]);
+
+        DocManager.openBulkRefreshModal();
+        const { startButton, checkboxes, summary } = getModalHelpers('ffne-docmanager-refresh-modal');
+
+        expect(checkboxes).toHaveLength(1);
+        expect(checkboxes[0].checked).toBe(false);
+        expect(startButton.disabled).toBe(true);
+        expect(summary?.textContent).toContain('0 selected');
+        expect(summary?.textContent).toContain('( Use Shift + Click to select a range )');
+    });
+
+    it('Select All and Select None update checkboxes, row highlighting, and summary', () => {
+        mountDocManagerItems([
+            { docId: '201', docName: 'Doc A' },
+            { docId: '202', docName: 'Doc B' },
+        ]);
+
+        DocManager.openBulkExportModal();
+        const { selectAllButton, clearButton, checkboxes, rows, summary, startButton } = getModalHelpers('ffne-docmanager-export-modal');
+
+        selectAllButton.click();
+
+        expect(checkboxes.every(cb => cb.checked)).toBe(true);
+        expect(rows.every(r => r.classList.contains('ffne-dm-row-selected'))).toBe(true);
+        expect(startButton.disabled).toBe(false);
+        expect(summary?.textContent).toContain('Doc A');
+        expect(summary?.textContent).toContain('Doc B');
+        expect(summary?.textContent).toContain('Shift + Click');
+
+        clearButton.click();
+
+        expect(checkboxes.every(cb => !cb.checked)).toBe(true);
+        expect(rows.every(r => !r.classList.contains('ffne-dm-row-selected'))).toBe(true);
+        expect(startButton.disabled).toBe(true);
+        expect(summary?.textContent).toContain('( Use Shift + Click to select a range )');
+    });
+
+    it('clears stored plan state when a selection modal is closed from its own controls', () => {
+        mountDocManagerItems([
+            { docId: '201', docName: 'Doc A' },
+        ]);
+
+        DocManager.openBulkExportModal();
+        expect(DocManager._bulkExportPlan).not.toBeNull();
+
+        const modal = document.getElementById('ffne-docmanager-export-modal');
+        const closeButton = Array.from(modal?.querySelectorAll<HTMLButtonElement>('button.ffne-dm-btn') || [])
+            .find(button => button.textContent === 'Close');
+        closeButton?.click();
+
+        expect(document.getElementById('ffne-docmanager-export-modal')).toBeNull();
+        expect(DocManager._bulkExportPlan).toBeNull();
+        expect(DocManager._exportEscHandler).toBeNull();
+    });
+
+    it('checkbox Shift-click selects the full range', () => {
+        mountDocManagerItems([
+            { docId: '201', docName: 'Doc A' },
+            { docId: '202', docName: 'Doc B' },
+            { docId: '203', docName: 'Doc C' },
+            { docId: '204', docName: 'Doc D' },
+        ]);
+
+        DocManager.openBulkExportModal();
+        const { checkboxes } = getModalHelpers('ffne-docmanager-export-modal');
+
+        // Click first checkbox normally
+        checkboxes[0].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: false }));
+        expect(checkboxes[0].checked).toBe(true);
+        expect(checkboxes[1].checked).toBe(false);
+        expect(checkboxes[2].checked).toBe(false);
+        expect(checkboxes[3].checked).toBe(false);
+
+        // Shift-click the third checkbox
+        checkboxes[2].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+        expect(checkboxes[0].checked).toBe(true);
+        expect(checkboxes[1].checked).toBe(true);
+        expect(checkboxes[2].checked).toBe(true);
+        expect(checkboxes[3].checked).toBe(false);
+    });
+
+    it('row-background Shift-click selects the full range', () => {
+        mountDocManagerItems([
+            { docId: '201', docName: 'Doc A' },
+            { docId: '202', docName: 'Doc B' },
+            { docId: '203', docName: 'Doc C' },
+            { docId: '204', docName: 'Doc D' },
+        ]);
+
+        DocManager.openBulkExportModal();
+        const { checkboxes, rows } = getModalHelpers('ffne-docmanager-export-modal');
+
+        // Click first row normally
+        rows[0].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: false }));
+        expect(checkboxes[0].checked).toBe(true);
+        expect(checkboxes[1].checked).toBe(false);
+
+        // Shift-click the fourth row
+        rows[3].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+        expect(checkboxes[0].checked).toBe(true);
+        expect(checkboxes[1].checked).toBe(true);
+        expect(checkboxes[2].checked).toBe(true);
+        expect(checkboxes[3].checked).toBe(true);
+    });
+
+    it('Shift-click can clear a selected range when target state is unchecked', () => {
+        mountDocManagerItems([
+            { docId: '201', docName: 'Doc A' },
+            { docId: '202', docName: 'Doc B' },
+            { docId: '203', docName: 'Doc C' },
+        ]);
+
+        DocManager.openBulkExportModal();
+        const { selectAllButton, checkboxes, rows } = getModalHelpers('ffne-docmanager-export-modal');
+
+        selectAllButton.click();
+        expect(checkboxes.every(cb => cb.checked)).toBe(true);
+
+        // Click row 0 to deselect it (sets anchor)
+        rows[0].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: false }));
+        expect(checkboxes[0].checked).toBe(false);
+
+        // Shift-click row 2 to deselect range 0..2
+        rows[2].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+        expect(checkboxes[0].checked).toBe(false);
+        expect(checkboxes[1].checked).toBe(false);
+        expect(checkboxes[2].checked).toBe(false);
+    });
+});
+
+describe('DocManager bulk export execution', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        Core.activeDelegate = DocManagerDelegate;
+        vi.restoreAllMocks();
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'docDownloadFormat') return DocDownloadFormat.MARKDOWN;
+            if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
+            return 0;
+        });
+    });
+
+    afterEach(() => {
+        DocManager.closeBulkExportModal();
+        Core.activeDelegate = null;
+        vi.restoreAllMocks();
+        cleanupDOM();
+    });
+
+    it('drives modal row status from callbacks and marks failed rows as failed', async () => {
+        mountDocManagerItems([
+            { docId: '201', docName: 'Doc Success' },
+            { docId: '202', docName: 'Doc Fail' },
+        ]);
+
+        vi.spyOn(DocFetchService, 'fetchAndConvertPrivateDoc').mockImplementation(async (docId) => {
+            if (docId === '201') return '# content';
+            return null;
+        });
+
+        DocManager.openBulkExportModal();
+        const modal = document.getElementById('ffne-docmanager-export-modal')!;
+        const buttons = Array.from(modal.querySelectorAll<HTMLButtonElement>('button.ffne-dm-btn'));
+        const selectAllButton = buttons.find(b => b.textContent === 'Select All')!;
+        const startButton = buttons.find(b => b.textContent === 'Export')!;
+
+        selectAllButton.click();
+        startButton.click();
+        await flushMicrotasks();
+        await new Promise(r => setTimeout(r, 50));
+
+        const plan = DocManager._bulkExportPlan!;
+        const successRow = plan.rows.find(r => r.item.docId === '201');
+        const failedRow = plan.rows.find(r => r.item.docId === '202');
+        expect(successRow?.status).toBe('success');
+        expect(failedRow?.status).toBe('failed');
+    });
+});
+
+describe('DocManager bulk refresh execution', () => {
+    beforeEach(() => {
+        cleanupDOM();
+        Core.activeDelegate = DocManagerDelegate;
+        vi.restoreAllMocks();
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key: any) => {
+            if (key === 'bulkExportDelayMs' || key === 'bulkCooldownMs' || key === 'bulkRetryDelayMs') return 0;
+            return 0;
+        });
+    });
+
+    afterEach(() => {
+        DocManager.closeBulkRefreshModal();
+        DocManager._lifeColIdx = null;
+        Core.activeDelegate = null;
+        vi.restoreAllMocks();
+        cleanupDOM();
+    });
+
+    it('filters out selected 365-day rows and does not call refreshPrivateDoc for them', async () => {
+        mountDocManagerItemsWithLife([
+            { docId: '301', docName: 'Needs Refresh', life: '123 days' },
+            { docId: '302', docName: 'Already Fresh', life: '365 days' },
+        ]);
+
+        const refreshSpy = vi.spyOn(DocFetchService, 'refreshPrivateDoc').mockResolvedValue(true);
+
+        DocManager.openBulkRefreshModal();
+        const modal = document.getElementById('ffne-docmanager-refresh-modal')!;
+        const buttons = Array.from(modal.querySelectorAll<HTMLButtonElement>('button.ffne-dm-btn'));
+        const selectAllButton = buttons.find(b => b.textContent === 'Select All')!;
+        const startButton = buttons.find(b => b.textContent === 'Refresh')!;
+
+        selectAllButton.click();
+        startButton.click();
+        await flushMicrotasks();
+        await new Promise(r => setTimeout(r, 50));
+
+        expect(refreshSpy).toHaveBeenCalledTimes(1);
+        expect(refreshSpy).toHaveBeenCalledWith('301', 'Needs Refresh');
+    });
+
+    it('all-skipped selection produces no-op status and no network calls', async () => {
+        mountDocManagerItemsWithLife([
+            { docId: '301', docName: 'Already Fresh A', life: '365 days' },
+            { docId: '302', docName: 'Already Fresh B', life: '365 days' },
+        ]);
+
+        const refreshSpy = vi.spyOn(DocFetchService, 'refreshPrivateDoc').mockResolvedValue(true);
+
+        DocManager.openBulkRefreshModal();
+        const modal = document.getElementById('ffne-docmanager-refresh-modal')!;
+        const buttons = Array.from(modal.querySelectorAll<HTMLButtonElement>('button.ffne-dm-btn'));
+        const selectAllButton = buttons.find(b => b.textContent === 'Select All')!;
+        const startButton = buttons.find(b => b.textContent === 'Refresh')!;
+        const status = modal.querySelector('.ffne-dm-run-status');
+
+        selectAllButton.click();
+        startButton.click();
+        await flushMicrotasks();
+        await new Promise(r => setTimeout(r, 50));
+
+        expect(refreshSpy).not.toHaveBeenCalled();
+        expect(status?.textContent).toContain('365 days');
     });
 });
 

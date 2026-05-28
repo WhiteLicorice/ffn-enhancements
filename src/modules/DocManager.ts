@@ -31,6 +31,8 @@ const ADVANCED_DRAWER_ID = 'ffne-docmanager-advanced-drawer';
 const ADVANCED_MODAL_ID = 'ffne-docmanager-advanced-modal';
 const IMPORT_MODAL_ID = 'ffne-docmanager-import-modal';
 const DELETE_MODAL_ID = 'ffne-docmanager-delete-modal';
+const EXPORT_MODAL_ID = 'ffne-docmanager-export-modal';
+const REFRESH_MODAL_ID = 'ffne-docmanager-refresh-modal';
 const AO3_MODAL_ID = 'ffne-docmanager-ao3-modal';
 const ADVANCED_STYLE_ID = 'ffne-docmanager-advanced-styles';
 type BulkImportFormat = 'markdown' | 'html' | 'docx';
@@ -69,8 +71,6 @@ const SUPPORTED_BULK_IMPORT_EXTENSIONS = new Set(
 );
 
 type BulkImportRowStatus = 'matched' | 'missing' | 'duplicate' | 'running' | 'retrying' | 'success' | 'failed';
-type BulkDeleteRowStatus = 'idle' | 'running' | 'retrying' | 'success' | 'failed';
-
 interface BulkImportPreviewRow {
     docId: string;
     docName: string;
@@ -106,16 +106,18 @@ interface BulkSimpleFailure {
     reason: string;
 }
 
-interface BulkDeletePreviewRow {
+type BulkSelectionRowStatus = 'idle' | 'running' | 'retrying' | 'success' | 'failed';
+
+interface BulkSelectionPreviewRow {
     item: IBulkItem;
     selected: boolean;
-    status: BulkDeleteRowStatus;
+    status: BulkSelectionRowStatus;
     modalRow: HTMLTableRowElement | null;
     checkbox: HTMLInputElement | null;
 }
 
-interface BulkDeletePlan {
-    rows: BulkDeletePreviewRow[];
+interface BulkSelectionPlan {
+    rows: BulkSelectionPreviewRow[];
 }
 
 interface Ao3MigrationState {
@@ -514,7 +516,7 @@ function _renderBulkFailures(
     container.replaceChildren(...children);
 }
 
-function _buildBulkDeletePlan(items: IBulkItem[] = _collectBulkItems()): BulkDeletePlan {
+function _buildBulkSelectionPlan(items: IBulkItem[] = _collectBulkItems()): BulkSelectionPlan {
     return {
         rows: items.map(item => ({
             item,
@@ -526,11 +528,51 @@ function _buildBulkDeletePlan(items: IBulkItem[] = _collectBulkItems()): BulkDel
     };
 }
 
-function _getBulkDeleteSelectedRows(plan: BulkDeletePlan): BulkDeletePreviewRow[] {
+function _getBulkSelectionSelectedRows(plan: BulkSelectionPlan): BulkSelectionPreviewRow[] {
     return plan.rows.filter(row => row.selected && row.status !== 'success');
 }
 
-function _formatBulkDeleteNameList(rows: BulkDeletePreviewRow[], limit: number = 8): string {
+function _getBulkSelectionRowStatusLabel(row: BulkSelectionPreviewRow): string {
+    switch (row.status) {
+        case 'idle':
+            return row.selected ? 'Selected' : 'Not selected';
+        case 'running':
+            return 'Running';
+        case 'retrying':
+            return 'Retrying';
+        case 'success':
+            return 'Done';
+        case 'failed':
+            return 'Failed';
+    }
+}
+
+function _renderBulkSelectionRowStatus(row: BulkSelectionPreviewRow): void {
+    if (!row.modalRow) return;
+
+    row.modalRow.classList.remove('ffne-dm-row-running', 'ffne-dm-row-success', 'ffne-dm-row-failed', 'ffne-dm-row-selected');
+    if (row.status === 'running' || row.status === 'retrying') {
+        row.modalRow.classList.add('ffne-dm-row-running');
+    }
+    if (row.status === 'success') {
+        row.modalRow.classList.add('ffne-dm-row-success');
+    }
+    if (row.status === 'failed') {
+        row.modalRow.classList.add('ffne-dm-row-failed');
+    }
+    if (row.selected && row.status === 'idle') {
+        row.modalRow.classList.add('ffne-dm-row-selected');
+    }
+
+    const statusCell = row.modalRow.querySelector<HTMLElement>('[data-ffne-status]');
+    if (!statusCell) return;
+    statusCell.className = row.status === 'idle'
+        ? row.selected ? 'ffne-dm-status-selected' : 'ffne-dm-status-idle'
+        : `ffne-dm-status-${row.status}`;
+    statusCell.textContent = _getBulkSelectionRowStatusLabel(row);
+}
+
+function _formatBulkSelectionNameList(rows: BulkSelectionPreviewRow[], limit: number = 8): string {
     const names = rows.map(row => row.item.docName);
     if (names.length === 0) return 'No documents selected.';
 
@@ -541,7 +583,7 @@ function _formatBulkDeleteNameList(rows: BulkDeletePreviewRow[], limit: number =
         : visible.join(', ');
 }
 
-function _getBulkDeleteConfirmMessage(rows: BulkDeletePreviewRow[]): string {
+function _getBulkDeleteConfirmMessage(rows: BulkSelectionPreviewRow[]): string {
     const names = rows.slice(0, 12).map(row => `- ${row.item.docName}`).join('\n');
     const remainder = rows.length > 12 ? `\n- and ${rows.length - 12} more` : '';
     return (
@@ -551,46 +593,9 @@ function _getBulkDeleteConfirmMessage(rows: BulkDeletePreviewRow[]): string {
     );
 }
 
-function _getBulkDeleteRowStatusLabel(row: BulkDeletePreviewRow): string {
-    switch (row.status) {
-        case 'idle':
-            return row.selected ? 'Selected' : 'Not selected';
-        case 'running':
-            return 'Deleting';
-        case 'retrying':
-            return 'Retrying';
-        case 'success':
-            return 'Deleted';
-        case 'failed':
-            return 'Failed';
-    }
-}
-
-function _renderBulkDeleteRowStatus(row: BulkDeletePreviewRow): void {
-    if (!row.modalRow) return;
-
-    row.modalRow.classList.remove('ffne-dm-row-running', 'ffne-dm-row-success', 'ffne-dm-row-failed');
-    if (row.status === 'running' || row.status === 'retrying') {
-        row.modalRow.classList.add('ffne-dm-row-running');
-    }
-    if (row.status === 'success') {
-        row.modalRow.classList.add('ffne-dm-row-success');
-    }
-    if (row.status === 'failed') {
-        row.modalRow.classList.add('ffne-dm-row-failed');
-    }
-
-    const statusCell = row.modalRow.querySelector<HTMLElement>('[data-ffne-status]');
-    if (!statusCell) return;
-    statusCell.className = row.status === 'idle'
-        ? row.selected ? 'ffne-dm-status-selected' : 'ffne-dm-status-idle'
-        : `ffne-dm-status-${row.status}`;
-    statusCell.textContent = _getBulkDeleteRowStatusLabel(row);
-}
-
-function _setBulkDeleteRowStatus(
-    row: BulkDeletePreviewRow,
-    status: Extract<BulkDeleteRowStatus, 'running' | 'retrying' | 'success' | 'failed'>,
+function _setBulkSelectionRowStatus(
+    row: BulkSelectionPreviewRow,
+    status: Extract<BulkSelectionRowStatus, 'running' | 'retrying' | 'success' | 'failed'>,
 ): void {
     row.status = status;
     if (status === 'success') {
@@ -600,7 +605,195 @@ function _setBulkDeleteRowStatus(
             row.checkbox.disabled = true;
         }
     }
-    _renderBulkDeleteRowStatus(row);
+    _renderBulkSelectionRowStatus(row);
+}
+
+interface BulkSelectionModalConfig {
+    modalId: string;
+    title: string;
+    actionLabel: string;
+    checkboxColumnLabel: string;
+    warningOnSelect?: boolean;
+    onStart: (e: MouseEvent, plan: BulkSelectionPlan, statusEl: HTMLElement, resultsEl: HTMLElement, updateSummary: () => void) => Promise<void>;
+    onClose?: () => void;
+}
+
+interface BulkSelectionModalResult {
+    overlay: HTMLElement;
+    plan: BulkSelectionPlan;
+    escHandler: (e: KeyboardEvent) => void;
+    close: () => void;
+}
+
+function _openBulkSelectionModal(config: BulkSelectionModalConfig): BulkSelectionModalResult {
+    const plan = _buildBulkSelectionPlan();
+    const overlay = markFfneUiRoot(document.createElement('div'));
+    overlay.id = config.modalId;
+    overlay.className = 'ffne-dm-overlay';
+    const closeButton = h('button', { type: 'button', class: 'ffne-dm-close', 'aria-label': 'Close' }, '\u00d7');
+    const selectAllButton = h('button', { type: 'button', class: 'ffne-dm-btn' }, 'Select All');
+    const clearButton = h('button', { type: 'button', class: 'ffne-dm-btn' }, 'Select None');
+    const startButton = h('button', { type: 'button', class: 'ffne-dm-btn', disabled: true }, config.actionLabel);
+    const summary = h('div', { class: 'ffne-dm-summary' });
+    const results = h('div', { class: 'ffne-dm-import-results', hidden: true });
+    const status = h('span', { class: 'ffne-dm-run-status' });
+    const closeActionButton = h('button', { type: 'button', class: 'ffne-dm-btn' }, 'Close');
+    const rowsBody = h('tbody');
+
+    let lastClickedIndex: number | null = null;
+
+    const updateSummary = () => {
+        const selectedRows = _getBulkSelectionSelectedRows(plan);
+        startButton.disabled = selectedRows.length === 0;
+        if (config.warningOnSelect) {
+            summary.className = selectedRows.length > 0
+                ? 'ffne-dm-summary ffne-dm-warning'
+                : 'ffne-dm-summary';
+        }
+        const summaryChildren: Array<string | Node> = [
+            h('div', null,
+                h('strong', null, String(selectedRows.length)),
+                ' selected of ',
+                h('strong', null, String(plan.rows.filter(row => row.status !== 'success').length)),
+                ' available document(s).',
+            ),
+            h('div', { class: 'ffne-dm-summary-detail' }, _formatBulkSelectionNameList(selectedRows)),
+        ];
+        summaryChildren.push(
+            h('div', { class: 'ffne-dm-summary-hint' }, '( Use Shift + Click to select a range )'),
+        );
+        summary.replaceChildren(...summaryChildren);
+    };
+
+    const setRowSelected = (row: BulkSelectionPreviewRow, selected: boolean) => {
+        if (row.status === 'success') return;
+        row.selected = selected;
+        if (row.checkbox) row.checkbox.checked = selected;
+        if (row.status === 'failed') row.status = 'idle';
+        _renderBulkSelectionRowStatus(row);
+    };
+
+    const applySelectionInteraction = (index: number, desiredState: boolean, shiftKey: boolean) => {
+        if (shiftKey && lastClickedIndex !== null) {
+            const start = Math.min(lastClickedIndex, index);
+            const end = Math.max(lastClickedIndex, index);
+            for (let i = start; i <= end; i++) {
+                setRowSelected(plan.rows[i], desiredState);
+            }
+        } else {
+            setRowSelected(plan.rows[index], desiredState);
+        }
+        lastClickedIndex = index;
+        updateSummary();
+    };
+
+    const renderedRows = plan.rows.length > 0
+        ? plan.rows.map((row, index) => {
+            const checkbox = h('input', {
+                type: 'checkbox',
+                'aria-label': `Select ${row.item.docName}`,
+            });
+            const rowEl = h('tr', { 'data-row-doc-id': row.item.docId },
+                h('td', null, checkbox),
+                h('td', null, row.item.docName),
+                h('td', null, row.item.docId),
+                h('td', { 'data-ffne-status': true }),
+            );
+            row.checkbox = checkbox;
+            row.modalRow = rowEl;
+            checkbox.addEventListener('click', (e) => {
+                e.stopPropagation();
+                applySelectionInteraction(index, checkbox.checked, e.shiftKey);
+            });
+            rowEl.addEventListener('click', (e) => {
+                if ((e.target as HTMLElement).tagName === 'INPUT') return;
+                applySelectionInteraction(index, !row.selected, e.shiftKey);
+            });
+            _renderBulkSelectionRowStatus(row);
+            return rowEl;
+        })
+        : [h('tr', null, h('td', { colspan: 4 }, 'No DocManager documents found.'))];
+    rowsBody.replaceChildren(...renderedRows);
+
+    const titleId = `ffne-dm-${config.modalId}-title`;
+    overlay.appendChild(
+        h('div', { class: 'ffne-dm-modal ffne-dm-modal-wide', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId },
+            h('div', { class: 'ffne-dm-modal-header' },
+                h('h3', { id: titleId }, config.title),
+                closeButton,
+            ),
+            h('div', { class: 'ffne-dm-modal-body' },
+                h('div', { class: 'ffne-dm-import-controls' },
+                    h('div', { class: 'ffne-dm-picker-group' },
+                        selectAllButton,
+                        clearButton,
+                    ),
+                    startButton,
+                ),
+                summary,
+                h('div', { class: 'ffne-dm-preview-scroll' },
+                    h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
+                        h('thead', null,
+                            h('tr', null,
+                                h('th', null, config.checkboxColumnLabel),
+                                h('th', null, 'Document'),
+                                h('th', null, 'Doc ID'),
+                                h('th', null, 'Status'),
+                            ),
+                        ),
+                        rowsBody,
+                    ),
+                ),
+                results,
+                h('div', { class: 'ffne-dm-footer' },
+                    status,
+                    closeActionButton,
+                ),
+            ),
+        ),
+    );
+
+    selectAllButton.addEventListener('click', () => {
+        plan.rows.forEach(row => setRowSelected(row, true));
+        updateSummary();
+    });
+
+    clearButton.addEventListener('click', () => {
+        plan.rows.forEach(row => setRowSelected(row, false));
+        updateSummary();
+    });
+
+    startButton.addEventListener('click', async (e) => {
+        await config.onStart(e as MouseEvent, plan, status, results, updateSummary);
+        updateSummary();
+    });
+
+    let closed = false;
+    const close = () => {
+        if (closed) return;
+        closed = true;
+        const modal = document.getElementById(config.modalId);
+        if (modal) modal.remove();
+        document.removeEventListener('keydown', escHandler);
+        config.onClose?.();
+    };
+
+    closeButton.addEventListener('click', close);
+    closeActionButton.addEventListener('click', close);
+
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close();
+    });
+
+    const escHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') close();
+    };
+    document.addEventListener('keydown', escHandler);
+
+    updateSummary();
+    document.body.appendChild(overlay);
+
+    return { overlay, plan, escHandler, close };
 }
 
 function _buildBulkImportPlan(
@@ -1018,9 +1211,13 @@ export const DocManager = {
     _advancedEscHandler: null as ((e: KeyboardEvent) => void) | null,
     _importEscHandler: null as ((e: KeyboardEvent) => void) | null,
     _deleteEscHandler: null as ((e: KeyboardEvent) => void) | null,
+    _exportEscHandler: null as ((e: KeyboardEvent) => void) | null,
+    _refreshEscHandler: null as ((e: KeyboardEvent) => void) | null,
     _ao3EscHandler: null as ((e: KeyboardEvent) => void) | null,
     _bulkImportPlan: null as BulkImportPlan | null,
-    _bulkDeletePlan: null as BulkDeletePlan | null,
+    _bulkDeletePlan: null as BulkSelectionPlan | null,
+    _bulkExportPlan: null as BulkSelectionPlan | null,
+    _bulkRefreshPlan: null as BulkSelectionPlan | null,
     _ao3MigrationState: null as Ao3MigrationState | null,
 
     /**
@@ -1154,12 +1351,8 @@ export const DocManager = {
         overlay.id = ADVANCED_MODAL_ID;
         overlay.className = 'ffne-dm-overlay';
         const closeButton = h('button', { type: 'button', class: 'ffne-dm-close', 'aria-label': 'Close' }, '\u00d7');
-        const bulkExportStatus = h('div', { class: 'ffne-dm-routine-status', 'data-ffne-status': 'bulk-export' });
-        const bulkExportResults = h('div', { class: 'ffne-dm-import-results', 'data-ffne-results': 'bulk-export', hidden: true });
-        const bulkRefreshStatus = h('div', { class: 'ffne-dm-routine-status', 'data-ffne-status': 'bulk-refresh' });
-        const bulkRefreshResults = h('div', { class: 'ffne-dm-import-results', 'data-ffne-results': 'bulk-refresh', hidden: true });
-        const bulkExportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-export' }, 'Run');
-        const bulkRefreshButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-refresh' }, 'Run');
+        const bulkExportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-export' }, 'Open');
+        const bulkRefreshButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-refresh' }, 'Open');
         const bulkImportButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-import' }, 'Open');
         const bulkDeleteButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-delete' }, 'Open');
         const bulkMigrateButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'bulk-migrate-ao3' }, 'Open');
@@ -1176,16 +1369,12 @@ export const DocManager = {
                                 h('span', { class: 'ffne-dm-routine-title' }, 'Bulk Export'),
                                 bulkExportButton,
                             ),
-                            bulkExportStatus,
-                            bulkExportResults,
                         ),
                         h('div', { class: 'ffne-dm-routine' },
                             h('div', { class: 'ffne-dm-routine-header' },
                                 h('span', { class: 'ffne-dm-routine-title' }, 'Bulk Refresh'),
                                 bulkRefreshButton,
                             ),
-                            bulkRefreshStatus,
-                            bulkRefreshResults,
                         ),
                         h('div', { class: 'ffne-dm-routine' },
                             h('div', { class: 'ffne-dm-routine-header' },
@@ -1215,11 +1404,13 @@ export const DocManager = {
         });
 
         closeButton.addEventListener('click', () => this.closeAdvancedRoutinesModal());
-        bulkExportButton.addEventListener('click', (e) => {
-            this.runBulkExport(e as MouseEvent, bulkExportStatus, bulkExportResults);
+        bulkExportButton.addEventListener('click', () => {
+            this.closeAdvancedRoutinesModal();
+            this.openBulkExportModal();
         });
-        bulkRefreshButton.addEventListener('click', (e) => {
-            this.runBulkRefresh(e as MouseEvent, bulkRefreshStatus, bulkRefreshResults);
+        bulkRefreshButton.addEventListener('click', () => {
+            this.closeAdvancedRoutinesModal();
+            this.openBulkRefreshModal();
         });
         bulkImportButton.addEventListener('click', () => {
             this.closeAdvancedRoutinesModal();
@@ -1439,144 +1630,29 @@ export const DocManager = {
         if (document.getElementById(DELETE_MODAL_ID)) return;
 
         this._injectAdvancedStyles();
-        this._bulkDeletePlan = _buildBulkDeletePlan();
+        const { plan, escHandler } = _openBulkSelectionModal({
+            modalId: DELETE_MODAL_ID,
+            title: 'Bulk Delete',
+            actionLabel: 'Delete',
+            checkboxColumnLabel: 'Delete',
+            warningOnSelect: true,
+            onStart: async (e, plan, statusEl, resultsEl, updateSummary) => {
+                const selectedRows = _getBulkSelectionSelectedRows(plan);
+                if (selectedRows.length === 0) return;
 
-        const plan = this._bulkDeletePlan;
-        const overlay = markFfneUiRoot(document.createElement('div'));
-        overlay.id = DELETE_MODAL_ID;
-        overlay.className = 'ffne-dm-overlay';
-        const closeButton = h('button', { type: 'button', class: 'ffne-dm-close', 'aria-label': 'Close' }, '\u00d7');
-        const selectAllButton = h('button', { type: 'button', id: 'ffne-dm-delete-select-all', class: 'ffne-dm-btn', 'data-ffne-action': 'select-all-delete' }, 'Select All');
-        const clearButton = h('button', { type: 'button', id: 'ffne-dm-delete-clear', class: 'ffne-dm-btn', 'data-ffne-action': 'clear-delete' }, 'Clear');
-        const startButton = h('button', { type: 'button', id: 'ffne-dm-delete-start', class: 'ffne-dm-btn', disabled: true }, 'Delete');
-        const summary = h('div', { id: 'ffne-dm-delete-summary', class: 'ffne-dm-summary' });
-        const results = h('div', { id: 'ffne-dm-delete-results', class: 'ffne-dm-import-results', hidden: true });
-        const status = h('span', { id: 'ffne-dm-delete-status', class: 'ffne-dm-run-status' });
-        const closeDeleteButton = h('button', { type: 'button', class: 'ffne-dm-btn', 'data-ffne-action': 'close-delete' }, 'Close');
-        const rowsBody = h('tbody');
+                const confirmed = confirm(_getBulkDeleteConfirmMessage(selectedRows));
+                if (!confirmed) return;
 
-        const updateSummary = () => {
-            const selectedRows = _getBulkDeleteSelectedRows(plan);
-            startButton.disabled = selectedRows.length === 0;
-            summary.className = selectedRows.length > 0
-                ? 'ffne-dm-summary ffne-dm-warning'
-                : 'ffne-dm-summary';
-            summary.replaceChildren(
-                h('div', null,
-                    h('strong', null, String(selectedRows.length)),
-                    ' selected of ',
-                    h('strong', null, String(plan.rows.filter(row => row.status !== 'success').length)),
-                    ' available document(s).',
-                ),
-                h('div', { class: 'ffne-dm-summary-detail' }, _formatBulkDeleteNameList(selectedRows)),
-            );
-        };
-
-        const setRowSelected = (row: BulkDeletePreviewRow, selected: boolean) => {
-            if (row.status === 'success') return;
-            row.selected = selected;
-            if (row.checkbox) row.checkbox.checked = selected;
-            if (row.status === 'failed') row.status = 'idle';
-            _renderBulkDeleteRowStatus(row);
-        };
-
-        const renderedRows = plan.rows.length > 0
-            ? plan.rows.map((row, index) => {
-                const checkbox = h('input', {
-                    type: 'checkbox',
-                    'aria-label': `Select ${row.item.docName}`,
-                    'data-ffne-delete-index': String(index),
-                });
-                const rowEl = h('tr', { 'data-row-doc-id': row.item.docId },
-                    h('td', null, checkbox),
-                    h('td', null, row.item.docName),
-                    h('td', null, row.item.docId),
-                    h('td', { 'data-ffne-status': true }),
-                );
-                row.checkbox = checkbox;
-                row.modalRow = rowEl;
-                checkbox.addEventListener('change', () => {
-                    setRowSelected(row, checkbox.checked);
-                    updateSummary();
-                });
-                _renderBulkDeleteRowStatus(row);
-                return rowEl;
-            })
-            : [h('tr', null, h('td', { colspan: 4 }, 'No DocManager documents found.'))];
-        rowsBody.replaceChildren(...renderedRows);
-
-        overlay.appendChild(
-            h('div', { class: 'ffne-dm-modal ffne-dm-modal-wide', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'ffne-dm-delete-title' },
-                h('div', { class: 'ffne-dm-modal-header' },
-                    h('h3', { id: 'ffne-dm-delete-title' }, 'Bulk Delete'),
-                    closeButton,
-                ),
-                h('div', { class: 'ffne-dm-modal-body' },
-                    h('div', { class: 'ffne-dm-import-controls' },
-                        h('div', { class: 'ffne-dm-picker-group' },
-                            selectAllButton,
-                            clearButton,
-                        ),
-                        startButton,
-                    ),
-                    summary,
-                    h('div', { class: 'ffne-dm-preview-scroll' },
-                        h('table', { class: 'ffne-dm-preview', contenteditable: 'false' },
-                            h('thead', null,
-                                h('tr', null,
-                                    h('th', null, 'Delete'),
-                                    h('th', null, 'Document'),
-                                    h('th', null, 'Doc ID'),
-                                    h('th', null, 'Status'),
-                                ),
-                            ),
-                            rowsBody,
-                        ),
-                    ),
-                    results,
-                    h('div', { class: 'ffne-dm-footer' },
-                        status,
-                        closeDeleteButton,
-                    ),
-                ),
-            ),
-        );
-
-        selectAllButton.addEventListener('click', () => {
-            plan.rows.forEach(row => setRowSelected(row, true));
-            updateSummary();
+                await this.runBulkDelete(e as MouseEvent, plan, statusEl, resultsEl);
+                updateSummary();
+            },
+            onClose: () => {
+                this._bulkDeletePlan = null;
+                this._deleteEscHandler = null;
+            },
         });
-
-        clearButton.addEventListener('click', () => {
-            plan.rows.forEach(row => setRowSelected(row, false));
-            updateSummary();
-        });
-
-        startButton.addEventListener('click', async (e) => {
-            const selectedRows = _getBulkDeleteSelectedRows(plan);
-            if (selectedRows.length === 0) return;
-
-            const confirmed = confirm(_getBulkDeleteConfirmMessage(selectedRows));
-            if (!confirmed) return;
-
-            await this.runBulkDelete(e as MouseEvent, plan, status || undefined, results || undefined);
-            updateSummary();
-        });
-
-        closeButton.addEventListener('click', () => this.closeBulkDeleteModal());
-        closeDeleteButton.addEventListener('click', () => this.closeBulkDeleteModal());
-
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) this.closeBulkDeleteModal();
-        });
-
-        this._deleteEscHandler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') this.closeBulkDeleteModal();
-        };
-        document.addEventListener('keydown', this._deleteEscHandler);
-
-        updateSummary();
-        document.body.appendChild(overlay);
+        this._bulkDeletePlan = plan;
+        this._deleteEscHandler = escHandler;
     },
 
     closeBulkDeleteModal: function () {
@@ -1589,6 +1665,80 @@ export const DocManager = {
         }
 
         this._bulkDeletePlan = null;
+    },
+
+    openBulkExportModal: function () {
+        if (document.getElementById(EXPORT_MODAL_ID)) return;
+
+        this._injectAdvancedStyles();
+        const { plan, escHandler } = _openBulkSelectionModal({
+            modalId: EXPORT_MODAL_ID,
+            title: 'Bulk Export',
+            actionLabel: 'Export',
+            checkboxColumnLabel: 'Export',
+            onStart: async (e, plan, statusEl, resultsEl, updateSummary) => {
+                const selectedRows = _getBulkSelectionSelectedRows(plan);
+                if (selectedRows.length === 0) return;
+                const selectedIds = new Set(selectedRows.map(row => row.item.docId));
+                await this.runBulkExport(e as MouseEvent, plan, statusEl, resultsEl, selectedIds);
+                updateSummary();
+            },
+            onClose: () => {
+                this._bulkExportPlan = null;
+                this._exportEscHandler = null;
+            },
+        });
+        this._bulkExportPlan = plan;
+        this._exportEscHandler = escHandler;
+    },
+
+    closeBulkExportModal: function () {
+        const modal = document.getElementById(EXPORT_MODAL_ID);
+        if (modal) modal.remove();
+
+        if (this._exportEscHandler) {
+            document.removeEventListener('keydown', this._exportEscHandler);
+            this._exportEscHandler = null;
+        }
+
+        this._bulkExportPlan = null;
+    },
+
+    openBulkRefreshModal: function () {
+        if (document.getElementById(REFRESH_MODAL_ID)) return;
+
+        this._injectAdvancedStyles();
+        const { plan, escHandler } = _openBulkSelectionModal({
+            modalId: REFRESH_MODAL_ID,
+            title: 'Bulk Refresh',
+            actionLabel: 'Refresh',
+            checkboxColumnLabel: 'Refresh',
+            onStart: async (e, plan, statusEl, resultsEl, updateSummary) => {
+                const selectedRows = _getBulkSelectionSelectedRows(plan);
+                if (selectedRows.length === 0) return;
+                const selectedIds = new Set(selectedRows.map(row => row.item.docId));
+                await this.runBulkRefresh(e as MouseEvent, plan, statusEl, resultsEl, selectedIds);
+                updateSummary();
+            },
+            onClose: () => {
+                this._bulkRefreshPlan = null;
+                this._refreshEscHandler = null;
+            },
+        });
+        this._bulkRefreshPlan = plan;
+        this._refreshEscHandler = escHandler;
+    },
+
+    closeBulkRefreshModal: function () {
+        const modal = document.getElementById(REFRESH_MODAL_ID);
+        if (modal) modal.remove();
+
+        if (this._refreshEscHandler) {
+            document.removeEventListener('keydown', this._refreshEscHandler);
+            this._refreshEscHandler = null;
+        }
+
+        this._bulkRefreshPlan = null;
     },
 
     openAo3MigrationModal: function () {
@@ -2290,6 +2440,7 @@ export const DocManager = {
      */
     runBulkExport: async function (
         e: MouseEvent,
+        plan: BulkSelectionPlan | null,
         statusEl?: HTMLElement,
         resultsEl?: HTMLElement,
         retryDocIds?: Set<string>,
@@ -2302,6 +2453,8 @@ export const DocManager = {
         const failures: BulkSimpleFailure[] = [];
         const failedItems: IBulkItem[] = [];
 
+        const findPlanRow = (docId: string) => plan?.rows.find(r => r.item.docId === docId) ?? null;
+
         if (statusEl) statusEl.textContent = 'Preparing export...';
         _renderBulkFailures(resultsEl, 'Failed Exports', []);
 
@@ -2311,6 +2464,8 @@ export const DocManager = {
                 ? (items) => items.filter(item => retryDocIds.has(item.docId))
                 : undefined,
             onItemStart: (item, pass, index, total) => {
+                const planRow = findPlanRow(item.docId);
+                if (planRow) _setBulkSelectionRowStatus(planRow, pass === 2 ? 'retrying' : 'running');
                 if (statusEl) {
                     const action = pass === 2 ? 'Retrying' : 'Exporting';
                     statusEl.textContent = `${action} ${index}/${total}: ${item.title}...`;
@@ -2345,7 +2500,13 @@ export const DocManager = {
                     _setRowRunning(item.row, false);
                 }
             },
+            onItemSuccess: (item) => {
+                const planRow = findPlanRow(item.docId);
+                if (planRow) _setBulkSelectionRowStatus(planRow, 'success');
+            },
             onPermanentFailure: (item) => {
+                const planRow = findPlanRow(item.docId);
+                if (planRow) _setBulkSelectionRowStatus(planRow, 'failed');
                 zipEntries.push({
                     path: `ERROR_${item.title}.txt`,
                     data: textToBytes(`Failed to retrieve content for DocID ${item.docId} after multiple attempts.`),
@@ -2381,7 +2542,7 @@ export const DocManager = {
                     ? () => {
                         const retryIds = new Set(failedItems.map(item => item.docId));
                         const fakeEvent = { currentTarget: btn } as unknown as MouseEvent;
-                        DocManager.runBulkExport(fakeEvent, statusEl, resultsEl, retryIds);
+                        DocManager.runBulkExport(fakeEvent, plan, statusEl, resultsEl, retryIds);
                     }
                     : undefined;
                 _renderBulkFailures(resultsEl, 'Failed Exports', failures, retryFn);
@@ -2395,6 +2556,7 @@ export const DocManager = {
      */
     runBulkRefresh: async function (
         e: MouseEvent,
+        plan: BulkSelectionPlan | null,
         statusEl?: HTMLElement,
         resultsEl?: HTMLElement,
         retryDocIds?: Set<string>,
@@ -2404,33 +2566,39 @@ export const DocManager = {
         const failures: BulkSimpleFailure[] = [];
         const failedItems: IBulkItem[] = [];
 
+        const findPlanRow = (docId: string) => plan?.rows.find(r => r.item.docId === docId) ?? null;
+
         if (statusEl) statusEl.textContent = 'Preparing refresh...';
         _renderBulkFailures(resultsEl, 'Failed Refreshes', []);
 
         await _runBulkOperation(e, {
             verb: 'Refresh',
-            filterRows: retryDocIds
-                ? (items) => items.filter(item => retryDocIds.has(item.docId))
-                : (items) => {
-                    const before = items.length;
-                    const filtered = items.filter(item => {
-                        const lifeCell = item.row.cells[DocManager._resolveLifeColIdx()];
-                        return !lifeCell || lifeCell.innerText.trim() !== '365 days';
-                    });
-                    const skipped = before - filtered.length;
-                    if (skipped > 0) {
-                        log(`Skipped ${skipped} document(s) already at 365 days.`);
-                    }
-                    if (filtered.length === 0) {
-                        log("No documents need refreshing (all already have 365 days).");
-                        if (statusEl) statusEl.textContent = 'All documents already have 365 days life remaining.';
-                    }
-                    return filtered;
-                },
+            filterRows: (items) => {
+                const candidates = retryDocIds
+                    ? items.filter(item => retryDocIds.has(item.docId))
+                    : items;
+                const before = candidates.length;
+                const filtered = candidates.filter(item => {
+                    const lifeCell = item.row.cells[DocManager._resolveLifeColIdx()];
+                    const lifeText = (lifeCell?.innerText || lifeCell?.textContent || '').trim();
+                    return !lifeCell || lifeText !== '365 days';
+                });
+                const skipped = before - filtered.length;
+                if (skipped > 0) {
+                    log(`Skipped ${skipped} document(s) already at 365 days.`);
+                }
+                if (filtered.length === 0) {
+                    log("No documents need refreshing (all already have 365 days).");
+                    if (statusEl) statusEl.textContent = 'All documents already have 365 days life remaining.';
+                }
+                return filtered;
+            },
             preBatch: (totalCount) => {
                 if (statusEl) statusEl.textContent = `Refreshing ${totalCount} document(s). Do not close this tab.`;
             },
             onItemStart: (item, pass, index, total) => {
+                const planRow = findPlanRow(item.docId);
+                if (planRow) _setBulkSelectionRowStatus(planRow, pass === 2 ? 'retrying' : 'running');
                 if (statusEl) {
                     const action = pass === 2 ? 'Retrying' : 'Refreshing';
                     statusEl.textContent = `${action} ${index}/${total}: ${item.title}...`;
@@ -2445,9 +2613,13 @@ export const DocManager = {
                 }
             },
             onItemSuccess: (item, pass) => {
+                const planRow = findPlanRow(item.docId);
+                if (planRow) _setBulkSelectionRowStatus(planRow, 'success');
                 DocManager.updateLifeColumn(item.row, `bulk pass ${pass}: ${item.title}`);
             },
             onPermanentFailure: (item) => {
+                const planRow = findPlanRow(item.docId);
+                if (planRow) _setBulkSelectionRowStatus(planRow, 'failed');
                 failures.push({ docName: item.docName, reason: `Failed to refresh DocID ${item.docId}.` });
                 failedItems.push(item);
             },
@@ -2477,7 +2649,7 @@ export const DocManager = {
                     ? () => {
                         const retryIds = new Set(failedItems.map(item => item.docId));
                         const fakeEvent = { currentTarget: btn } as unknown as MouseEvent;
-                        DocManager.runBulkRefresh(fakeEvent, statusEl, resultsEl, retryIds);
+                        DocManager.runBulkRefresh(fakeEvent, plan, statusEl, resultsEl, retryIds);
                     }
                     : undefined;
                 _renderBulkFailures(resultsEl, 'Failed Refreshes', failures, retryFn);
@@ -2490,7 +2662,7 @@ export const DocManager = {
      */
     runBulkDelete: async function (
         e: MouseEvent,
-        plan: BulkDeletePlan,
+        plan: BulkSelectionPlan,
         statusEl?: HTMLElement,
         resultsEl?: HTMLElement,
         retryDocIds?: Set<string>,
@@ -2498,11 +2670,11 @@ export const DocManager = {
         const log = Core.getLogger(this.MODULE_NAME, 'runBulkDelete');
         const btn = e.currentTarget as HTMLButtonElement;
         const failureReasons = new Map<string, string>();
-        const failedRows: BulkDeletePreviewRow[] = [];
+        const failedRows: BulkSelectionPreviewRow[] = [];
 
         const rowsToDelete = retryDocIds
             ? plan.rows.filter(row => retryDocIds.has(row.item.docId) && row.status !== 'success')
-            : _getBulkDeleteSelectedRows(plan);
+            : _getBulkSelectionSelectedRows(plan);
 
         if (rowsToDelete.length === 0) {
             if (statusEl) statusEl.textContent = 'No documents selected for deletion.';
@@ -2514,14 +2686,14 @@ export const DocManager = {
         _renderBulkFailures(resultsEl, 'Failed Deletes', []);
         log(`Bulk Delete requested for ${rowsToDelete.length} document(s).`);
 
-        await runBulkOperation<BulkDeletePreviewRow>(e, {
+        await runBulkOperation<BulkSelectionPreviewRow>(e, {
             verb: 'Delete',
             getItems: () => rowsToDelete,
             preBatch: (totalCount) => {
                 if (statusEl) statusEl.textContent = `Deleting ${totalCount} document(s). Do not close this tab.`;
             },
             onItemStart: (row, pass, index, total) => {
-                _setBulkDeleteRowStatus(row, pass === 2 ? 'retrying' : 'running');
+                _setBulkSelectionRowStatus(row, pass === 2 ? 'retrying' : 'running');
                 if (statusEl) {
                     const verb = pass === 2 ? 'Retrying' : 'Deleting';
                     statusEl.textContent = `${verb} ${index}/${total}: ${row.item.title}...`;
@@ -2532,19 +2704,19 @@ export const DocManager = {
                     const result = await DocFetchService.deletePrivateDocWithResult(row.item.docId, row.item.title);
                     if (!result.ok) {
                         failureReasons.set(row.item.docId, result.reason || `Failed to delete DocID ${row.item.docId}.`);
-                        _setBulkDeleteRowStatus(row, 'failed');
+                        _setBulkSelectionRowStatus(row, 'failed');
                         return false;
                     }
                     return true;
                 } catch (err) {
                     const reason = err instanceof Error ? err.message : String(err);
                     failureReasons.set(row.item.docId, `Unexpected error: ${reason}`);
-                    _setBulkDeleteRowStatus(row, 'failed');
+                    _setBulkSelectionRowStatus(row, 'failed');
                     return false;
                 }
             },
             onItemSuccess: (row) => {
-                _setBulkDeleteRowStatus(row, 'success');
+                _setBulkSelectionRowStatus(row, 'success');
                 row.item.row.remove();
             },
             onPermanentFailure: (row) => {
@@ -3015,7 +3187,7 @@ export const DocManager = {
 
     // Exported for tests — verifies button-reference lifecycle in onFinalize callbacks.
     _runBulkOperation,
-    _buildBulkDeletePlan,
+    _buildBulkSelectionPlan,
     _buildBulkImportPlan,
     _createAo3MigrationRows,
     _setManualAo3SourceSelection,

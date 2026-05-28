@@ -249,6 +249,12 @@
     margin-top: 3px;
 }
 
+.ffne-dm-summary-hint {
+    margin-top: 3px;
+    color: var(--ffne-ui-text-disabled);
+    font-size: 11px;
+}
+
 .ffne-dm-warning {
     color: var(--ffne-semantic-warning-text-dark);
     background: var(--ffne-semantic-warning-bg);
@@ -306,6 +312,15 @@
 
 .ffne-dm-preview .ffne-dm-row-failed td {
     background-color: var(--ffne-semantic-error-bg) !important;
+}
+
+.ffne-dm-preview .ffne-dm-row-selected td {
+    background-color: var(--ffne-semantic-selected-bg, rgba(59, 130, 246, 0.08)) !important;
+}
+
+.ffne-dm-preview tr {
+    cursor: pointer;
+    user-select: none;
 }
 
 .ffne-dm-status-matched { color: var(--ffne-semantic-success-text); font-weight: 700; }
