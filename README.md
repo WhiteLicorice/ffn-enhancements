@@ -1,6 +1,6 @@
 # ffn-enhancements
 
-[![Firefox Add-ons](https://img.shields.io/amo/v/ffn-enhancements?style=for-the-badge&color=orange&logo=firefox-browser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/ffn-enhancements/)
+[![Firefox Add-ons](https://img.shields.io/badge/Firefox-Add--on-orange?style=for-the-badge&logo=firefox-browser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/ffn-enhancements/)
 [![Stable Build](https://img.shields.io/github/v/release/WhiteLicorice/ffn-enhancements?label=Stable&style=for-the-badge&color=orange)](https://github.com/WhiteLicorice/ffn-enhancements/releases/latest)
 [![Beta Build](https://img.shields.io/badge/Beta-Latest-orange?style=for-the-badge)](https://github.com/WhiteLicorice/ffn-enhancements/releases/tag/beta)
 [![License](https://img.shields.io/github/license/WhiteLicorice/ffn-enhancements?style=for-the-badge&color=green)](LICENSE)
