@@ -2848,24 +2848,25 @@ export const DocManager = {
 
         await _runBulkOperation(e, {
             verb: 'Refresh',
-            filterRows: retryDocIds
-                ? (items) => items.filter(item => retryDocIds.has(item.docId))
-                : (items) => {
-                    const before = items.length;
-                    const filtered = items.filter(item => {
-                        const lifeCell = item.row.cells[DocManager._resolveLifeColIdx()];
-                        return !lifeCell || lifeCell.innerText.trim() !== '365 days';
-                    });
-                    const skipped = before - filtered.length;
-                    if (skipped > 0) {
-                        log(`Skipped ${skipped} document(s) already at 365 days.`);
-                    }
-                    if (filtered.length === 0) {
-                        log("No documents need refreshing (all already have 365 days).");
-                        if (statusEl) statusEl.textContent = 'All documents already have 365 days life remaining.';
-                    }
-                    return filtered;
-                },
+            filterRows: (items) => {
+                const candidates = retryDocIds
+                    ? items.filter(item => retryDocIds.has(item.docId))
+                    : items;
+                const before = candidates.length;
+                const filtered = candidates.filter(item => {
+                    const lifeCell = item.row.cells[DocManager._resolveLifeColIdx()];
+                    return !lifeCell || lifeCell.innerText.trim() !== '365 days';
+                });
+                const skipped = before - filtered.length;
+                if (skipped > 0) {
+                    log(`Skipped ${skipped} document(s) already at 365 days.`);
+                }
+                if (filtered.length === 0) {
+                    log("No documents need refreshing (all already have 365 days).");
+                    if (statusEl) statusEl.textContent = 'All documents already have 365 days life remaining.';
+                }
+                return filtered;
+            },
             preBatch: (totalCount) => {
                 if (statusEl) statusEl.textContent = `Refreshing ${totalCount} document(s). Do not close this tab.`;
             },
