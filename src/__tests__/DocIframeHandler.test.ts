@@ -225,4 +225,29 @@ describe('handlePaste', () => {
             '<p><strong>Bold</strong></p><div>Body</div>',
         );
     });
+
+    it('does not intercept paste of the canonical tilde fixture as Markdown', () => {
+        vi.spyOn(SettingsManager, 'get').mockImplementation((key) => {
+            if (key === 'pasteForceIntercept') return true;
+            if (key === 'pasteConvertHtml') return false;
+            if (key === 'pasteConvertMarkdown') return true;
+            return false as never;
+        });
+
+        const execCommand = vi.fn();
+        const iframe = { contentDocument: { execCommand } } as unknown as HTMLIFrameElement;
+        const fixture = '"Lorem ipsum~" Bob said. "Lorem ipsum~"';
+        const event = {
+            clipboardData: {
+                getData: (type: string) => type === 'text/plain' ? fixture : '',
+                types: [],
+            },
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+        } as unknown as ClipboardEvent;
+
+        DocIframeHandler.handlePaste(event, iframe);
+
+        expect(execCommand).not.toHaveBeenCalled();
+    });
 });

@@ -129,3 +129,55 @@ describe('SimpleMarkdownParser.parse', () => {
         expect(result).toContain('Hello World');
     });
 });
+
+// ─── Tilde Preservation ──────────────────────────────────────────────────────
+
+const TILDE_FIXTURE = '"Lorem ipsum~" Bob said. "Lorem ipsum~"';
+
+describe('SimpleMarkdownParser tilde preservation', () => {
+    it('does not detect the canonical tilde fixture as Markdown', () => {
+        expect(SimpleMarkdownParser.isMarkdown(TILDE_FIXTURE)).toBe(false);
+    });
+
+    it('parsing the tilde fixture preserves tildes and emits no <del>', () => {
+        const html = SimpleMarkdownParser.parse(TILDE_FIXTURE);
+        expect(html).toContain('~');
+        expect(html).not.toContain('<del');
+        expect(html).not.toContain('</del>');
+    });
+});
+
+// ─── Compatibility ───────────────────────────────────────────────────────────
+
+describe('SimpleMarkdownParser GFM compatibility', () => {
+    it('still converts ~~strikethrough~~ to <del>', () => {
+        const html = SimpleMarkdownParser.parse('This is ~~deleted~~ text.');
+        expect(html).toContain('<del>');
+        expect(html).toContain('deleted');
+    });
+
+    it('still detects ~~strikethrough~~ as Markdown', () => {
+        expect(SimpleMarkdownParser.isMarkdown('This is ~~deleted~~ text.')).toBe(true);
+    });
+
+    it('still supports ~~~ fenced code blocks', () => {
+        const md = '~~~\nconst x = 1;\n~~~';
+        expect(SimpleMarkdownParser.isMarkdown(md)).toBe(true);
+        const html = SimpleMarkdownParser.parse(md);
+        expect(html).toContain('<code>');
+    });
+
+    it('still supports GFM tables', () => {
+        const md = '| A | B |\n|---|---|\n| 1 | 2 |';
+        expect(SimpleMarkdownParser.isMarkdown(md)).toBe(true);
+        const html = SimpleMarkdownParser.parse(md);
+        expect(html).toContain('<table>');
+    });
+
+    it('still supports task lists', () => {
+        const md = '- [x] Done\n- [ ] Todo';
+        expect(SimpleMarkdownParser.isMarkdown(md)).toBe(true);
+        const html = SimpleMarkdownParser.parse(md);
+        expect(html).toContain('type="checkbox"');
+    });
+});

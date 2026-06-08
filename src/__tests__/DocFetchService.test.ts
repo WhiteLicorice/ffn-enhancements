@@ -314,6 +314,52 @@ describe('DocFetchService direct save helpers', () => {
         expect(result.form?.action).toBe(EDIT_URL);
     });
 
+    it('encodes text tildes as &#126; in refresh save prep', () => {
+        const doc = new DOMParser().parseFromString(makeEditPage({
+            textareaValue: '<p>"Lorem ipsum~" Bob said.</p>',
+        }), 'text/html');
+
+        const result = DocFetchService._preparePrivateDocSaveForm(doc, EDIT_URL, '123', {
+            operationLabel: 'REFRESH',
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.submittedHtml).toContain('&#126;');
+        expect(result.submittedHtml).not.toContain('~');
+        // Tags are preserved untouched
+        expect(result.submittedHtml).toContain('<p>');
+    });
+
+    it('encodes text tildes as &#126; in import save prep', () => {
+        const doc = new DOMParser().parseFromString(makeEditPage(), 'text/html');
+
+        const result = DocFetchService._preparePrivateDocSaveForm(doc, EDIT_URL, '123', {
+            operationLabel: 'IMPORT',
+            replacementHtml: '<p>"Lorem ipsum~" Bob said.</p>',
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.submittedHtml).toContain('&#126;');
+        expect(result.textarea?.value).toContain('&#126;');
+    });
+
+    it('normalizes tilde entities as equivalent in save verification comparison', () => {
+        const original = '<p>Hello~world</p>';
+        const returned = '<p>Hello&#126;world</p>';
+        expect(
+            DocFetchService._normalizeEditorHtmlForComparison(original)
+        ).toBe(
+            DocFetchService._normalizeEditorHtmlForComparison(returned)
+        );
+    });
+
+    it('normalizes &#x7e; and &tilde; as equivalent tildes', () => {
+        const base = DocFetchService._normalizeEditorHtmlForComparison('<p>Hello~world</p>');
+        expect(DocFetchService._normalizeEditorHtmlForComparison('<p>Hello&#x7e;world</p>')).toBe(base);
+        expect(DocFetchService._normalizeEditorHtmlForComparison('<p>Hello&#x7E;world</p>')).toBe(base);
+        expect(DocFetchService._normalizeEditorHtmlForComparison('<p>Hello&tilde;world</p>')).toBe(base);
+    });
+
     it('aborts before POST when the editor textarea has no name', async () => {
         const promise = DocFetchService.replacePrivateDocContentWithResult('123', 'Doc Name', '<p>Imported</p>');
         const iframe = getSaveFrame();
