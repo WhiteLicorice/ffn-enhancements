@@ -282,18 +282,20 @@ describe('applyExportTransforms', () => {
 
 describe('export transforms preserve lone tildes', () => {
     it('HTML export preserves tildes in text content', () => {
+        const input = '<p>"Lorem ipsum~" Bob said. "Lorem ipsum~"</p>';
         const result = applyExportTransforms(
-            '<p>"Lorem ipsum~" Bob said.</p>',
+            input,
             DocDownloadFormat.HTML,
         );
-        expect(result).toContain('~');
+        expect(result).toBe(input);
     });
 
     it('Markdown export preserves tildes in text content', () => {
+        const input = '<p>"Lorem ipsum~" Bob said. "Lorem ipsum~"</p>';
         const result = applyExportTransforms(
-            '<p>"Lorem ipsum~" Bob said.</p>',
+            input,
             DocDownloadFormat.MARKDOWN,
         );
-        expect(result).toContain('~');
+        expect(result).toBe(input);
     });
 });

@@ -1,7 +1,7 @@
 // modules/SimpleMarkdownParser.ts
 
 import { Core } from './Core';
-import { Marked, Token } from 'marked';
+import { Marked, type Token, type Tokens } from 'marked';
 
 /**
  * Configured Marked instance that preserves literal single-tilde punctuation.
@@ -15,41 +15,24 @@ const markedInstance = new Marked({
     silent: true,
 });
 
-// Disable the built-in del tokenizer (which matches single ~text~).
-// Returning undefined tells marked to skip this rule; the type assertion
-// is needed because marked's type expects the full Token return type.
+const DOUBLE_TILDE_DEL_RE = /^(~~)(?=[^\s~])((?:\\[\s\S]|[^\\])*?(?:\\[\s\S]|[^\s~\\]))\1(?=[^~]|$)/;
+
+// Override the built-in del tokenizer, which matches single ~text~.
+// Returning undefined tells marked to treat unmatched tildes as literal text.
 markedInstance.use({
     tokenizer: {
-        del() { return undefined as unknown as ReturnType<typeof this.del>; },
-    },
-});
+        del(src: string): Tokens.Del | undefined {
+            const match = DOUBLE_TILDE_DEL_RE.exec(src);
+            if (!match) return undefined;
 
-// Re-add del support only for the canonical double-tilde ~~text~~ syntax
-markedInstance.use({
-    extensions: [{
-        name: 'del',
-        level: 'inline',
-        start(src: string) { return src.indexOf('~~'); },
-        tokenizer(src: string) {
-            if (src.startsWith('~~') && !src.startsWith('~~~')) {
-                const end = src.indexOf('~~', 2);
-                if (end > 2) {
-                    const raw = src.substring(0, end + 2);
-                    const text = src.substring(2, end);
-                    return {
-                        type: 'del',
-                        raw,
-                        text,
-                        tokens: this.lexer.inlineTokens(text),
-                    };
-                }
-            }
-            return undefined;
+            return {
+                type: 'del',
+                raw: match[0],
+                text: match[2],
+                tokens: this.lexer.inlineTokens(match[2]),
+            };
         },
-        renderer(token) {
-            return '<del>' + this.parser.parseInline(token.tokens || []) + '</del>';
-        },
-    }],
+    },
 });
 
 /**

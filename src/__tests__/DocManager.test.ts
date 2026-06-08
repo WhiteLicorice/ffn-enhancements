@@ -493,7 +493,8 @@ describe('DocManager bulk import conversion', () => {
     it('preserves literal tildes in Markdown import after sanitizer', () => {
         const fixture = '"Lorem ipsum~" Bob said. "Lorem ipsum~"';
         const html = DocManager._markdownToImportHtml(fixture);
-        expect(html).toContain('~');
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.body.textContent?.trim()).toBe(fixture);
         expect(html).not.toContain('<del');
     });
 

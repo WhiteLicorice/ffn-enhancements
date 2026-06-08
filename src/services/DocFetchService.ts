@@ -256,7 +256,7 @@ export const DocFetchService = {
         return value
             .replace(/\r\n?/g, '\n')
             .replace(/\u00A0/g, ' ')
-            .replace(/&#126;|&#x7[eE];|&tilde;/g, '~')
+            .replace(/&#0*126;|&#[xX]0*7[eE];/g, '~')
             .replace(/>\s+</g, '><')
             .replace(/\s+/g, ' ')
             .trim();

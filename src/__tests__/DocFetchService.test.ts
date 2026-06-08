@@ -316,7 +316,7 @@ describe('DocFetchService direct save helpers', () => {
 
     it('encodes text tildes as &#126; in refresh save prep', () => {
         const doc = new DOMParser().parseFromString(makeEditPage({
-            textareaValue: '<p>"Lorem ipsum~" Bob said.</p>',
+            textareaValue: '<p>"Lorem ipsum~" Bob said. "Lorem ipsum~"</p>',
         }), 'text/html');
 
         const result = DocFetchService._preparePrivateDocSaveForm(doc, EDIT_URL, '123', {
@@ -324,7 +324,7 @@ describe('DocFetchService direct save helpers', () => {
         });
 
         expect(result.ok).toBe(true);
-        expect(result.submittedHtml).toContain('&#126;');
+        expect(result.submittedHtml).toBe('<p>"Lorem ipsum&#126;" Bob said. "Lorem ipsum&#126;"</p>');
         expect(result.submittedHtml).not.toContain('~');
         // Tags are preserved untouched
         expect(result.submittedHtml).toContain('<p>');
@@ -335,12 +335,12 @@ describe('DocFetchService direct save helpers', () => {
 
         const result = DocFetchService._preparePrivateDocSaveForm(doc, EDIT_URL, '123', {
             operationLabel: 'IMPORT',
-            replacementHtml: '<p>"Lorem ipsum~" Bob said.</p>',
+            replacementHtml: '<p>"Lorem ipsum~" Bob said. "Lorem ipsum~"</p>',
         });
 
         expect(result.ok).toBe(true);
-        expect(result.submittedHtml).toContain('&#126;');
-        expect(result.textarea?.value).toContain('&#126;');
+        expect(result.submittedHtml).toBe('<p>"Lorem ipsum&#126;" Bob said. "Lorem ipsum&#126;"</p>');
+        expect(result.textarea?.value).toBe(result.submittedHtml);
     });
 
     it('normalizes tilde entities as equivalent in save verification comparison', () => {
@@ -353,11 +353,18 @@ describe('DocFetchService direct save helpers', () => {
         );
     });
 
-    it('normalizes &#x7e; and &tilde; as equivalent tildes', () => {
+    it('normalizes decimal and hex ASCII tilde entities as equivalent tildes', () => {
         const base = DocFetchService._normalizeEditorHtmlForComparison('<p>Hello~world</p>');
+        expect(DocFetchService._normalizeEditorHtmlForComparison('<p>Hello&#000126;world</p>')).toBe(base);
         expect(DocFetchService._normalizeEditorHtmlForComparison('<p>Hello&#x7e;world</p>')).toBe(base);
         expect(DocFetchService._normalizeEditorHtmlForComparison('<p>Hello&#x7E;world</p>')).toBe(base);
-        expect(DocFetchService._normalizeEditorHtmlForComparison('<p>Hello&tilde;world</p>')).toBe(base);
+        expect(DocFetchService._normalizeEditorHtmlForComparison('<p>Hello&#X7E;world</p>')).toBe(base);
+    });
+
+    it('does not normalize the named tilde entity because it is not ASCII tilde', () => {
+        const base = DocFetchService._normalizeEditorHtmlForComparison('<p>Hello~world</p>');
+
+        expect(DocFetchService._normalizeEditorHtmlForComparison('<p>Hello&tilde;world</p>')).not.toBe(base);
     });
 
     it('aborts before POST when the editor textarea has no name', async () => {

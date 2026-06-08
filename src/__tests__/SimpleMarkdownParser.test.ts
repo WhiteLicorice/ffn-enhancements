@@ -141,7 +141,8 @@ describe('SimpleMarkdownParser tilde preservation', () => {
 
     it('parsing the tilde fixture preserves tildes and emits no <del>', () => {
         const html = SimpleMarkdownParser.parse(TILDE_FIXTURE);
-        expect(html).toContain('~');
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.body.textContent?.trim()).toBe(TILDE_FIXTURE);
         expect(html).not.toContain('<del');
         expect(html).not.toContain('</del>');
     });
