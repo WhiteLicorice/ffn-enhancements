@@ -490,6 +490,14 @@ describe('DocManager bulk import conversion', () => {
         expect(html).not.toContain('<h1>');
     });
 
+    it('preserves literal tildes in Markdown import after sanitizer', () => {
+        const fixture = '"Lorem ipsum~" Bob said. "Lorem ipsum~"';
+        const html = DocManager._markdownToImportHtml(fixture);
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        expect(doc.body.textContent?.trim()).toBe(fixture);
+        expect(html).not.toContain('<del');
+    });
+
     it('strips unsupported formatting while keeping FFN-supported formatting', () => {
         const html = DocManager._sanitizeImportHtml(
             '<h2 style="color:red">Heading</h2><p class="x" style="text-align:center;color:blue"><strong>Bold</strong> <em>Italic</em> <u>Under</u> <s>Strike</s></p><ul><li>List item</li></ul><table><tr><td>Cell</td></tr></table><hr>'

@@ -277,3 +277,25 @@ describe('applyExportTransforms', () => {
         expect(result).toBe('<p>Line 1<br>Line 2</p>\n\n<p>Line 3<br>Line 4</p>');
     });
 });
+
+// ─── Tilde preservation in exports ───────────────────────────────────────────
+
+describe('export transforms preserve lone tildes', () => {
+    it('HTML export preserves tildes in text content', () => {
+        const input = '<p>"Lorem ipsum~" Bob said. "Lorem ipsum~"</p>';
+        const result = applyExportTransforms(
+            input,
+            DocDownloadFormat.HTML,
+        );
+        expect(result).toBe(input);
+    });
+
+    it('Markdown export preserves tildes in text content', () => {
+        const input = '<p>"Lorem ipsum~" Bob said. "Lorem ipsum~"</p>';
+        const result = applyExportTransforms(
+            input,
+            DocDownloadFormat.MARKDOWN,
+        );
+        expect(result).toBe(input);
+    });
+});

@@ -34,6 +34,19 @@ interface PrivateDocSavePreparationResult {
 
 const FFN_DOC_HOSTS = new Set(['www.fanfiction.net', 'fanfiction.net']);
 
+/**
+ * Encodes literal `~` characters as `&#126;` in text content only (not inside
+ * HTML tags or attributes). This prevents FFN/marked from interpreting lone
+ * tildes as strikethrough delimiters during round-trips.
+ */
+function encodeTildesForSave(html: string): string {
+    // Split on HTML tags; odd indices are tags, even indices are text content.
+    return html.replace(/([^<]*)(<[^>]*>)?/g, (_match, text: string, tag: string | undefined) => {
+        const encoded = text ? text.replace(/~/g, '&#126;') : '';
+        return encoded + (tag || '');
+    });
+}
+
 function normalizeText(value: string): string {
     return value.replace(/\s+/g, ' ').trim();
 }
@@ -243,6 +256,7 @@ export const DocFetchService = {
         return value
             .replace(/\r\n?/g, '\n')
             .replace(/\u00A0/g, ' ')
+            .replace(/&#0*126;|&#[xX]0*7[eE];/g, '~')
             .replace(/>\s+</g, '><')
             .replace(/\s+/g, ' ')
             .trim();
@@ -428,8 +442,8 @@ export const DocFetchService = {
         const actionUrl = parsedActionUrl.href;
 
         const currentHtml = textarea.value || textarea.textContent || '';
-        const submittedHtml = options.replacementHtml !== undefined ? options.replacementHtml : currentHtml;
-        if (!submittedHtml.trim()) {
+        const rawSubmittedHtml = options.replacementHtml !== undefined ? options.replacementHtml : currentHtml;
+        if (!rawSubmittedHtml.trim()) {
             return {
                 ok: false,
                 reason: options.operationLabel === 'IMPORT'
@@ -438,9 +452,9 @@ export const DocFetchService = {
             };
         }
 
-        if (options.replacementHtml !== undefined) {
-            textarea.value = submittedHtml;
-        }
+        const submittedHtml = encodeTildesForSave(rawSubmittedHtml);
+
+        textarea.value = submittedHtml;
 
         form.method = 'post';
         form.action = actionUrl;
