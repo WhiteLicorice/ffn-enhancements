@@ -1,7 +1,55 @@
 // modules/SimpleMarkdownParser.ts
 
 import { Core } from './Core';
-import { marked, Token } from 'marked';
+import { Marked, Token } from 'marked';
+
+/**
+ * Configured Marked instance that preserves literal single-tilde punctuation.
+ * GFM by default treats `~text~` as strikethrough (`<del>`), which causes the
+ * sanitizer to strip the tildes entirely. We disable the built-in del tokenizer
+ * and re-add double-tilde-only deletion via an extension.
+ */
+const markedInstance = new Marked({
+    gfm: true,
+    breaks: true,
+    silent: true,
+});
+
+// Disable the built-in del tokenizer (which matches single ~text~)
+markedInstance.use({
+    tokenizer: {
+        // Returning undefined tells marked to skip the built-in del rule entirely
+        del() { return undefined as unknown as ReturnType<typeof this.del>; },
+    },
+});
+
+// Re-add del support only for the canonical double-tilde ~~text~~ syntax
+markedInstance.use({
+    extensions: [{
+        name: 'del',
+        level: 'inline',
+        start(src: string) { return src.indexOf('~~'); },
+        tokenizer(src: string) {
+            if (src.startsWith('~~') && !src.startsWith('~~~')) {
+                const end = src.indexOf('~~', 2);
+                if (end > 2) {
+                    const raw = src.substring(0, end + 2);
+                    const text = src.substring(2, end);
+                    return {
+                        type: 'del',
+                        raw,
+                        text,
+                        tokens: this.lexer.inlineTokens(text),
+                    };
+                }
+            }
+            return undefined;
+        },
+        renderer(token) {
+            return '<del>' + this.parser.parseInline(token.tokens || []) + '</del>';
+        },
+    }],
+});
 
 /**
  * Robust Markdown Parser powered by the 'marked' library.
@@ -21,7 +69,7 @@ export const SimpleMarkdownParser = {
         const log = Core.getLogger(this.MODULE_NAME, 'isMarkdown');
 
         // We trim to ensure leading whitespace doesn't trigger "indented code" logic prematurely
-        const tokens = marked.lexer(text.trim());
+        const tokens = markedInstance.lexer(text.trim());
 
         /**
          * Recursive helper to scan tokens for "High Confidence" Markdown signals.
@@ -99,10 +147,6 @@ export const SimpleMarkdownParser = {
         const log = Core.getLogger(this.MODULE_NAME, 'parse');
 
         log('Converting Markdown content to HTML...');
-        return marked.parse(text, {
-            gfm: true,          // GitHub Flavored Markdown
-            breaks: true,       // Convert \n to <br> (Essential for fiction line-breaks)
-            silent: true        // Prevent crashing on malformed syntax
-        }) as string;
+        return markedInstance.parse(text) as string;
     }
 };
