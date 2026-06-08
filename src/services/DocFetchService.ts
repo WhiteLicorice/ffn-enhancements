@@ -454,11 +454,7 @@ export const DocFetchService = {
 
         const submittedHtml = encodeTildesForSave(rawSubmittedHtml);
 
-        if (options.replacementHtml !== undefined) {
-            textarea.value = submittedHtml;
-        } else {
-            textarea.value = submittedHtml;
-        }
+        textarea.value = submittedHtml;
 
         form.method = 'post';
         form.action = actionUrl;

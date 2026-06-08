@@ -15,10 +15,11 @@ const markedInstance = new Marked({
     silent: true,
 });
 
-// Disable the built-in del tokenizer (which matches single ~text~)
+// Disable the built-in del tokenizer (which matches single ~text~).
+// Returning undefined tells marked to skip this rule; the type assertion
+// is needed because marked's type expects the full Token return type.
 markedInstance.use({
     tokenizer: {
-        // Returning undefined tells marked to skip the built-in del rule entirely
         del() { return undefined as unknown as ReturnType<typeof this.del>; },
     },
 });
